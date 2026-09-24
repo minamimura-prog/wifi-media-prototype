@@ -1,0 +1,7 @@
+services:
+  - type: web
+    name: wifi-media-prototype
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn server:app
+    plan: free
