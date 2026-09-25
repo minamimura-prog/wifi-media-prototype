@@ -2,7 +2,7 @@ from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlparse
 from email.parser import BytesParser
 from email.policy import default
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import json, os, uuid, mimetypes, threading
 import database
 import migrate_to_postgres
@@ -14,6 +14,7 @@ PORT = int(os.environ.get("PORT", "5050"))
 ALLOWED = {".gif", ".jpg", ".jpeg", ".png", ".webp"}
 MAX_BYTES = 12 * 1024 * 1024
 LOCK = threading.Lock()
+COUPON_EVENT_TYPES = {"view", "copy", "redeem"}
 
 os.makedirs(UPLOADS, exist_ok=True)
 
@@ -21,7 +22,10 @@ def load_state():
     if database.database_enabled():
         return database.load_state()
     with open(DATA, "r", encoding="utf-8") as f:
-        return json.load(f)
+        data = json.load(f)
+    data.setdefault("coupons", [])
+    data.setdefault("coupon_events", [])
+    return data
 
 def save_state(data, preserve_latest_events=True):
     if database.database_enabled():
@@ -31,9 +35,15 @@ def save_state(data, preserve_latest_events=True):
     if preserve_latest_events:
         try:
             with open(DATA, "r", encoding="utf-8") as f:
-                data["events"] = json.load(f).get("events", [])
+                latest = json.load(f)
+                data["events"] = latest.get("events", [])
+                data["coupon_events"] = latest.get("coupon_events", [])
+                data.setdefault("coupons", latest.get("coupons", []))
         except (OSError, json.JSONDecodeError):
             data.setdefault("events", [])
+            data.setdefault("coupon_events", [])
+    data.setdefault("coupons", [])
+    data.setdefault("coupon_events", [])
     tmp = DATA + ".tmp"
     with open(tmp, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
@@ -60,6 +70,54 @@ def record_event(event_type, store, ad_id="main"):
         data["events"] = events[-10000:]
         save_state(data, preserve_latest_events=False)
 
+def list_available_coupons(data=None):
+    data = data or load_state()
+    today = (datetime.now(timezone.utc) + timedelta(hours=9)).date().isoformat()
+    return [coupon for coupon in data.get("coupons", [])
+            if coupon.get("status") == "active"
+            and (not coupon.get("start") or coupon["start"] <= today)
+            and (not coupon.get("end") or coupon["end"] >= today)]
+
+def record_coupon_event(payload):
+    if payload.get("type") not in COUPON_EVENT_TYPES:
+        raise ValueError("invalid coupon event type")
+    data = load_state()
+    coupon_id = str(payload.get("couponId") or "")
+    coupon = next((item for item in data.get("coupons", []) if str(item.get("id")) == coupon_id), None)
+    if not coupon:
+        raise LookupError("coupon not found")
+    event = {
+        "couponId": coupon_id,
+        "couponCode": coupon.get("code", ""),
+        "type": payload["type"],
+        "store": coupon.get("store") or next(
+            (store.get("name", "未設定") for store in data.get("stores", [])
+             if str(store.get("id")) == str(coupon.get("storeId"))), "未設定"),
+        "adId": coupon.get("adId") or data.get("ad", {}).get("id", "main"),
+        "at": now_jst(),
+    }
+    if database.database_enabled():
+        database.record_coupon_event(event)
+        return
+    with LOCK:
+        data = load_state()
+        if not any(str(item.get("id")) == coupon_id for item in data.get("coupons", [])):
+            raise LookupError("coupon not found")
+        events = data.setdefault("coupon_events", [])
+        events.append(event)
+        data["coupon_events"] = events[-10000:]
+        save_state(data, preserve_latest_events=False)
+
+def build_coupon_analytics(events):
+    grouped = {}
+    for event in events:
+        key = (event.get("couponId"), event.get("couponCode", ""), event.get("type", "unknown"))
+        grouped[key] = grouped.get(key, 0) + 1
+    rows = [{"coupon_id": coupon_id, "coupon_code": coupon_code,
+             "event_type": event_type, "total": total}
+            for (coupon_id, coupon_code, event_type), total in grouped.items()]
+    return database.build_coupon_analytics(rows)
+
 class Handler(BaseHTTPRequestHandler):
     server_version = "WiFiMedia/2.0"
     def log_message(self, fmt, *args):
@@ -76,6 +134,15 @@ class Handler(BaseHTTPRequestHandler):
         path = urlparse(self.path).path
         if path == "/": return self.serve_file("web.html")
         if path == "/admin": return self.serve_file("admin.html")
+        if path == "/api/coupons":
+            try: return self.send_json({"coupons": list_available_coupons()})
+            except Exception as e: return self.send_json({"error": str(e)}, 500)
+        if path == "/api/coupon_analytics":
+            try:
+                if database.database_enabled():
+                    return self.send_json(database.coupon_analytics())
+                return self.send_json(build_coupon_analytics(load_state().get("coupon_events", [])))
+            except Exception as e: return self.send_json({"error": str(e)}, 500)
         if path == "/api/state":
             try: return self.send_json(load_state())
             except Exception as e: return self.send_json({"error": str(e)}, 500)
@@ -106,6 +173,13 @@ class Handler(BaseHTTPRequestHandler):
         return self.rfile.read(length)
     def do_POST(self):
         path = urlparse(self.path).path
+        if path == "/api/coupon_event":
+            try:
+                payload = json.loads(self.read_body().decode("utf-8"))
+                record_coupon_event(payload)
+                return self.send_json({"ok": True})
+            except LookupError as e: return self.send_json({"error": str(e)}, 404)
+            except Exception as e: return self.send_json({"error": str(e)}, 400)
         if path == "/api/event":
             try:
                 body = self.read_body(); payload = json.loads(body.decode("utf-8"))

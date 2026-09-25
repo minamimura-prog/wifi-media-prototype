@@ -76,6 +76,14 @@ def load_state():
             "SELECT event_type, store_name, ad_id, occurred_at "
             "FROM ad_events ORDER BY occurred_at DESC, id DESC LIMIT 10000"
         ).fetchall()
+        coupons = conn.execute(
+            "SELECT id, ad_id, store_id, title, code, description, discount_type, discount_value, "
+            "terms, starts_on, ends_on, status FROM coupons ORDER BY created_at, id"
+        ).fetchall()
+        coupon_events = conn.execute(
+            "SELECT coupon_id, coupon_code, event_type, store_name, ad_id, occurred_at "
+            "FROM coupon_events ORDER BY occurred_at DESC, id DESC LIMIT 10000"
+        ).fetchall()
 
     config = global_settings["settings"] if global_settings else {}
     if isinstance(config, str):
@@ -99,6 +107,18 @@ def load_state():
             "type": row["event_type"], "store": row["store_name"],
             "adId": row["ad_id"], "at": row["occurred_at"].astimezone(timezone.utc).isoformat(),
         } for row in reversed(events)],
+        "coupons": [{
+            "id": row["id"], "adId": row["ad_id"], "storeId": row["store_id"],
+            "title": row["title"], "code": row["code"], "description": row["description"],
+            "discountType": row["discount_type"], "discountValue": row["discount_value"],
+            "terms": row["terms"], "start": _date(row["starts_on"]),
+            "end": _date(row["ends_on"]), "status": row["status"],
+        } for row in coupons],
+        "coupon_events": [{
+            "couponId": row["coupon_id"], "couponCode": row["coupon_code"],
+            "type": row["event_type"], "store": row["store_name"], "adId": row["ad_id"],
+            "at": row["occurred_at"].astimezone(timezone.utc).isoformat(),
+        } for row in reversed(coupon_events)],
     }
 
 
@@ -149,6 +169,26 @@ def save_state(data):
                     "INSERT INTO campaign_stores (campaign_id, store_id) VALUES (%s, %s) ON CONFLICT DO NOTHING",
                     (campaign_id, target_id),
                 )
+            for coupon in data.get("coupons", []):
+                coupon_id = str(coupon.get("id") or "")
+                if not coupon_id:
+                    continue
+                coupon_store_id = coupon.get("storeId") or store_ids.get(coupon.get("store"))
+                conn.execute(
+                    "INSERT INTO coupons (id, ad_id, store_id, title, code, description, discount_type, "
+                    "discount_value, terms, starts_on, ends_on, status) "
+                    "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) "
+                    "ON CONFLICT (id) DO UPDATE SET ad_id=EXCLUDED.ad_id, store_id=EXCLUDED.store_id, "
+                    "title=EXCLUDED.title, code=EXCLUDED.code, description=EXCLUDED.description, "
+                    "discount_type=EXCLUDED.discount_type, discount_value=EXCLUDED.discount_value, "
+                    "terms=EXCLUDED.terms, starts_on=EXCLUDED.starts_on, ends_on=EXCLUDED.ends_on, "
+                    "status=EXCLUDED.status, updated_at=now()",
+                    (coupon_id, coupon.get("adId") or ad_id, coupon_store_id, coupon.get("title", ""),
+                     coupon.get("code", ""), coupon.get("description", ""),
+                     coupon.get("discountType", "text"), str(coupon.get("discountValue", "")),
+                     coupon.get("terms", ""), _date(coupon.get("start")), _date(coupon.get("end")),
+                     coupon.get("status", "draft")),
+                )
             conn.execute(
                 "INSERT INTO store_settings (id, store_id, settings) VALUES ('global', NULL, %s) "
                 "ON CONFLICT (id) DO UPDATE SET settings=EXCLUDED.settings, updated_at=now()",
@@ -182,6 +222,68 @@ def record_event(event_type, store_name, ad_id="main", occurred_at=None):
             )
 
 
+def record_coupon_event(event):
+    """Persist coupon history separately from impression/click analytics."""
+    occurred_at = event.get("at")
+    if isinstance(occurred_at, str):
+        occurred_at = datetime.fromisoformat(occurred_at.replace("Z", "+00:00"))
+    occurred_at = occurred_at or datetime.now(timezone.utc)
+    if occurred_at.tzinfo is None:
+        occurred_at = occurred_at.replace(tzinfo=timezone.utc)
+    with pool().connection() as conn:
+        coupon = conn.execute(
+            "SELECT store_id FROM coupons WHERE id = %s", (event.get("couponId"),)
+        ).fetchone() if event.get("couponId") else None
+        store_id = event.get("storeId") or (coupon["store_id"] if coupon else None)
+        if not store_id and event.get("store"):
+            store = conn.execute(
+                "SELECT id FROM stores WHERE name = %s ORDER BY id LIMIT 1", (event["store"],)
+            ).fetchone()
+            store_id = store["id"] if store else None
+        conn.execute(
+            "INSERT INTO coupon_events (coupon_id, coupon_code, event_type, store_id, store_name, ad_id, occurred_at) "
+            "VALUES (%s, %s, %s, %s, %s, %s, %s)",
+            (event.get("couponId"), event.get("couponCode", ""), event.get("type", ""), store_id,
+             event.get("store", "未設定"), event.get("adId", "main"), occurred_at),
+        )
+
+
+def coupon_analytics():
+    """Return coupon-only event totals; ad_events and its CTR stay untouched."""
+    with pool().connection() as conn:
+        rows = conn.execute(
+            "SELECT coupon_id, coupon_code, event_type, count(*) AS total "
+            "FROM coupon_events GROUP BY coupon_id, coupon_code, event_type "
+            "ORDER BY coupon_code, coupon_id, event_type"
+        ).fetchall()
+    return build_coupon_analytics(rows)
+
+
+def build_coupon_analytics(rows):
+    by_type = {}
+    by_coupon = {}
+    total = 0
+    for row in rows:
+        coupon_id = row.get("coupon_id")
+        coupon_code = row.get("coupon_code") or ""
+        event_type = row.get("event_type") or "unknown"
+        count = int(row.get("total", 0))
+        total += count
+        by_type[event_type] = by_type.get(event_type, 0) + count
+        key = (coupon_id, coupon_code)
+        coupon = by_coupon.setdefault(key, {
+            "couponId": coupon_id, "couponCode": coupon_code,
+            "total": 0, "byType": {},
+        })
+        coupon["total"] += count
+        coupon["byType"][event_type] = coupon["byType"].get(event_type, 0) + count
+    return {
+        "total": total,
+        "byType": by_type,
+        "byCoupon": list(by_coupon.values()),
+    }
+
+
 def import_legacy_state(data):
     """One-time import guard: never overwrites a populated PostgreSQL database."""
     with pool().connection() as conn:
@@ -207,4 +309,9 @@ def import_legacy_state(data):
                 event.get("adId", "main"),
                 occurred_at=occurred_at,
             )
+    for event in data.get("coupon_events", []):
+        try:
+            record_coupon_event(event)
+        except (TypeError, ValueError):
+            continue
     return True
