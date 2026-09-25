@@ -160,6 +160,18 @@ def record_event(event_type, store_name, ad_id="main", occurred_at=None):
     occurred_at = occurred_at or datetime.now(timezone.utc)
     with pool().connection() as conn:
         with conn.transaction():
+            # The browser's store value may be absent or stale. Prefer the
+            # store currently configured for this ad, using the submitted
+            # value only when this ad has no configured store.
+            ad = conn.execute(
+                "SELECT s.id, s.name FROM ads a LEFT JOIN stores s ON s.id = a.store_id "
+                "WHERE a.id = %s",
+                (ad_id,),
+            ).fetchone()
+            if ad and ad["name"]:
+                store_name = ad["name"]
+            elif not store_name or store_name == "未設定":
+                store_name = "未設定"
             store = conn.execute("SELECT id FROM stores WHERE name = %s ORDER BY id LIMIT 1", (store_name,)).fetchone()
             campaign = conn.execute("SELECT id FROM campaigns WHERE ad_id = %s ORDER BY id LIMIT 1", (ad_id,)).fetchone()
             conn.execute(

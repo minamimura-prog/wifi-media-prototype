@@ -45,9 +45,15 @@ def now_jst():
 
 def record_event(event_type, store, ad_id="main"):
     if database.database_enabled():
-        return database.record_event(event_type, store or "未設定", ad_id)
+        return database.record_event(event_type, store, ad_id)
     with LOCK:
         data = load_state()
+        # Resolve the store from the current ad configuration when the page
+        # could not provide one (for example, while an old config is loading).
+        if not store or store == "未設定":
+            ad = data.get("ad", {})
+            if str(ad.get("id") or "main") == str(ad_id):
+                store = ad.get("store")
         events = data.setdefault("events", [])
         events.append({"type": event_type, "store": store or "未設定", "adId": ad_id, "at": now_jst()})
         # Keep prototype data manageable while retaining recent history.
