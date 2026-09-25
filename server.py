@@ -5,6 +5,7 @@ from email.policy import default
 from datetime import datetime, timezone
 import json, os, uuid, mimetypes, threading
 import database
+import migrate_to_postgres
 
 BASE = os.path.dirname(os.path.abspath(__file__))
 DATA = os.path.join(BASE, "data.json")
@@ -152,7 +153,9 @@ def build_analytics(events):
 
 if __name__ == "__main__":
     if database.database_enabled():
-        database.ensure_schema()
+        # The existing migration is guarded in database.import_legacy_state,
+        # so it only imports data.json while PostgreSQL is still empty.
+        migrate_to_postgres.main()
     print("Wi-Fi MEDIA サーバーを起動しています")
     print("管理画面: http://127.0.0.1:%d/admin" % PORT)
     ThreadingHTTPServer(("0.0.0.0", PORT), Handler).serve_forever()
