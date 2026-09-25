@@ -4,6 +4,7 @@ from email.parser import BytesParser
 from email.policy import default
 from datetime import datetime, timezone
 import json, os, uuid, mimetypes, threading
+import database
 
 BASE = os.path.dirname(os.path.abspath(__file__))
 DATA = os.path.join(BASE, "data.json")
@@ -16,10 +17,22 @@ LOCK = threading.Lock()
 os.makedirs(UPLOADS, exist_ok=True)
 
 def load_state():
+    if database.database_enabled():
+        return database.load_state()
     with open(DATA, "r", encoding="utf-8") as f:
         return json.load(f)
 
-def save_state(data):
+def save_state(data, preserve_latest_events=True):
+    if database.database_enabled():
+        return database.save_state(data)
+    # The admin page submits a cached snapshot; retain newer events recorded
+    # after that snapshot was loaded.
+    if preserve_latest_events:
+        try:
+            with open(DATA, "r", encoding="utf-8") as f:
+                data["events"] = json.load(f).get("events", [])
+        except (OSError, json.JSONDecodeError):
+            data.setdefault("events", [])
     tmp = DATA + ".tmp"
     with open(tmp, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
@@ -30,13 +43,15 @@ def now_jst():
     return (datetime.now(timezone.utc) + timedelta(hours=9)).isoformat(timespec="seconds")
 
 def record_event(event_type, store, ad_id="main"):
+    if database.database_enabled():
+        return database.record_event(event_type, store or "未設定", ad_id)
     with LOCK:
         data = load_state()
         events = data.setdefault("events", [])
         events.append({"type": event_type, "store": store or "未設定", "adId": ad_id, "at": now_jst()})
         # Keep prototype data manageable while retaining recent history.
         data["events"] = events[-10000:]
-        save_state(data)
+        save_state(data, preserve_latest_events=False)
 
 class Handler(BaseHTTPRequestHandler):
     server_version = "WiFiMedia/2.0"
@@ -136,6 +151,8 @@ def build_analytics(events):
     }
 
 if __name__ == "__main__":
+    if database.database_enabled():
+        database.ensure_schema()
     print("Wi-Fi MEDIA サーバーを起動しています")
     print("管理画面: http://127.0.0.1:%d/admin" % PORT)
     ThreadingHTTPServer(("0.0.0.0", PORT), Handler).serve_forever()
