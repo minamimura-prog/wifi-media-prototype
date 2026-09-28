@@ -268,10 +268,32 @@ def build_analytics(events):
         field = "impressions" if e["type"] == "impression" else "clicks"
         days[day][field] += 1
         months[month][field] += 1
+    store_names = sorted(set(by_store(impressions)) | set(by_store(clicks)))
+    by_ad_data = {}
+    for e in events:
+        if e.get("type") not in {"impression", "click"}:
+            continue
+        ad_id = e.get("adId", "main")
+        item = by_ad_data.setdefault(ad_id, {"id": ad_id, "name": ad_id, "impressions": 0, "clicks": 0})
+        item["impressions" if e["type"] == "impression" else "clicks"] += 1
+
+    for item in by_ad_data.values():
+        item["ctr"] = round(item["clicks"] / item["impressions"] * 100, 2) if item["impressions"] else 0
+
     return {
         "impressions": len(impressions), "clicks": len(clicks),
         "ctr": round((len(clicks)/len(impressions)*100), 2) if impressions else 0,
-        "byStore": {k:{"impressions":by_store(impressions).get(k,0),"clicks":by_store(clicks).get(k,0)} for k in sorted(set(by_store(impressions)) | set(by_store(clicks)))},
+        "byStore": {
+            k: {
+                "impressions": by_store(impressions).get(k, 0),
+                "clicks": by_store(clicks).get(k, 0),
+                "ctr": round(
+                    by_store(clicks).get(k, 0) / by_store(impressions).get(k, 0) * 100, 2
+                ) if by_store(impressions).get(k, 0) else 0,
+            }
+            for k in store_names
+        },
+        "byAd": list(by_ad_data.values()),
         "daily": [{"date":k, **days[k], "ctr":round(days[k]["clicks"]/days[k]["impressions"]*100,2) if days[k]["impressions"] else 0} for k in sorted(days)],
         "monthly": [{"month":k, **months[k], "ctr":round(months[k]["clicks"]/months[k]["impressions"]*100,2) if months[k]["impressions"] else 0} for k in sorted(months)]
     }
