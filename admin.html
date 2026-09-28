@@ -1,4 +1,293 @@
-<!doctype html><html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Wi-Fi MEDIA 管理画面</title><style>*{box-sizing:border-box}body{margin:0;background:#f4f5f7;color:#171717;font-family:-apple-system,BlinkMacSystemFont,"Noto Sans JP",Arial,sans-serif}.app{display:flex;min-height:100vh}.side{width:230px;background:#15171a;color:#fff;padding:22px 14px;flex:none}.logo{font-weight:800;font-size:18px;padding:8px}.logo small{display:block;color:#9da1a7;font-weight:400;font-size:10px;margin-top:4px}.nav{padding:11px 12px;margin:4px 0;border-radius:8px;color:#c9ccd1;cursor:pointer}.nav:hover,.nav.active{background:#2a2d31;color:#fff}.main{width:100%;max-width:1400px;padding:28px 34px}.pagehead{display:flex;justify-content:space-between;gap:15px;align-items:flex-end;margin-bottom:20px}h1{font-size:26px;margin:0 0 5px}.sub{color:#777;font-size:13px}.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:18px}.card{background:white;border:1px solid #e1e3e6;border-radius:14px;padding:18px}.label{font-size:12px;color:#777}.metric{font-size:28px;font-weight:800;margin-top:8px}.layout{display:grid;grid-template-columns:1fr 420px;gap:18px}.section{font-size:16px;font-weight:800;margin-bottom:14px}table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:12px 7px;border-bottom:1px solid #eee;font-size:13px}th{font-size:11px;color:#777}.badge{display:inline-block;padding:4px 8px;border-radius:999px;background:#edf7ee;font-size:11px}.off{background:#eee;color:#777}button{border:0;border-radius:8px;padding:10px 13px;background:#151515;color:#fff;font-weight:700;cursor:pointer}button.secondary{background:#eceef1;color:#222}.actions{display:flex;gap:8px;flex-wrap:wrap}.phonewrap{background:#eef0f3;padding:18px;border-radius:12px}.phone{max-width:285px;margin:auto;border:8px solid #111;border-radius:28px;overflow:hidden;background:#fff}.phone iframe{display:block;width:100%;height:540px;border:0}.field{margin:13px 0}.field label{display:block;font-size:12px;font-weight:800;margin-bottom:6px}input,textarea,select{width:100%;padding:10px;border:1px solid #d6d9de;border-radius:8px;font:inherit;background:white}textarea{min-height:85px}.twocol{display:grid;grid-template-columns:1fr 1fr;gap:10px}.modalbg{display:none;position:fixed;inset:0;background:#0007;align-items:center;justify-content:center;padding:15px;z-index:10}.modal{background:#fff;border-radius:16px;width:min(720px,100%);max-height:90vh;overflow:auto;padding:22px}.modal h2{margin-top:0}.close{float:right;background:#eee;color:#222}.previewbox{margin-top:12px;border:1px dashed #bbb;border-radius:10px;padding:10px;color:#777;font-size:12px}.pie{width:190px;height:190px;border-radius:50%;margin:8px auto;background:conic-gradient(#222 0 38%,#777 38% 67%,#bbb 67% 86%,#ddd 86% 100%);position:relative}.pie:after{content:"";position:absolute;inset:47px;background:#fff;border-radius:50%}.legend{display:grid;grid-template-columns:1fr 1fr;gap:6px;font-size:11px;color:#666}@media(max-width:1050px){.layout{grid-template-columns:1fr}.grid{grid-template-columns:repeat(2,1fr)}}@media(max-width:700px){.side{display:none}.main{padding:18px 14px}.grid{grid-template-columns:1fr 1fr}.pagehead{align-items:flex-start;flex-direction:column}.twocol{grid-template-columns:1fr}.phone{max-width:320px}.phone iframe{height:560px}}</style></head><body><div class="app"><aside class="side"><div class="logo">Wi-Fi MEDIA<small>広告・店舗・効果測定</small></div><div class="nav active" onclick="dashboard()">ダッシュボード</div><div class="nav" onclick="ads()">広告管理</div><div class="nav" onclick="stores()">店舗管理</div><div class="nav" onclick="reports()">効果測定</div><div class="nav" onclick="couponManager()">クーポン管理</div><div class="nav" onclick="design()">Webデザイン</div></aside><main class="main" id="main"></main></div><div class="modalbg" id="modal"><div class="modal"><button class="close" onclick="closeModal()">閉じる</button><h2 id="modalTitle">編集</h2><div id="modalBody"></div></div></div><script>let S=null;async function load(){S=await fetch('/api/state').then(r=>r.json());dashboard()}async function save(){await fetch('/api/state',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(S)});await load();toast('保存しました')}function shell(t,s,c){document.getElementById('main').innerHTML=`<div class="pagehead"><div><h1>${t}</h1><div class="sub">${s}</div></div></div>${c}`}async function dashboard(){const a=await fetch('/api/analytics').then(r=>r.json());shell('ダッシュボード','Wi-Fi接続・広告配信・店舗状況をまとめて確認できます.',`<div class="grid"><div class="card"><div class="label">登録店舗</div><div class="metric">${S.stores.length}</div></div><div class="card"><div class="label">今月の接続</div><div class="metric">${a.impressions.toLocaleString()}</div></div><div class="card"><div class="label">広告クリック</div><div class="metric">${a.clicks.toLocaleString()}</div></div><div class="card"><div class="label">CTR</div><div class="metric">${a.ctr}%</div></div></div><div class="layout"><section class="card"><div class="section">店舗別 配信状況</div><table><thead><tr><th>店舗</th><th>広告</th><th>接続</th><th>状態</th><th></th></tr></thead><tbody>${S.stores.map((x,i)=>`<tr><td><b>${x.name}</b><br><small>${x.type}</small></td><td>${S.ad.title}</td><td>${x.users.toLocaleString()}</td><td><span class="badge ${x.status==='停止中'?'off':''}">${x.status}</span></td><td><button class="secondary" onclick="editStore(${i})">編集</button></td></tr>`).join('')}</tbody></table></section><section class="card"><div class="section">Webページ プレビュー</div><div class="phonewrap"><div class="phone"><iframe src="/?preview=1" title="preview"></iframe></div></div></section></div>`)}function ads(){shell('広告管理','広告内容・掲載期間・リンク・画像/GIFを管理します.',`<div class="layout"><section class="card"><div class="section">現在の広告</div><div class="field"><label>店舗</label><select id="aStore">${S.stores.map(x=>`<option>${x.name}</option>`).join('')}</select></div><div class="field"><label>タイトル</label><input id="aTitle" value="${esc(S.ad.title)}"></div><div class="field"><label>本文</label><textarea id="aBody">${esc(S.ad.body)}</textarea></div><div class="twocol"><div class="field"><label>掲載開始</label><input id="aStart" type="date" value="${S.ad.start}"></div><div class="field"><label>掲載終了</label><input id="aEnd" type="date" value="${S.ad.end}"></div></div><div class="field"><label>「詳しく見る」のリンク先</label><input id="aLink" type="url" value="${esc(S.ad.link)}" placeholder="https://..."></div><div class="field"><label>画像 / GIF</label><input id="aFile" type="file" accept=".gif,image/gif,image/png,image/jpeg,image/webp"><div class="previewbox">GIFを選ぶとサーバーへアップロードし、公開ページのメインビジュアルとして表示できます。</div></div><div class="actions"><button onclick="publishAd()">保存して公開</button><button class="secondary" onclick="window.open('/','_blank')">公開ページを開く</button></div></section><section class="card"><div class="section">広告プレビュー</div><div class="phonewrap"><div class="phone"><iframe src="/?preview=1" title="preview"></iframe></div></div></section></div>`)}async function publishAd(){const f=document.getElementById('aFile').files[0];let media=S.ad.media;if(f){const fd=new FormData();fd.append('file',f);const r=await fetch('/api/upload',{method:'POST',body:fd});const j=await r.json();if(j.error){alert(j.error);return}media=j.url}S.ad={...S.ad,store:document.getElementById('aStore').value,title:document.getElementById('aTitle').value,body:document.getElementById('aBody').value,start:document.getElementById('aStart').value,end:document.getElementById('aEnd').value,link:document.getElementById('aLink').value,media,published:true};await save()}function couponManager(){S.coupons=S.coupons||[];shell('クーポン管理','クーポンを登録して一覧を確認できます。',`<div class="layout"><section class="card"><div class="section">クーポンを登録</div><div class="field"><label>クーポン名</label><input id="cTitle" placeholder="例：ドリンク1杯無料"></div><div class="field"><label>クーポンコード</label><input id="cCode" placeholder="例：WELCOME10"></div><div class="field"><label>説明</label><textarea id="cDescription" placeholder="特典の内容"></textarea></div><div class="twocol"><div class="field"><label>割引種別</label><select id="cDiscountType"><option value="text">特典内容</option><option value="percent">割引率</option><option value="amount">割引額</option></select></div><div class="field"><label>割引値 / 特典表記</label><input id="cDiscountValue" placeholder="例：10 または ドリンク1杯"></div></div><div class="field"><label>利用店舗</label><select id="cStore"><option value="">指定なし</option>${S.stores.map(x=>`<option value="${esc(x.id)}">${esc(x.name)}</option>`).join('')}</select></div><div class="twocol"><div class="field"><label>開始日</label><input id="cStart" type="date"></div><div class="field"><label>終了日</label><input id="cEnd" type="date"></div></div><div class="field"><label>利用条件</label><textarea id="cTerms" placeholder="例：1会計につき1回"></textarea></div><div class="field"><label>状態</label><select id="cStatus"><option value="draft">下書き</option><option value="active">公開中</option></select></div><button onclick="addCoupon()">クーポンを登録</button></section><section class="card"><div class="section">登録済みクーポン</div>${S.coupons.length?`<table><thead><tr><th>クーポン</th><th>コード</th><th>特典内容</th><th>店舗</th><th>期間</th><th>状態</th><th>操作</th></tr></thead><tbody>${S.coupons.map(c=>{const store=S.stores.find(x=>String(x.id)===String(c.storeId))||S.stores.find(x=>x.name===c.store);return `<tr><td><b>${esc(c.title||'クーポン')}</b>${c.description?`<br><small>${esc(c.description)}</small>`:''}</td><td>${esc(c.code||'')}</td><td>${esc(c.discountValue||c.description||'')}</td><td>${esc(store?.name||'指定なし')}</td><td>${esc(c.start||'—')} 〜 ${esc(c.end||'—')}</td><td><span class="badge ${c.status==='active'?'':'off'}">${c.status==='active'?'公開中':'下書き'}</span></td><td>${c.status==='draft'?`<button class="secondary" onclick="deleteCoupon('${esc(c.id)}')">削除</button>`:'公開中のため削除不可'}</td></tr>`}).join('')}</tbody></table>`:'<p class="sub">クーポンはまだ登録されていません。</p>'}</section></div>`)}async function deleteCoupon(id){const coupon=S.coupons.find(c=>String(c.id)===String(id));if(!coupon||coupon.status!=='draft')return;if(!confirm(`下書きクーポン「${coupon.title||'クーポン'}」を削除しますか？\n利用履歴は保持されます。`))return;const r=await fetch(`/api/coupons/${encodeURIComponent(id)}`,{method:'DELETE'});const result=await r.json();if(!r.ok){alert(result.error||'削除できませんでした。');return}S=await fetch('/api/state').then(r=>r.json());couponManager();toast('下書きクーポンを削除しました')}
+<!doctype html><html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Wi-Fi MEDIA 管理画面</title><style>
+:root {
+  --paper: #e7e8e3;
+  --panel: #f5f6f1;
+  --ink: #171916;
+  --muted: #777b72;
+  --line: #bfc2b8;
+  --screen: #e4f5b2;
+  --signal: #d8ff54;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: "SFMono-Regular", Menlo, Consolas, "Liberation Mono", monospace;
+  font-variant-numeric: tabular-nums;
+}
+.app { display: flex; min-height: 100vh; }
+.side {
+  position: sticky;
+  top: 0;
+  display: flex;
+  flex: 0 0 246px;
+  flex-direction: column;
+  width: 246px;
+  height: 100vh;
+  padding: 22px 16px;
+  overflow-y: auto;
+  color: #f4f5ef;
+  background: var(--ink);
+  border-right: 1px solid #000;
+  counter-reset: nav;
+}
+.logo {
+  padding: 12px 10px 24px;
+  color: #fff;
+  font-size: 15px;
+  font-weight: 800;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+  border-bottom: 1px solid #454840;
+}
+.logo small {
+  display: block;
+  margin-top: 8px;
+  color: #a9ada2;
+  font-size: 9px;
+  font-weight: 500;
+  letter-spacing: .12em;
+}
+.nav {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 48px;
+  margin: 3px 0 0;
+  padding: 10px 9px;
+  color: #bfc2b8;
+  font-size: 11px;
+  letter-spacing: .06em;
+  cursor: pointer;
+  border-bottom: 1px solid #33362f;
+  transition: background .12s ease, color .12s ease;
+  counter-increment: nav;
+}
+.nav::before {
+  content: counter(nav, decimal-leading-zero);
+  color: #81867a;
+  font-size: 9px;
+  letter-spacing: .04em;
+}
+.nav:hover, .nav.active {
+  color: var(--ink);
+  background: var(--signal);
+}
+.nav:hover::before, .nav.active::before { color: var(--ink); }
+.main {
+  flex: 1;
+  width: 100%;
+  min-width: 0;
+  max-width: 1600px;
+  padding: clamp(22px, 3.5vw, 52px);
+}
+.pagehead {
+  display: flex;
+  justify-content: space-between;
+  gap: 15px;
+  align-items: flex-end;
+  margin-bottom: 24px;
+  padding-bottom: 16px;
+  border-bottom: 2px solid var(--ink);
+}
+h1 {
+  margin: 0 0 6px;
+  font-size: clamp(22px, 3vw, 32px);
+  font-weight: 800;
+  letter-spacing: -.04em;
+}
+.sub { color: var(--muted); font-size: 10px; letter-spacing: .04em; }
+.grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 18px;
+}
+.card {
+  min-width: 0;
+  padding: 18px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 2px;
+  box-shadow: 2px 2px 0 #d1d3cb;
+}
+.grid > .card {
+  position: relative;
+  min-height: 126px;
+  padding: 16px 18px;
+  overflow: hidden;
+  color: var(--screen);
+  background: var(--ink);
+  border-color: #090a08;
+  box-shadow: 2px 2px 0 #c4c6bd;
+}
+.grid > .card::after {
+  position: absolute;
+  right: 12px;
+  bottom: 10px;
+  width: 6px;
+  height: 6px;
+  content: "";
+  background: var(--signal);
+  box-shadow: 0 0 8px #d8ff5480;
+}
+.label {
+  color: #a7ad9e;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+}
+.metric {
+  margin-top: 18px;
+  color: var(--screen);
+  font-size: clamp(28px, 3vw, 42px);
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: -.06em;
+}
+.layout { display: grid; grid-template-columns: minmax(0, 1fr) 420px; gap: 12px; }
+.layout > .card { align-self: start; }
+.section {
+  margin-bottom: 14px;
+  padding-bottom: 10px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: .08em;
+  border-bottom: 1px solid var(--line);
+}
+table { width: 100%; border-collapse: collapse; }
+th, td {
+  padding: 12px 9px;
+  text-align: left;
+  border-bottom: 1px solid #d8dad2;
+  font-size: 10px;
+}
+th {
+  color: #e9ebe4;
+  background: var(--ink);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: .09em;
+  text-transform: uppercase;
+}
+td { background: #f7f8f3; }
+tbody tr:nth-child(even) td { background: #eceee8; }
+td b { font-size: 11px; }
+.badge {
+  display: inline-block;
+  padding: 4px 7px;
+  color: #1f2a0d;
+  background: var(--signal);
+  border: 1px solid #a7c643;
+  border-radius: 1px;
+  font-size: 9px;
+  font-weight: 700;
+}
+.off { color: #555950; background: #d5d7d0; border-color: #b6b9b0; }
+button {
+  min-height: 36px;
+  padding: 9px 12px;
+  color: #f6f7f2;
+  background: var(--ink);
+  border: 1px solid #080908;
+  border-radius: 1px;
+  box-shadow: 0 2px 0 #080908;
+  font-family: inherit;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: .1em;
+  cursor: pointer;
+  transition: transform .08s ease, box-shadow .08s ease, background .08s ease;
+}
+button:hover { color: var(--ink); background: var(--signal); }
+button:active { transform: translateY(2px); box-shadow: none; }
+button.secondary {
+  color: var(--ink);
+  background: #e4e6df;
+  border-color: #9ea196;
+  box-shadow: 0 2px 0 #aeb1a7;
+}
+button.secondary:hover { background: var(--signal); }
+.main button[onclick^="addStore"], .main button[onclick^="addCoupon"],
+.main button[onclick^="editStore"], .main button[onclick^="deleteStore"],
+.main button[onclick^="deleteCoupon"], .main button[onclick^="saveStore"],
+.main button[onclick^="saveDesign"] { font-size: 0; }
+.main button[onclick^="addStore"]::after,
+.main button[onclick^="addCoupon"]::after { content: "ADD"; font-size: 9px; }
+.main button[onclick^="editStore"]::after { content: "EDIT"; font-size: 9px; }
+.main button[onclick^="deleteStore"]::after,
+.main button[onclick^="deleteCoupon"]::after { content: "DELETE"; font-size: 9px; }
+.main button[onclick^="saveStore"]::after,
+.main button[onclick^="saveDesign"]::after { content: "SAVE"; font-size: 9px; }
+.actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.phonewrap { padding: 18px; background: #dfe1da; border: 1px solid #bfc2b8; border-radius: 2px; }
+.phone { max-width: 285px; margin: auto; overflow: hidden; background: #fff; border: 6px solid var(--ink); border-radius: 3px; }
+.phone iframe { display: block; width: 100%; height: 540px; border: 0; }
+.field { margin: 13px 0; }
+.field label { display: block; margin-bottom: 6px; font-size: 9px; font-weight: 800; letter-spacing: .08em; }
+input, textarea, select {
+  width: 100%;
+  padding: 10px;
+  color: var(--ink);
+  background: #fbfcf8;
+  border: 1px solid #aeb1a7;
+  border-radius: 1px;
+  font: inherit;
+  font-size: 11px;
+}
+input:focus, textarea:focus, select:focus { outline: 2px solid var(--signal); outline-offset: 1px; }
+textarea { min-height: 85px; }
+.twocol { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.modalbg { display: none; position: fixed; inset: 0; z-index: 10; align-items: center; justify-content: center; padding: 15px; background: #0009; }
+.modal {
+  width: min(720px, 100%);
+  max-height: 90vh;
+  overflow: auto;
+  padding: 24px;
+  background: var(--panel);
+  border: 1px solid var(--ink);
+  border-radius: 2px;
+  box-shadow: 6px 6px 0 #0005;
+}
+.modal h2 { margin-top: 0; font-size: 20px; letter-spacing: -.04em; }
+.close { float: right; color: var(--ink); background: #e4e6df; }
+.previewbox { margin-top: 12px; padding: 10px; color: var(--muted); background: #eceee8; border: 1px dashed #aeb1a7; font-size: 10px; }
+.pie { position: relative; width: 190px; height: 190px; margin: 8px auto; background: conic-gradient(#222 0 38%,#777 38% 67%,#bbb 67% 86%,#ddd 86% 100%); border-radius: 50%; }
+.pie:after { position: absolute; inset: 47px; content: ""; background: var(--panel); border-radius: 50%; }
+.legend { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; color: var(--muted); font-size: 9px; }
+@media (max-width: 1050px) {
+  .layout { grid-template-columns: 1fr; }
+  .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 700px) {
+  .app { display: block; }
+  .side {
+    position: relative;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    width: 100%;
+    height: auto;
+    padding: 10px;
+    overflow: visible;
+  }
+  .logo { grid-column: 1 / -1; padding: 8px 8px 12px; }
+  .logo small { margin-top: 5px; }
+  .nav { min-height: 42px; gap: 6px; padding: 8px 5px; font-size: 9px; }
+  .main { padding: 20px 12px; }
+  .pagehead { align-items: flex-start; flex-direction: column; }
+  .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; }
+  .grid > .card { min-height: 104px; padding: 13px; }
+  .metric { margin-top: 14px; font-size: clamp(24px, 8vw, 34px); }
+  .card { padding: 13px; overflow-x: auto; }
+  table { min-width: 610px; }
+  .twocol { grid-template-columns: 1fr; }
+  .phone { max-width: 320px; }
+  .phone iframe { height: 560px; }
+}
+</style></head><body><div class="app"><aside class="side"><div class="logo">Wi-Fi MEDIA<small>広告・店舗・効果測定</small></div><div class="nav active" onclick="dashboard()">ダッシュボード</div><div class="nav" onclick="ads()">広告管理</div><div class="nav" onclick="stores()">店舗管理</div><div class="nav" onclick="reports()">効果測定</div><div class="nav" onclick="couponManager()">クーポン管理</div><div class="nav" onclick="design()">Webデザイン</div></aside><main class="main" id="main"></main></div><div class="modalbg" id="modal"><div class="modal"><button class="close" onclick="closeModal()">閉じる</button><h2 id="modalTitle">編集</h2><div id="modalBody"></div></div></div><script>let S=null;async function load(){S=await fetch('/api/state').then(r=>r.json());dashboard()}async function save(){await fetch('/api/state',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(S)});await load();toast('保存しました')}function shell(t,s,c){document.getElementById('main').innerHTML=`<div class="pagehead"><div><h1>${t}</h1><div class="sub">${s}</div></div></div>${c}`}async function dashboard(){const a=await fetch('/api/analytics').then(r=>r.json());shell('ダッシュボード','Wi-Fi接続・広告配信・店舗状況をまとめて確認できます.',`<div class="grid"><div class="card"><div class="label">登録店舗</div><div class="metric">${S.stores.length}</div></div><div class="card"><div class="label">今月の接続</div><div class="metric">${a.impressions.toLocaleString()}</div></div><div class="card"><div class="label">広告クリック</div><div class="metric">${a.clicks.toLocaleString()}</div></div><div class="card"><div class="label">CTR</div><div class="metric">${a.ctr}%</div></div></div><div class="layout"><section class="card"><div class="section">店舗別 配信状況</div><table><thead><tr><th>店舗</th><th>広告</th><th>接続</th><th>状態</th><th></th></tr></thead><tbody>${S.stores.map((x,i)=>`<tr><td><b>${x.name}</b><br><small>${x.type}</small></td><td>${S.ad.title}</td><td>${x.users.toLocaleString()}</td><td><span class="badge ${x.status==='停止中'?'off':''}">${x.status}</span></td><td><button class="secondary" onclick="editStore(${i})">編集</button></td></tr>`).join('')}</tbody></table></section><section class="card"><div class="section">Webページ プレビュー</div><div class="phonewrap"><div class="phone"><iframe src="/?preview=1" title="preview"></iframe></div></div></section></div>`)}function ads(){shell('広告管理','広告内容・掲載期間・リンク・画像/GIFを管理します.',`<div class="layout"><section class="card"><div class="section">現在の広告</div><div class="field"><label>店舗</label><select id="aStore">${S.stores.map(x=>`<option>${x.name}</option>`).join('')}</select></div><div class="field"><label>タイトル</label><input id="aTitle" value="${esc(S.ad.title)}"></div><div class="field"><label>本文</label><textarea id="aBody">${esc(S.ad.body)}</textarea></div><div class="twocol"><div class="field"><label>掲載開始</label><input id="aStart" type="date" value="${S.ad.start}"></div><div class="field"><label>掲載終了</label><input id="aEnd" type="date" value="${S.ad.end}"></div></div><div class="field"><label>「詳しく見る」のリンク先</label><input id="aLink" type="url" value="${esc(S.ad.link)}" placeholder="https://..."></div><div class="field"><label>画像 / GIF</label><input id="aFile" type="file" accept=".gif,image/gif,image/png,image/jpeg,image/webp"><div class="previewbox">GIFを選ぶとサーバーへアップロードし、公開ページのメインビジュアルとして表示できます。</div></div><div class="actions"><button onclick="publishAd()">保存して公開</button><button class="secondary" onclick="window.open('/','_blank')">公開ページを開く</button></div></section><section class="card"><div class="section">広告プレビュー</div><div class="phonewrap"><div class="phone"><iframe src="/?preview=1" title="preview"></iframe></div></div></section></div>`)}async function publishAd(){const f=document.getElementById('aFile').files[0];let media=S.ad.media;if(f){const fd=new FormData();fd.append('file',f);const r=await fetch('/api/upload',{method:'POST',body:fd});const j=await r.json();if(j.error){alert(j.error);return}media=j.url}S.ad={...S.ad,store:document.getElementById('aStore').value,title:document.getElementById('aTitle').value,body:document.getElementById('aBody').value,start:document.getElementById('aStart').value,end:document.getElementById('aEnd').value,link:document.getElementById('aLink').value,media,published:true};await save()}function couponManager(){S.coupons=S.coupons||[];shell('クーポン管理','クーポンを登録して一覧を確認できます。',`<div class="layout"><section class="card"><div class="section">クーポンを登録</div><div class="field"><label>クーポン名</label><input id="cTitle" placeholder="例：ドリンク1杯無料"></div><div class="field"><label>クーポンコード</label><input id="cCode" placeholder="例：WELCOME10"></div><div class="field"><label>説明</label><textarea id="cDescription" placeholder="特典の内容"></textarea></div><div class="twocol"><div class="field"><label>割引種別</label><select id="cDiscountType"><option value="text">特典内容</option><option value="percent">割引率</option><option value="amount">割引額</option></select></div><div class="field"><label>割引値 / 特典表記</label><input id="cDiscountValue" placeholder="例：10 または ドリンク1杯"></div></div><div class="field"><label>利用店舗</label><select id="cStore"><option value="">指定なし</option>${S.stores.map(x=>`<option value="${esc(x.id)}">${esc(x.name)}</option>`).join('')}</select></div><div class="twocol"><div class="field"><label>開始日</label><input id="cStart" type="date"></div><div class="field"><label>終了日</label><input id="cEnd" type="date"></div></div><div class="field"><label>利用条件</label><textarea id="cTerms" placeholder="例：1会計につき1回"></textarea></div><div class="field"><label>状態</label><select id="cStatus"><option value="draft">下書き</option><option value="active">公開中</option></select></div><button onclick="addCoupon()">クーポンを登録</button></section><section class="card"><div class="section">登録済みクーポン</div>${S.coupons.length?`<table><thead><tr><th>クーポン</th><th>コード</th><th>特典内容</th><th>店舗</th><th>期間</th><th>状態</th><th>操作</th></tr></thead><tbody>${S.coupons.map(c=>{const store=S.stores.find(x=>String(x.id)===String(c.storeId))||S.stores.find(x=>x.name===c.store);return `<tr><td><b>${esc(c.title||'クーポン')}</b>${c.description?`<br><small>${esc(c.description)}</small>`:''}</td><td>${esc(c.code||'')}</td><td>${esc(c.discountValue||c.description||'')}</td><td>${esc(store?.name||'指定なし')}</td><td>${esc(c.start||'—')} 〜 ${esc(c.end||'—')}</td><td><span class="badge ${c.status==='active'?'':'off'}">${c.status==='active'?'公開中':'下書き'}</span></td><td>${c.status==='draft'?`<button class="secondary" onclick="deleteCoupon('${esc(c.id)}')">削除</button>`:'公開中のため削除不可'}</td></tr>`}).join('')}</tbody></table>`:'<p class="sub">クーポンはまだ登録されていません。</p>'}</section></div>`)}async function deleteCoupon(id){const coupon=S.coupons.find(c=>String(c.id)===String(id));if(!coupon||coupon.status!=='draft')return;if(!confirm(`下書きクーポン「${coupon.title||'クーポン'}」を削除しますか？\n利用履歴は保持されます。`))return;const r=await fetch(`/api/coupons/${encodeURIComponent(id)}`,{method:'DELETE'});const result=await r.json();if(!r.ok){alert(result.error||'削除できませんでした。');return}S=await fetch('/api/state').then(r=>r.json());couponManager();toast('下書きクーポンを削除しました')}
 async function addCoupon(){const title=document.getElementById('cTitle').value.trim(),code=document.getElementById('cCode').value.trim();if(!title||!code){alert('クーポン名とクーポンコードを入力してください。');return}S.coupons=S.coupons||[];const storeId=document.getElementById('cStore').value;S.coupons.push({id:Date.now().toString(),adId:S.ad.id||'main',storeId:storeId||null,title,code,description:document.getElementById('cDescription').value.trim(),discountType:document.getElementById('cDiscountType').value,discountValue:document.getElementById('cDiscountValue').value.trim(),terms:document.getElementById('cTerms').value.trim(),start:document.getElementById('cStart').value,end:document.getElementById('cEnd').value,status:document.getElementById('cStatus').value});await save();couponManager()}function stores(){shell('店舗管理','Wi-Fiを設置している店舗・ホテル・拠点を管理します.',`<div class="card"><div class="actions" style="justify-content:flex-end;margin-bottom:12px"><button onclick="addStore()">＋ 店舗を追加</button></div><table><thead><tr><th>店舗</th><th>業態</th><th>Wi-Fi</th><th>月間接続</th><th>状態</th><th></th></tr></thead><tbody>${S.stores.map((x,i)=>`<tr><td><b>${x.name}</b></td><td>${x.type}</td><td>${x.wifi}</td><td>${x.users.toLocaleString()}</td><td>${x.status}</td><td><button class="secondary" onclick="editStore(${i})">編集</button> <button class="secondary" onclick="deleteStore(${i})">削除</button></td></tr>`).join('')}</tbody></table></div>`)}async function deleteStore(i){if(!confirm(`「${S.stores[i].name}」を削除しますか？`))return;S.stores.splice(i,1);await save();stores()} function editStore(i){const x=S.stores[i];openModal('店舗を編集',`<div class="field"><label>店舗名</label><input id="sName" value="${esc(x.name)}"></div><div class="field"><label>業態</label><input id="sType" value="${esc(x.type)}"></div><div class="field"><label>Wi-Fi</label><input id="sWifi" value="${esc(x.wifi)}"></div><div class="field"><label>月間接続数</label><input id="sUsers" type="number" value="${x.users}"></div><div class="field"><label>状態</label><select id="sStatus"><option ${x.status==='稼働中'?'selected':''}>稼働中</option><option ${x.status==='停止中'?'selected':''}>停止中</option></select></div><button onclick="saveStore(${i})">保存</button>`)}function addStore(){S.stores.push({id:Date.now().toString(),name:'新規店舗',type:'店舗',wifi:'Guest Wi-Fi',users:0,clicks:0,status:'稼働中'});stores();save()}function saveStore(i){const x=S.stores[i];x.name=document.getElementById('sName').value;x.type=document.getElementById('sType').value;x.wifi=document.getElementById('sWifi').value;x.users=+document.getElementById('sUsers').value;x.status=document.getElementById('sStatus').value;closeModal();save()}async function reports(){
   const a=await fetch('/api/analytics').then(r=>r.json());
   const couponAnalytics=await fetch('/api/coupon_analytics').then(r=>r.ok?r.json():Promise.reject(new Error('coupon analytics unavailable'))).catch(()=>({total:0,byType:{},byCoupon:[],unavailable:true}));
