@@ -78,7 +78,8 @@ def load_state():
         ).fetchall()
         coupons = conn.execute(
             "SELECT id, ad_id, store_id, title, code, description, discount_type, discount_value, "
-            "terms, starts_on, ends_on, status FROM coupons ORDER BY created_at, id"
+            "terms, starts_on, ends_on, status FROM coupons WHERE deleted_at IS NULL "
+            "ORDER BY created_at, id"
         ).fetchall()
         coupon_events = conn.execute(
             "SELECT coupon_id, coupon_code, event_type, store_name, ad_id, occurred_at "
@@ -182,7 +183,7 @@ def save_state(data):
                     "title=EXCLUDED.title, code=EXCLUDED.code, description=EXCLUDED.description, "
                     "discount_type=EXCLUDED.discount_type, discount_value=EXCLUDED.discount_value, "
                     "terms=EXCLUDED.terms, starts_on=EXCLUDED.starts_on, ends_on=EXCLUDED.ends_on, "
-                    "status=EXCLUDED.status, updated_at=now()",
+                    "status=EXCLUDED.status, updated_at=now() WHERE coupons.deleted_at IS NULL",
                     (coupon_id, coupon.get("adId") or ad_id, coupon_store_id, coupon.get("title", ""),
                      coupon.get("code", ""), coupon.get("description", ""),
                      coupon.get("discountType", "text"), str(coupon.get("discountValue", "")),
@@ -194,6 +195,18 @@ def save_state(data):
                 "ON CONFLICT (id) DO UPDATE SET settings=EXCLUDED.settings, updated_at=now()",
                 (Jsonb({"design": design, "legacy_history": data.get("history", [])}),),
             )
+
+
+def delete_draft_coupon(coupon_id):
+    """Delete a draft coupon while retaining its coupon event history."""
+    with pool().connection() as conn:
+        with conn.transaction():
+            result = conn.execute(
+                "UPDATE coupons SET deleted_at = now(), updated_at = now() "
+                "WHERE id = %s AND status = 'draft' AND deleted_at IS NULL RETURNING id",
+                (str(coupon_id),),
+            ).fetchone()
+            return result is not None
 
 
 def record_event(event_type, store_name, ad_id="main", occurred_at=None):

@@ -78,6 +78,21 @@ def list_available_coupons(data=None):
             and (not coupon.get("start") or coupon["start"] <= today)
             and (not coupon.get("end") or coupon["end"] >= today)]
 
+def delete_draft_coupon(coupon_id):
+    """Delete only a draft coupon; coupon_events remain available as history."""
+    coupon_id = str(coupon_id)
+    if database.database_enabled():
+        return database.delete_draft_coupon(coupon_id)
+    with LOCK:
+        data = load_state()
+        coupons = data.get("coupons", [])
+        target = next((item for item in coupons if str(item.get("id")) == coupon_id), None)
+        if not target or target.get("status") != "draft":
+            return False
+        data["coupons"] = [item for item in coupons if str(item.get("id")) != coupon_id]
+        save_state(data)
+        return True
+
 def record_coupon_event(payload):
     if payload.get("type") not in COUPON_EVENT_TYPES:
         raise ValueError("invalid coupon event type")
@@ -155,6 +170,20 @@ class Handler(BaseHTTPRequestHandler):
         if path.startswith("/uploads/"):
             return self.serve_upload(os.path.basename(path))
         return self.send_bytes(b"not found", 404, "text/plain; charset=utf-8")
+    def do_DELETE(self):
+        path = urlparse(self.path).path
+        prefix = "/api/coupons/"
+        if path.startswith(prefix):
+            coupon_id = path[len(prefix):]
+            if not coupon_id or "/" in coupon_id:
+                return self.send_json({"error": "coupon not found"}, 404)
+            try:
+                if not delete_draft_coupon(coupon_id):
+                    return self.send_json({"error": "draft coupon not found"}, 404)
+                return self.send_json({"ok": True})
+            except Exception as e:
+                return self.send_json({"error": str(e)}, 500)
+        return self.send_json({"error": "not found"}, 404)
     def serve_file(self, name):
         path = os.path.join(BASE, name)
         if not os.path.isfile(path): return self.send_bytes(b"file not found", 404, "text/plain")
