@@ -209,6 +209,43 @@ def delete_draft_coupon(coupon_id):
             return result is not None
 
 
+def analytics():
+    """Aggregate all ad events using Japan's calendar days and months."""
+    with pool().connection() as conn:
+        totals = conn.execute(
+            "SELECT count(*) FILTER (WHERE event_type = 'impression') AS impressions, "
+            "count(*) FILTER (WHERE event_type = 'click') AS clicks FROM ad_events"
+        ).fetchone()
+        stores = conn.execute(
+            "SELECT store_name, count(*) FILTER (WHERE event_type = 'impression') AS impressions, "
+            "count(*) FILTER (WHERE event_type = 'click') AS clicks FROM ad_events "
+            "GROUP BY store_name ORDER BY store_name"
+        ).fetchall()
+        periods = conn.execute(
+            "SELECT to_char(occurred_at AT TIME ZONE 'Asia/Tokyo', 'YYYY-MM-DD') AS date, "
+            "count(*) FILTER (WHERE event_type = 'impression') AS impressions, "
+            "count(*) FILTER (WHERE event_type = 'click') AS clicks FROM ad_events "
+            "GROUP BY date ORDER BY date"
+        ).fetchall()
+        months = conn.execute(
+            "SELECT to_char(occurred_at AT TIME ZONE 'Asia/Tokyo', 'YYYY/MM') AS month, "
+            "count(*) FILTER (WHERE event_type = 'impression') AS impressions, "
+            "count(*) FILTER (WHERE event_type = 'click') AS clicks FROM ad_events "
+            "GROUP BY month ORDER BY month"
+        ).fetchall()
+    impressions, clicks = totals["impressions"], totals["clicks"]
+    def shape(rows, key):
+        return [{key: row[key], "impressions": row["impressions"], "clicks": row["clicks"],
+                 "ctr": round(row["clicks"] / row["impressions"] * 100, 2) if row["impressions"] else 0}
+                for row in rows]
+    return {
+        "impressions": impressions, "clicks": clicks,
+        "ctr": round(clicks / impressions * 100, 2) if impressions else 0,
+        "byStore": {row["store_name"]: {"impressions": row["impressions"], "clicks": row["clicks"]} for row in stores},
+        "daily": shape(periods, "date"), "monthly": shape(months, "month"),
+    }
+
+
 def record_event(event_type, store_name, ad_id="main", occurred_at=None):
     occurred_at = occurred_at or datetime.now(timezone.utc)
     with pool().connection() as conn:

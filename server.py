@@ -3,6 +3,7 @@ from urllib.parse import urlparse
 from email.parser import BytesParser
 from email.policy import default
 from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 import json, os, uuid, mimetypes, threading
 import database
 import migrate_to_postgres
@@ -50,8 +51,7 @@ def save_state(data, preserve_latest_events=True):
     os.replace(tmp, DATA)
 
 def now_jst():
-    from datetime import timedelta
-    return (datetime.now(timezone.utc) + timedelta(hours=9)).isoformat(timespec="seconds")
+    return datetime.now(ZoneInfo("Asia/Tokyo")).isoformat(timespec="seconds")
 
 def record_event(event_type, store, ad_id="main"):
     if database.database_enabled():
@@ -163,6 +163,8 @@ class Handler(BaseHTTPRequestHandler):
             except Exception as e: return self.send_json({"error": str(e)}, 500)
         if path == "/api/analytics":
             try:
+                if database.database_enabled():
+                    return self.send_json(database.analytics())
                 data = load_state(); events = data.get("events", [])
                 return self.send_json(build_analytics(events))
             except Exception as e: return self.send_json({"error": str(e)}, 500)
@@ -248,16 +250,30 @@ def build_analytics(events):
         for e in items: out[e.get("store", "未設定")] = out.get(e.get("store", "未設定"), 0) + 1
         return out
     days = {}
+    months = {}
     for e in events:
-        day = e.get("at", "")[:10]
-        if not day: continue
+        at = e.get("at", "")
+        if not at: continue
+        try:
+            parsed = datetime.fromisoformat(at.replace("Z", "+00:00"))
+            if parsed.tzinfo is None:
+                parsed = parsed.replace(tzinfo=ZoneInfo("Asia/Tokyo"))
+            local = parsed.astimezone(ZoneInfo("Asia/Tokyo"))
+            day, month = local.strftime("%Y-%m-%d"), local.strftime("%Y/%m")
+        except (TypeError, ValueError):
+            continue
         days.setdefault(day, {"impressions":0,"clicks":0})
-        days[day]["impressions" if e.get("type")=="impression" else "clicks"] += 1
+        months.setdefault(month, {"impressions":0,"clicks":0})
+        if e.get("type") not in {"impression", "click"}: continue
+        field = "impressions" if e["type"] == "impression" else "clicks"
+        days[day][field] += 1
+        months[month][field] += 1
     return {
         "impressions": len(impressions), "clicks": len(clicks),
         "ctr": round((len(clicks)/len(impressions)*100), 2) if impressions else 0,
         "byStore": {k:{"impressions":by_store(impressions).get(k,0),"clicks":by_store(clicks).get(k,0)} for k in sorted(set(by_store(impressions)) | set(by_store(clicks)))},
-        "daily": [{"date":k, **days[k], "ctr":round(days[k]["clicks"]/days[k]["impressions"]*100,2) if days[k]["impressions"] else 0} for k in sorted(days)]
+        "daily": [{"date":k, **days[k], "ctr":round(days[k]["clicks"]/days[k]["impressions"]*100,2) if days[k]["impressions"] else 0} for k in sorted(days)],
+        "monthly": [{"month":k, **months[k], "ctr":round(months[k]["clicks"]/months[k]["impressions"]*100,2) if months[k]["impressions"] else 0} for k in sorted(months)]
     }
 
 if __name__ == "__main__":
