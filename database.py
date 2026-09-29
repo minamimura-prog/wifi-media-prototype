@@ -1,6 +1,7 @@
 """PostgreSQL persistence for the prototype's existing JSON-shaped state API."""
 
 from datetime import datetime, timezone
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -42,6 +43,73 @@ def ensure_schema():
     ddl = SCHEMA.read_text(encoding="utf-8")
     with pool().connection() as conn:
         conn.execute(ddl)
+
+
+def _admin_session_token_hash(raw_token):
+    """Hash a raw, high-entropy cookie token once before any database use."""
+    if not isinstance(raw_token, str) or not raw_token:
+        raise ValueError("raw_token must be a non-empty string")
+    return hashlib.sha256(raw_token.encode("utf-8")).hexdigest()
+
+
+def _require_postgres_for_admin_sessions():
+    if not database_enabled():
+        raise RuntimeError("Admin sessions require PostgreSQL; JSON fallback is not supported")
+
+
+def _utc_aware_datetime(value, name):
+    if not isinstance(value, datetime):
+        raise TypeError(f"{name} must be a datetime")
+    if value.tzinfo is None or value.utcoffset() is None:
+        raise ValueError(f"{name} must be timezone-aware")
+    return value.astimezone(timezone.utc)
+
+
+def create_admin_session(raw_token, expires_at):
+    """Store only SHA-256(raw_token); created_at uses PostgreSQL's timestamptz clock."""
+    _require_postgres_for_admin_sessions()
+    token_hash = _admin_session_token_hash(raw_token)
+    expires_at_utc = _utc_aware_datetime(expires_at, "expires_at")
+    with pool().connection() as conn:
+        conn.execute(
+            "INSERT INTO admin_sessions (token_hash, expires_at) VALUES (%s, %s)",
+            (token_hash, expires_at_utc),
+        )
+
+
+def is_admin_session_valid(raw_token):
+    """Return whether SHA-256(raw_token) identifies a session not yet expired."""
+    _require_postgres_for_admin_sessions()
+    token_hash = _admin_session_token_hash(raw_token)
+    with pool().connection() as conn:
+        row = conn.execute(
+            "SELECT expires_at > CURRENT_TIMESTAMP AS is_valid "
+            "FROM admin_sessions WHERE token_hash = %s",
+            (token_hash,),
+        ).fetchone()
+    return bool(row and row["is_valid"])
+
+
+def revoke_admin_session(raw_token):
+    """Delete the session identified by SHA-256(raw_token); never log the token."""
+    _require_postgres_for_admin_sessions()
+    token_hash = _admin_session_token_hash(raw_token)
+    with pool().connection() as conn:
+        result = conn.execute(
+            "DELETE FROM admin_sessions WHERE token_hash = %s",
+            (token_hash,),
+        )
+    return result.rowcount > 0
+
+
+def cleanup_expired_admin_sessions():
+    """Delete expired sessions using the PostgreSQL server's current timestamp."""
+    _require_postgres_for_admin_sessions()
+    with pool().connection() as conn:
+        result = conn.execute(
+            "DELETE FROM admin_sessions WHERE expires_at <= CURRENT_TIMESTAMP"
+        )
+    return result.rowcount
 
 
 def _date(value):

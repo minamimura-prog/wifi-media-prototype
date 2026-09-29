@@ -91,6 +91,12 @@ CREATE TABLE IF NOT EXISTS store_settings (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+CREATE TABLE IF NOT EXISTS admin_sessions (
+    token_hash TEXT PRIMARY KEY CHECK (token_hash ~ '^[0-9a-f]{64}$'),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    expires_at TIMESTAMPTZ NOT NULL
+);
+
 CREATE INDEX IF NOT EXISTS ad_events_occurred_at_idx ON ad_events (occurred_at DESC);
 CREATE INDEX IF NOT EXISTS ad_events_store_time_idx ON ad_events (store_id, occurred_at DESC);
 CREATE INDEX IF NOT EXISTS ad_events_ad_time_idx ON ad_events (ad_id, occurred_at DESC);
@@ -98,3 +104,4 @@ CREATE INDEX IF NOT EXISTS campaigns_status_dates_idx ON campaigns (status, star
 CREATE INDEX IF NOT EXISTS coupons_ad_idx ON coupons (ad_id);
 CREATE INDEX IF NOT EXISTS coupon_events_occurred_at_idx ON coupon_events (occurred_at DESC);
 CREATE INDEX IF NOT EXISTS coupon_events_coupon_time_idx ON coupon_events (coupon_id, occurred_at DESC);
+CREATE INDEX IF NOT EXISTS admin_sessions_expires_at_idx ON admin_sessions (expires_at);
