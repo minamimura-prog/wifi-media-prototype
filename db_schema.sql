@@ -12,6 +12,7 @@ CREATE TABLE IF NOT EXISTS stores (
 );
 
 ALTER TABLE stores ADD COLUMN IF NOT EXISTS public_code TEXT;
+ALTER TABLE stores ALTER COLUMN public_code DROP NOT NULL;
 
 DO $$
 DECLARE
@@ -43,12 +44,11 @@ BEGIN
     ) THEN
         ALTER TABLE stores
             ADD CONSTRAINT stores_public_code_format_check
-            CHECK (public_code ~ '^[a-z0-9]+(-[a-z0-9]+)*$');
+            CHECK (public_code IS NULL OR public_code ~ '^[a-z0-9]+(-[a-z0-9]+)*$');
     END IF;
 END;
 $$;
 
-ALTER TABLE stores ALTER COLUMN public_code SET NOT NULL;
 CREATE UNIQUE INDEX IF NOT EXISTS stores_public_code_uidx ON stores (public_code);
 
 CREATE TABLE IF NOT EXISTS ads (
