@@ -78,6 +78,21 @@ def list_available_coupons(data=None):
             and (not coupon.get("start") or coupon["start"] <= today)
             and (not coupon.get("end") or coupon["end"] >= today)]
 
+def public_config():
+    data = load_state()
+    design = data.get("design") or {}
+    ad = data.get("ad") or {}
+    return {
+        "design": {key: design.get(key) for key in (
+            "background", "textColor", "radius", "heroHeight", "pageTitle",
+            "brand", "buttonText", "buttonColor", "buttonTextColor",
+            "showBrand", "showBody", "showButton",
+        )},
+        "ad": {key: ad.get(key) for key in (
+            "title", "body", "link", "media", "store", "id",
+        )},
+    }
+
 def delete_draft_coupon(coupon_id):
     """Delete only a draft coupon; coupon_events remain available as history."""
     coupon_id = str(coupon_id)
@@ -149,6 +164,9 @@ class Handler(BaseHTTPRequestHandler):
         path = urlparse(self.path).path
         if path == "/": return self.serve_file("web.html")
         if path == "/admin": return self.serve_file("admin.html")
+        if path == "/api/public-config":
+            try: return self.send_json(public_config())
+            except Exception as e: return self.send_json({"error": str(e)}, 500)
         if path == "/api/coupons":
             try: return self.send_json({"coupons": list_available_coupons()})
             except Exception as e: return self.send_json({"error": str(e)}, 500)
