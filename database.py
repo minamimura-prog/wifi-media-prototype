@@ -4,6 +4,7 @@ from datetime import datetime, timedelta, timezone
 import hashlib
 import json
 import os
+import re
 from pathlib import Path
 
 import psycopg
@@ -20,10 +21,59 @@ _pool = None
 ADMIN_LOGIN_FAILURE_WINDOW = timedelta(minutes=15)
 ADMIN_LOGIN_MAX_FAILURES = 10
 ADMIN_LOGIN_LOCK_DURATION = timedelta(minutes=15)
+_PUBLIC_CODE_RE = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 
 
 def database_enabled():
     return bool(DATABASE_URL)
+
+
+def public_code_for_store_id(store_id):
+    """Return a bounded URL-safe code derived only from a store's internal ID."""
+    stable_id = str(store_id or "")
+    # Hash every ID into one reserved namespace. Keeping safe IDs verbatim
+    # would allow a converted ID to collide with a real safe ID (for example,
+    # "ABC" and "store-x414243"). Hashing the UTF-8 hex representation also
+    # matches PostgreSQL's built-in md5(text) without requiring extensions.
+    digest_input = stable_id.encode("utf-8").hex().encode("ascii")
+    return "store-" + hashlib.md5(digest_input).hexdigest()
+
+
+def ensure_public_codes_in_state(state):
+    """Return an in-memory JSON-state copy with unique public codes; never persist it."""
+    if not isinstance(state, dict):
+        raise TypeError("state must be a dictionary")
+    enriched = dict(state)
+    code_owners = {}
+    stores = [dict(store) if isinstance(store, dict) else store for store in (state.get("stores") or [])]
+
+    # Preserve existing valid codes. Refuse collisions instead of assigning a
+    # suffix based on iteration order, which would make codes order-dependent.
+    for store in stores:
+        if not isinstance(store, dict):
+            continue
+        current = store.get("publicCode")
+        if isinstance(current, str) and _PUBLIC_CODE_RE.fullmatch(current):
+            store_id = str(store.get("id") or "")
+            owner = code_owners.get(current)
+            if owner is not None and owner != store_id:
+                raise ValueError("duplicate existing publicCode values")
+            code_owners[current] = store_id
+        elif current is not None:
+            store["publicCode"] = None
+
+    for store in stores:
+        if not isinstance(store, dict) or store.get("publicCode") is not None:
+            continue
+        store_id = str(store.get("id") or "")
+        candidate = public_code_for_store_id(store_id)
+        owner = code_owners.get(candidate)
+        if owner is not None and owner != store_id:
+            raise ValueError("publicCode hash collision")
+        store["publicCode"] = candidate
+        code_owners[candidate] = store_id
+    enriched["stores"] = stores
+    return enriched
 
 
 def pool():
@@ -216,6 +266,62 @@ def _store_ids(conn):
     return {row["name"]: row["id"] for row in rows}
 
 
+def _unique_public_code(conn, store_id):
+    stable_id = str(store_id or "")
+    candidate = public_code_for_store_id(stable_id)
+    if conn.execute(
+        "SELECT 1 FROM stores WHERE public_code = %s AND id <> %s LIMIT 1",
+        (candidate, stable_id),
+    ).fetchone():
+        raise ValueError("publicCode hash collision")
+    return candidate
+
+
+def get_store_by_public_code(public_code):
+    """Look up one store by its exact public URL code, returning None if absent/invalid."""
+    if not isinstance(public_code, str) or not _PUBLIC_CODE_RE.fullmatch(public_code):
+        return None
+    with pool().connection() as conn:
+        row = conn.execute(
+            "SELECT id, public_code, name, store_type, wifi, monthly_users, legacy_clicks, status "
+            "FROM stores WHERE public_code = %s",
+            (public_code,),
+        ).fetchone()
+    return dict(row) if row else None
+
+
+def get_store_by_id(store_id):
+    """Look up one store by its internal ID, returning None if absent."""
+    if store_id is None:
+        return None
+    with pool().connection() as conn:
+        row = conn.execute(
+            "SELECT id, public_code, name, store_type, wifi, monthly_users, legacy_clicks, status "
+            "FROM stores WHERE id = %s",
+            (str(store_id),),
+        ).fetchone()
+    return dict(row) if row else None
+
+
+def get_campaigns_for_store(store_id):
+    """Return campaigns assigned through campaign_stores, with schedule and ad data."""
+    if store_id is None:
+        return []
+    with pool().connection() as conn:
+        rows = conn.execute(
+            "SELECT c.id AS campaign_id, c.ad_id, c.name AS campaign_name, "
+            "c.starts_on, c.ends_on, c.status AS campaign_status, "
+            "a.title, a.body, a.landing_url, a.media_url, a.published "
+            "FROM campaign_stores cs "
+            "JOIN campaigns c ON c.id = cs.campaign_id "
+            "JOIN ads a ON a.id = c.ad_id "
+            "WHERE cs.store_id = %s "
+            "ORDER BY c.created_at, c.id",
+            (str(store_id),),
+        ).fetchall()
+    return [dict(row) for row in rows]
+
+
 def load_state():
     with pool().connection() as conn:
         stores = conn.execute(
@@ -291,13 +397,15 @@ def save_state(data):
         with conn.transaction():
             for store in stores:
                 store_id = str(store.get("id") or store.get("name") or "store")
+                public_code = _unique_public_code(conn, store_id)
                 conn.execute(
-                    "INSERT INTO stores (id, name, store_type, wifi, monthly_users, legacy_clicks, status) "
-                    "VALUES (%s, %s, %s, %s, %s, %s, %s) "
+                    "INSERT INTO stores (id, public_code, name, store_type, wifi, monthly_users, legacy_clicks, status) "
+                    "VALUES (%s, %s, %s, %s, %s, %s, %s, %s) "
                     "ON CONFLICT (id) DO UPDATE SET name=EXCLUDED.name, store_type=EXCLUDED.store_type, "
                     "wifi=EXCLUDED.wifi, monthly_users=EXCLUDED.monthly_users, "
-                    "legacy_clicks=EXCLUDED.legacy_clicks, status=EXCLUDED.status, updated_at=now()",
-                    (store_id, store.get("name", ""), store.get("type", ""), store.get("wifi", ""),
+                    "legacy_clicks=EXCLUDED.legacy_clicks, status=EXCLUDED.status, "
+                    "public_code=COALESCE(stores.public_code, EXCLUDED.public_code), updated_at=now()",
+                    (store_id, public_code, store.get("name", ""), store.get("type", ""), store.get("wifi", ""),
                      int(store.get("users") or 0), int(store.get("clicks") or 0), store.get("status", "稼働中")),
                 )
 
