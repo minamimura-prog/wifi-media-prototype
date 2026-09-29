@@ -1,10 +1,11 @@
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlparse
+from http.cookies import SimpleCookie
 from email.parser import BytesParser
 from email.policy import default
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
-import json, os, uuid, mimetypes, threading
+import hmac, json, os, secrets, uuid, mimetypes, threading
 import database
 import migrate_to_postgres
 
@@ -16,6 +17,25 @@ ALLOWED = {".gif", ".jpg", ".jpeg", ".png", ".webp"}
 MAX_BYTES = 12 * 1024 * 1024
 LOCK = threading.Lock()
 COUPON_EVENT_TYPES = {"view", "copy", "redeem"}
+ADMIN_SESSION_COOKIE = "wifi_media_admin_session"
+ADMIN_SESSION_MAX_AGE = 24 * 60 * 60
+
+def admin_development_mode():
+    """Allow HTTP cookies only when both development switches are explicit."""
+    return (
+        os.environ.get("APP_ENV", "").strip().lower() == "development"
+        and os.environ.get("ADMIN_DEV_ALLOW_INSECURE_COOKIE", "").strip() == "1"
+    )
+
+def admin_session_cookie(token, max_age=ADMIN_SESSION_MAX_AGE):
+    secure = "; Secure" if not admin_development_mode() else ""
+    return (
+        f"{ADMIN_SESSION_COOKIE}={token}; HttpOnly; SameSite=Strict; "
+        f"Path=/; Max-Age={max_age}{secure}"
+    )
+
+def expired_admin_session_cookie():
+    return admin_session_cookie("", max_age=0) + "; Expires=Thu, 01 Jan 1970 00:00:00 GMT"
 
 os.makedirs(UPLOADS, exist_ok=True)
 
@@ -152,14 +172,76 @@ class Handler(BaseHTTPRequestHandler):
     server_version = "WiFiMedia/2.0"
     def log_message(self, fmt, *args):
         print("[%s] %s" % (self.address_string(), fmt % args))
-    def send_bytes(self, body, status=200, content_type="text/html; charset=utf-8"):
+    def send_bytes(self, body, status=200, content_type="text/html; charset=utf-8", extra_headers=None):
         self.send_response(status)
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-store")
+        for name, value in (extra_headers or {}).items(): self.send_header(name, value)
         self.end_headers(); self.wfile.write(body)
-    def send_json(self, obj, status=200):
-        return self.send_bytes(json.dumps(obj, ensure_ascii=False).encode("utf-8"), status, "application/json; charset=utf-8")
+    def send_json(self, obj, status=200, extra_headers=None):
+        return self.send_bytes(json.dumps(obj, ensure_ascii=False).encode("utf-8"), status, "application/json; charset=utf-8", extra_headers)
+    def admin_session_token(self):
+        cookies = SimpleCookie()
+        try: cookies.load(self.headers.get("Cookie", ""))
+        except Exception: return None
+        morsel = cookies.get(ADMIN_SESSION_COOKIE)
+        return morsel.value if morsel else None
+    def has_valid_admin_session(self):
+        """Shared future auth check; deliberately not wired to routes in this step."""
+        token = self.admin_session_token()
+        if not token: return False
+        try: return database.is_admin_session_valid(token)
+        except Exception: return False
+    def request_origin_is_same(self):
+        origin = self.headers.get("Origin", "")
+        parsed = urlparse(origin)
+        expected_scheme = "http" if admin_development_mode() else "https"
+        return (
+            parsed.scheme.lower() == expected_scheme
+            and parsed.netloc.lower() == self.headers.get("Host", "").lower()
+            and parsed.path in ("", "/")
+            and not parsed.username and not parsed.password
+            and not parsed.query and not parsed.fragment
+        )
+    def handle_admin_login(self):
+        if self.headers.get("Content-Type", "").split(";", 1)[0].strip().lower() != "application/json":
+            return self.send_json({"ok": False}, 415)
+        try: content_length = int(self.headers.get("Content-Length", "0"))
+        except (TypeError, ValueError): return self.send_json({"ok": False}, 400)
+        if content_length < 0: return self.send_json({"ok": False}, 400)
+        if content_length > 4096: return self.send_json({"ok": False}, 413)
+        try:
+            payload = json.loads(self.rfile.read(content_length).decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            return self.send_json({"ok": False}, 400)
+        if not isinstance(payload, dict) or not isinstance(payload.get("password"), str):
+            return self.send_json({"ok": False}, 400)
+        configured_password = os.environ.get("ADMIN_PASSWORD")
+        if not configured_password:
+            return self.send_json({"ok": False}, 401)
+        if not hmac.compare_digest(payload["password"].encode("utf-8"), configured_password.encode("utf-8")):
+            return self.send_json({"ok": False}, 401)
+        token = secrets.token_urlsafe(32)
+        expires_at = datetime.now(timezone.utc) + timedelta(seconds=ADMIN_SESSION_MAX_AGE)
+        try:
+            database.create_admin_session(token, expires_at)
+        except Exception:
+            return self.send_json({"ok": False}, 503)
+        return self.send_json(
+            {"ok": True},
+            extra_headers={"Set-Cookie": admin_session_cookie(token)},
+        )
+    def handle_admin_logout(self):
+        token = self.admin_session_token()
+        expired_cookie = {"Set-Cookie": expired_admin_session_cookie()}
+        if token and not self.request_origin_is_same():
+            return self.send_json({"ok": False}, 403)
+        try:
+            if token: database.revoke_admin_session(token)
+        except Exception:
+            return self.send_json({"ok": False}, 503, extra_headers=expired_cookie)
+        return self.send_json({"ok": True}, extra_headers=expired_cookie)
     def do_GET(self):
         path = urlparse(self.path).path
         if path == "/": return self.serve_file("web.html")
@@ -222,6 +304,8 @@ class Handler(BaseHTTPRequestHandler):
         return self.rfile.read(length)
     def do_POST(self):
         path = urlparse(self.path).path
+        if path == "/api/admin/login": return self.handle_admin_login()
+        if path == "/api/admin/logout": return self.handle_admin_logout()
         if path == "/api/coupon_event":
             try:
                 payload = json.loads(self.read_body().decode("utf-8"))
