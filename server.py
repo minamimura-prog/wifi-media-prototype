@@ -206,12 +206,17 @@ class Handler(BaseHTTPRequestHandler):
             supplied_keys[0].encode("utf-8"), configured_key.encode("utf-8")
         ):
             return self.send_json({"ok": False}, 404)
-        forwarded_values = self.headers.get_all("X-Forwarded-For", [])
-        raw_value = (
-            forwarded_values[0] if len(forwarded_values) == 1
-            else forwarded_values if forwarded_values else None
-        )
-        return self.send_json({"x_forwarded_for": raw_value})
+        def raw_header_value(name):
+            values = self.headers.get_all(name, [])
+            if len(values) == 1:
+                return values[0]
+            return values if values else None
+
+        return self.send_json({
+            "x_forwarded_for": raw_header_value("X-Forwarded-For"),
+            "cf_connecting_ip": raw_header_value("CF-Connecting-IP"),
+            "cf_connecting_ipv6": raw_header_value("CF-Connecting-IPv6"),
+        })
 
     def request_origin_is_same(self):
         origins = self.headers.get_all("Origin", [])
