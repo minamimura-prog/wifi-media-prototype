@@ -197,6 +197,22 @@ class Handler(BaseHTTPRequestHandler):
         if self.has_valid_admin_session(): return True
         self.send_json({"ok": False, "error": "unauthorized"}, 401)
         return False
+    def handle_temporary_ip_check(self):
+        configured_key = os.environ.get("TEMP_IP_DIAGNOSTIC_KEY", "")
+        supplied_keys = self.headers.get_all("X-Temporary-Diagnostic-Key", [])
+        if not configured_key or len(supplied_keys) != 1 or not supplied_keys[0]:
+            return self.send_json({"ok": False}, 404)
+        if not hmac.compare_digest(
+            supplied_keys[0].encode("utf-8"), configured_key.encode("utf-8")
+        ):
+            return self.send_json({"ok": False}, 404)
+        forwarded_values = self.headers.get_all("X-Forwarded-For", [])
+        raw_value = (
+            forwarded_values[0] if len(forwarded_values) == 1
+            else forwarded_values if forwarded_values else None
+        )
+        return self.send_json({"x_forwarded_for": raw_value})
+
     def request_origin_is_same(self):
         origins = self.headers.get_all("Origin", [])
         hosts = self.headers.get_all("Host", [])
@@ -277,6 +293,7 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         path = urlparse(self.path).path
         if path == "/": return self.serve_file("web.html")
+        if path == "/__temporary/ip-check": return self.handle_temporary_ip_check()
         if path == "/admin/login":
             if self.has_valid_admin_session():
                 return self.send_bytes(b"", 302, "text/plain; charset=utf-8", {"Location": "/admin"})
