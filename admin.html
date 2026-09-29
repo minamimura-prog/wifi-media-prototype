@@ -159,6 +159,26 @@ input:focus, textarea:focus, select:focus {
 .coupon-swatch-copy { background: var(--signal-cyan); box-shadow: 0 0 6px #4ce5ff30; }
 .coupon-swatch-redeem { background: var(--signal-magenta); box-shadow: 0 0 6px #ff64d930; }
 .legend { color: var(--night-muted); }
+.comparison-meter {
+  height: 4px;
+  min-width: 42px;
+  margin-top: 5px;
+  overflow: hidden;
+  background: #191c20;
+  border: 1px solid #3a4149;
+  border-radius: 2px;
+}
+.comparison-meter > span { display: block; width: var(--bar-width); height: 100%; }
+.comparison-meter.impression > span {
+  background: linear-gradient(90deg, #568d31, var(--neon-green));
+  border-right: 1px solid #dcffb0;
+  box-shadow: 0 0 6px #b7ff5638;
+}
+.comparison-meter.click > span {
+  background: linear-gradient(90deg, #246b80, var(--signal-cyan));
+  border-right: 1px solid #c1f8ff;
+  box-shadow: 0 0 6px #4ce5ff38;
+}
 .card i[title^="表示"] {
   background-color: var(--neon-green) !important;
   box-shadow: 0 0 8px #b7ff5630;
@@ -303,6 +323,12 @@ async function addCoupon(){const title=document.getElementById('cTitle').value.t
 
   const storeRows=Object.entries(a.byStore||{});
   const adRows=a.byAd||[];
+  const maxValue=(rows,key)=>rows.reduce((max,row)=>Math.max(max,Number(row[key])||0),0);
+  const barWidth=(value,max)=>max>0?Math.min(100,Math.max(0,(Number(value)||0)/max*100)):0;
+  const storeMaxImpressions=maxValue(storeRows.map(([,x])=>x),'impressions');
+  const storeMaxClicks=maxValue(storeRows.map(([,x])=>x),'clicks');
+  const adMaxImpressions=maxValue(adRows,'impressions');
+  const adMaxClicks=maxValue(adRows,'clicks');
 
   shell('効果測定','PostgreSQLに記録された実測値です。月の区切りは日本時間です.',
   `<div class="grid">
@@ -346,7 +372,7 @@ async function addCoupon(){const title=document.getElementById('cTitle').value.t
         <thead><tr><th>店舗</th><th>表示</th><th>クリック</th><th>CTR</th></tr></thead>
         <tbody>
           ${storeRows.length?storeRows.map(([k,x])=>`
-            <tr><td>${k}</td><td>${x.impressions.toLocaleString()}</td><td>${x.clicks.toLocaleString()}</td><td>${x.ctr}%</td></tr>
+            <tr><td>${k}</td><td><div>${x.impressions.toLocaleString()}</div><div class="comparison-meter impression" aria-hidden="true"><span style="--bar-width:${barWidth(x.impressions,storeMaxImpressions)}%"></span></div></td><td><div>${x.clicks.toLocaleString()}</div><div class="comparison-meter click" aria-hidden="true"><span style="--bar-width:${barWidth(x.clicks,storeMaxClicks)}%"></span></div></td><td>${x.ctr}%</td></tr>
           `).join(''):'<tr><td colspan="4">まだ店舗別データがありません。</td></tr>'}
         </tbody>
       </table>
@@ -358,7 +384,7 @@ async function addCoupon(){const title=document.getElementById('cTitle').value.t
         <thead><tr><th>広告</th><th>表示</th><th>クリック</th><th>CTR</th></tr></thead>
         <tbody>
           ${adRows.length?adRows.map(x=>`
-            <tr><td>${x.name||x.id}</td><td>${x.impressions.toLocaleString()}</td><td>${x.clicks.toLocaleString()}</td><td>${x.ctr}%</td></tr>
+            <tr><td>${x.name||x.id}</td><td><div>${x.impressions.toLocaleString()}</div><div class="comparison-meter impression" aria-hidden="true"><span style="--bar-width:${barWidth(x.impressions,adMaxImpressions)}%"></span></div></td><td><div>${x.clicks.toLocaleString()}</div><div class="comparison-meter click" aria-hidden="true"><span style="--bar-width:${barWidth(x.clicks,adMaxClicks)}%"></span></div></td><td>${x.ctr}%</td></tr>
           `).join(''):'<tr><td colspan="4">まだ広告別データがありません。</td></tr>'}
         </tbody>
       </table>
