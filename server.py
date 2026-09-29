@@ -245,6 +245,10 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         path = urlparse(self.path).path
         if path == "/": return self.serve_file("web.html")
+        if path == "/admin/login":
+            if self.has_valid_admin_session():
+                return self.send_bytes(b"", 302, "text/plain; charset=utf-8", {"Location": "/admin"})
+            return self.serve_file("login.html")
         if path == "/admin": return self.serve_file("admin.html")
         if path == "/api/public-config":
             try: return self.send_json(public_config())
