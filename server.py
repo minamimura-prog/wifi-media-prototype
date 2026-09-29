@@ -188,22 +188,55 @@ class Handler(BaseHTTPRequestHandler):
         morsel = cookies.get(ADMIN_SESSION_COOKIE)
         return morsel.value if morsel else None
     def has_valid_admin_session(self):
-        """Shared future auth check; deliberately not wired to routes in this step."""
+        """Return whether the request carries a valid administrator session."""
         token = self.admin_session_token()
         if not token: return False
         try: return database.is_admin_session_valid(token)
         except Exception: return False
+    def require_admin_session(self):
+        if self.has_valid_admin_session(): return True
+        self.send_json({"ok": False, "error": "unauthorized"}, 401)
+        return False
     def request_origin_is_same(self):
-        origin = self.headers.get("Origin", "")
-        parsed = urlparse(origin)
+        origins = self.headers.get_all("Origin", [])
+        hosts = self.headers.get_all("Host", [])
+        forwarded_protocols = self.headers.get_all("X-Forwarded-Proto", [])
+        if len(origins) != 1 or len(hosts) != 1 or len(forwarded_protocols) > 1:
+            return False
+        origin = origins[0]
+        host = hosts[0].strip()
+        if not origin or not host or "," in host or any(char.isspace() for char in host):
+            return False
         expected_scheme = "http" if admin_development_mode() else "https"
+        if forwarded_protocols:
+            forwarded_scheme = forwarded_protocols[0].strip().lower()
+            if "," in forwarded_scheme or forwarded_scheme not in {"http", "https"}:
+                return False
+            if not admin_development_mode() and forwarded_scheme != "https":
+                return False
+            expected_scheme = forwarded_scheme
+        try:
+            parsed = urlparse(origin)
+            host_parts = urlparse(f"{expected_scheme}://{host}")
+            parsed.port
+            host_parts.port
+        except ValueError:
+            return False
         return (
             parsed.scheme.lower() == expected_scheme
-            and parsed.netloc.lower() == self.headers.get("Host", "").lower()
+            and parsed.netloc.lower() == host.lower()
             and parsed.path in ("", "/")
             and not parsed.username and not parsed.password
             and not parsed.query and not parsed.fragment
+            and host_parts.netloc.lower() == host.lower()
+            and not host_parts.username and not host_parts.password
+            and host_parts.path in ("", "/")
+            and not host_parts.query and not host_parts.fragment
         )
+    def require_same_origin(self):
+        if self.request_origin_is_same(): return True
+        self.send_json({"ok": False, "error": "forbidden"}, 403)
+        return False
     def handle_admin_login(self):
         if self.headers.get("Content-Type", "").split(";", 1)[0].strip().lower() != "application/json":
             return self.send_json({"ok": False}, 415)
@@ -233,10 +266,9 @@ class Handler(BaseHTTPRequestHandler):
             extra_headers={"Set-Cookie": admin_session_cookie(token)},
         )
     def handle_admin_logout(self):
+        if not self.require_same_origin(): return
         token = self.admin_session_token()
         expired_cookie = {"Set-Cookie": expired_admin_session_cookie()}
-        if token and not self.request_origin_is_same():
-            return self.send_json({"ok": False}, 403)
         try:
             if token: database.revoke_admin_session(token)
         except Exception:
@@ -249,7 +281,10 @@ class Handler(BaseHTTPRequestHandler):
             if self.has_valid_admin_session():
                 return self.send_bytes(b"", 302, "text/plain; charset=utf-8", {"Location": "/admin"})
             return self.serve_file("login.html")
-        if path == "/admin": return self.serve_file("admin.html")
+        if path == "/admin":
+            if not self.has_valid_admin_session():
+                return self.send_bytes(b"", 302, "text/plain; charset=utf-8", {"Location": "/admin/login"})
+            return self.serve_file("admin.html")
         if path == "/api/public-config":
             try: return self.send_json(public_config())
             except Exception as e: return self.send_json({"error": str(e)}, 500)
@@ -257,21 +292,24 @@ class Handler(BaseHTTPRequestHandler):
             try: return self.send_json({"coupons": list_available_coupons()})
             except Exception as e: return self.send_json({"error": str(e)}, 500)
         if path == "/api/coupon_analytics":
+            if not self.require_admin_session(): return
             try:
                 if database.database_enabled():
                     return self.send_json(database.coupon_analytics())
                 return self.send_json(build_coupon_analytics(load_state().get("coupon_events", [])))
-            except Exception as e: return self.send_json({"error": str(e)}, 500)
+            except Exception: return self.send_json({"ok": False}, 500)
         if path == "/api/state":
+            if not self.require_admin_session(): return
             try: return self.send_json(load_state())
-            except Exception as e: return self.send_json({"error": str(e)}, 500)
+            except Exception: return self.send_json({"ok": False}, 500)
         if path == "/api/analytics":
+            if not self.require_admin_session(): return
             try:
                 if database.database_enabled():
                     return self.send_json(database.analytics())
                 data = load_state(); events = data.get("events", [])
                 return self.send_json(build_analytics(events))
-            except Exception as e: return self.send_json({"error": str(e)}, 500)
+            except Exception: return self.send_json({"ok": False}, 500)
         if path == "/health": return self.send_bytes(b"ok", 200, "text/plain; charset=utf-8")
         if path.startswith("/uploads/"):
             return self.serve_upload(os.path.basename(path))
@@ -280,6 +318,8 @@ class Handler(BaseHTTPRequestHandler):
         path = urlparse(self.path).path
         prefix = "/api/coupons/"
         if path.startswith(prefix):
+            if not self.require_admin_session(): return
+            if not self.require_same_origin(): return
             coupon_id = path[len(prefix):]
             if not coupon_id or "/" in coupon_id:
                 return self.send_json({"error": "coupon not found"}, 404)
@@ -287,8 +327,8 @@ class Handler(BaseHTTPRequestHandler):
                 if not delete_draft_coupon(coupon_id):
                     return self.send_json({"error": "draft coupon not found"}, 404)
                 return self.send_json({"ok": True})
-            except Exception as e:
-                return self.send_json({"error": str(e)}, 500)
+            except Exception:
+                return self.send_json({"ok": False}, 500)
         return self.send_json({"error": "not found"}, 404)
     def serve_file(self, name):
         path = os.path.join(BASE, name)
@@ -326,11 +366,15 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send_json({"ok": True})
             except Exception as e: return self.send_json({"error": str(e)}, 400)
         if path == "/api/state":
+            if not self.require_admin_session(): return
+            if not self.require_same_origin(): return
             try:
                 body = self.read_body(); data = json.loads(body.decode("utf-8")); save_state(data)
                 return self.send_json({"ok": True})
-            except Exception as e: return self.send_json({"error": str(e)}, 400)
+            except Exception: return self.send_json({"ok": False}, 400)
         if path == "/api/upload":
+            if not self.require_admin_session(): return
+            if not self.require_same_origin(): return
             try:
                 body = self.read_body(); ctype = self.headers.get("Content-Type", "")
                 if "multipart/form-data" not in ctype: return self.send_json({"error":"multipart/form-data required"}, 400)
@@ -345,7 +389,7 @@ class Handler(BaseHTTPRequestHandler):
                 name = uuid.uuid4().hex + ext
                 with open(os.path.join(UPLOADS, name), "wb") as f: f.write(content)
                 return self.send_json({"url":"/uploads/" + name})
-            except Exception as e: return self.send_json({"error": str(e)}, 400)
+            except Exception: return self.send_json({"ok": False}, 400)
         return self.send_json({"error":"not found"}, 404)
 
 def build_analytics(events):
