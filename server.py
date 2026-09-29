@@ -5,6 +5,7 @@ from email.parser import BytesParser
 from email.policy import default
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
+import ipaddress
 import hmac, json, os, secrets, uuid, mimetypes, threading
 import database
 import migrate_to_postgres
@@ -237,6 +238,23 @@ class Handler(BaseHTTPRequestHandler):
         if self.request_origin_is_same(): return True
         self.send_json({"ok": False, "error": "forbidden"}, 403)
         return False
+    def admin_login_client_ip(self):
+        if os.environ.get("RENDER", "").strip().lower() == "true":
+            values = self.headers.get_all("CF-Connecting-IP", [])
+            if len(values) != 1:
+                return None
+            raw_ip = values[0]
+        elif os.environ.get("APP_ENV", "").strip().lower() == "development":
+            address = getattr(self, "client_address", None)
+            raw_ip = address[0] if isinstance(address, tuple) and address else None
+        else:
+            return None
+        if not isinstance(raw_ip, str) or not raw_ip or raw_ip != raw_ip.strip() or "%" in raw_ip:
+            return None
+        try:
+            return str(ipaddress.ip_address(raw_ip))
+        except ValueError:
+            return None
     def handle_admin_login(self):
         if self.headers.get("Content-Type", "").split(";", 1)[0].strip().lower() != "application/json":
             return self.send_json({"ok": False}, 415)
@@ -250,17 +268,37 @@ class Handler(BaseHTTPRequestHandler):
             return self.send_json({"ok": False}, 400)
         if not isinstance(payload, dict) or not isinstance(payload.get("password"), str):
             return self.send_json({"ok": False}, 400)
+        ip_address = self.admin_login_client_ip()
+        if ip_address is None:
+            return self.send_json({"ok": False}, 401)
         configured_password = os.environ.get("ADMIN_PASSWORD")
         if not configured_password:
             return self.send_json({"ok": False}, 401)
+        try:
+            if database.is_admin_login_ip_locked(ip_address):
+                return self.send_json({"ok": False}, 401)
+        except Exception:
+            return self.send_json({"ok": False}, 503)
         if not hmac.compare_digest(payload["password"].encode("utf-8"), configured_password.encode("utf-8")):
+            try:
+                database.record_admin_login_failure(ip_address)
+            except Exception:
+                return self.send_json({"ok": False}, 503)
             return self.send_json({"ok": False}, 401)
+        try:
+            database.reset_admin_login_failures(ip_address)
+        except Exception:
+            return self.send_json({"ok": False}, 503)
         token = secrets.token_urlsafe(32)
         expires_at = datetime.now(timezone.utc) + timedelta(seconds=ADMIN_SESSION_MAX_AGE)
         try:
             database.create_admin_session(token, expires_at)
         except Exception:
             return self.send_json({"ok": False}, 503)
+        try:
+            database.cleanup_admin_login_limits()
+        except Exception:
+            pass
         return self.send_json(
             {"ok": True},
             extra_headers={"Set-Cookie": admin_session_cookie(token)},
