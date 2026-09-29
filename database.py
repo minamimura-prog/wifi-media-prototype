@@ -1,6 +1,6 @@
 """PostgreSQL persistence for the prototype's existing JSON-shaped state API."""
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import hashlib
 import json
 import os
@@ -16,6 +16,10 @@ SCHEMA = BASE / "db_schema.sql"
 DATABASE_URL = os.environ.get("DATABASE_URL", "").strip()
 
 _pool = None
+
+ADMIN_LOGIN_FAILURE_WINDOW = timedelta(minutes=15)
+ADMIN_LOGIN_MAX_FAILURES = 10
+ADMIN_LOGIN_LOCK_DURATION = timedelta(minutes=15)
 
 
 def database_enabled():
@@ -108,6 +112,93 @@ def cleanup_expired_admin_sessions():
     with pool().connection() as conn:
         result = conn.execute(
             "DELETE FROM admin_sessions WHERE expires_at <= CURRENT_TIMESTAMP"
+        )
+    return result.rowcount
+
+
+
+def _require_postgres_for_admin_login_limits():
+    if not database_enabled():
+        raise RuntimeError("Admin login limits require PostgreSQL; JSON fallback is not supported")
+
+
+def is_admin_login_ip_locked(ip_address):
+    """Return whether a validated IP address currently has an active login lock."""
+    _require_postgres_for_admin_login_limits()
+    with pool().connection() as conn:
+        row = conn.execute(
+            "SELECT locked_until > CURRENT_TIMESTAMP AS is_locked "
+            "FROM admin_login_limits WHERE ip_address = %s::inet",
+            (ip_address,),
+        ).fetchone()
+    return bool(row and row["is_locked"])
+
+
+def record_admin_login_failure(ip_address):
+    """Atomically record a failure and return its count and current lock state."""
+    _require_postgres_for_admin_login_limits()
+    with pool().connection() as conn:
+        row = conn.execute(
+            "INSERT INTO admin_login_limits "
+            "(ip_address, failure_count, window_started_at, locked_until, updated_at) "
+            "VALUES (%s::inet, 1, CURRENT_TIMESTAMP, NULL, CURRENT_TIMESTAMP) "
+            "ON CONFLICT (ip_address) DO UPDATE SET "
+            "failure_count = CASE "
+            "WHEN admin_login_limits.locked_until > CURRENT_TIMESTAMP "
+            "THEN admin_login_limits.failure_count "
+            "WHEN admin_login_limits.window_started_at <= CURRENT_TIMESTAMP - %s "
+            "THEN 1 ELSE admin_login_limits.failure_count + 1 END, "
+            "window_started_at = CASE "
+            "WHEN admin_login_limits.locked_until > CURRENT_TIMESTAMP "
+            "THEN admin_login_limits.window_started_at "
+            "WHEN admin_login_limits.window_started_at <= CURRENT_TIMESTAMP - %s "
+            "THEN CURRENT_TIMESTAMP ELSE admin_login_limits.window_started_at END, "
+            "locked_until = CASE "
+            "WHEN admin_login_limits.locked_until > CURRENT_TIMESTAMP "
+            "THEN admin_login_limits.locked_until "
+            "WHEN admin_login_limits.window_started_at <= CURRENT_TIMESTAMP - %s "
+            "THEN CASE WHEN 1 >= %s THEN CURRENT_TIMESTAMP + %s ELSE NULL END "
+            "WHEN admin_login_limits.failure_count + 1 >= %s "
+            "THEN CURRENT_TIMESTAMP + %s ELSE NULL END, "
+            "updated_at = CURRENT_TIMESTAMP "
+            "RETURNING failure_count, locked_until > CURRENT_TIMESTAMP AS is_locked",
+            (
+                ip_address,
+                ADMIN_LOGIN_FAILURE_WINDOW,
+                ADMIN_LOGIN_FAILURE_WINDOW,
+                ADMIN_LOGIN_FAILURE_WINDOW,
+                ADMIN_LOGIN_MAX_FAILURES,
+                ADMIN_LOGIN_LOCK_DURATION,
+                ADMIN_LOGIN_MAX_FAILURES,
+                ADMIN_LOGIN_LOCK_DURATION,
+            ),
+        ).fetchone()
+    return {
+        "failure_count": row["failure_count"],
+        "is_locked": bool(row["is_locked"]),
+    }
+
+
+def reset_admin_login_failures(ip_address):
+    """Remove the supplied IP's login-failure and lock state after success."""
+    _require_postgres_for_admin_login_limits()
+    with pool().connection() as conn:
+        result = conn.execute(
+            "DELETE FROM admin_login_limits WHERE ip_address = %s::inet",
+            (ip_address,),
+        )
+    return result.rowcount > 0
+
+
+def cleanup_admin_login_limits():
+    """Delete inactive rows after their failure window and any lock have expired."""
+    _require_postgres_for_admin_login_limits()
+    with pool().connection() as conn:
+        result = conn.execute(
+            "DELETE FROM admin_login_limits "
+            "WHERE updated_at <= CURRENT_TIMESTAMP - %s "
+            "AND (locked_until IS NULL OR locked_until <= CURRENT_TIMESTAMP)",
+            (ADMIN_LOGIN_FAILURE_WINDOW,),
         )
     return result.rowcount
 

@@ -105,3 +105,15 @@ CREATE INDEX IF NOT EXISTS coupons_ad_idx ON coupons (ad_id);
 CREATE INDEX IF NOT EXISTS coupon_events_occurred_at_idx ON coupon_events (occurred_at DESC);
 CREATE INDEX IF NOT EXISTS coupon_events_coupon_time_idx ON coupon_events (coupon_id, occurred_at DESC);
 CREATE INDEX IF NOT EXISTS admin_sessions_expires_at_idx ON admin_sessions (expires_at);
+
+CREATE TABLE IF NOT EXISTS admin_login_limits (
+    ip_address INET PRIMARY KEY,
+    failure_count INTEGER NOT NULL DEFAULT 0 CHECK (failure_count >= 0),
+    window_started_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    locked_until TIMESTAMPTZ,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS admin_login_limits_updated_at_idx ON admin_login_limits (updated_at);
+CREATE INDEX IF NOT EXISTS admin_login_limits_locked_until_idx ON admin_login_limits (locked_until)
+    WHERE locked_until IS NOT NULL;
