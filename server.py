@@ -1,12 +1,13 @@
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 from http.cookies import SimpleCookie
 from email.parser import BytesParser
 from email.policy import default
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 import ipaddress
 import hmac, json, os, secrets, uuid, mimetypes, threading
+import re
 import database
 import migrate_to_postgres
 
@@ -20,6 +21,10 @@ LOCK = threading.Lock()
 COUPON_EVENT_TYPES = {"view", "copy", "redeem"}
 ADMIN_SESSION_COOKIE = "wifi_media_admin_session"
 ADMIN_SESSION_MAX_AGE = 24 * 60 * 60
+PUBLIC_CODE_PATTERN = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
+# The database CHECK constrains the format but not length. Keep a practical
+# HTTP input bound while accepting manually assigned valid public codes.
+PUBLIC_CODE_MAX_LENGTH = 128
 
 def admin_development_mode():
     """Allow HTTP cookies only when both development switches are explicit."""
@@ -113,6 +118,63 @@ def public_config():
             "title", "body", "link", "media", "store", "id",
         )},
     }
+
+def _campaign_date(value):
+    """Parse a PostgreSQL DATE or ISO date string without timezone conversion."""
+    if value is None:
+        return None, True
+    if isinstance(value, datetime):
+        return value.date(), True
+    if isinstance(value, date):
+        return value, True
+    if isinstance(value, str):
+        if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", value):
+            return None, False
+        try:
+            return date.fromisoformat(value), True
+        except ValueError:
+            return None, False
+    return None, False
+
+def _campaign_is_deliverable(campaign, today):
+    if campaign.get("campaign_status") != "active" or campaign.get("published") is not True:
+        return False
+    starts_on, valid_start = _campaign_date(campaign.get("starts_on"))
+    ends_on, valid_end = _campaign_date(campaign.get("ends_on"))
+    if not valid_start or not valid_end:
+        return False
+    return (starts_on is None or starts_on <= today) and (ends_on is None or today <= ends_on)
+
+def public_config_for_store(public_code):
+    """Build public config for one PostgreSQL-resolved store, without global ad fallback."""
+    store = database.get_store_by_public_code(public_code)
+    if not store:
+        return None
+
+    # Reuse the established global design settings; only replace its ad with a
+    # campaign assigned through campaign_stores for this exact store.
+    result = public_config()
+    # Campaign columns are DATE values; use the current service market's date.
+    # This can later be replaced with a store-specific timezone.
+    today = datetime.now(ZoneInfo("Asia/Tokyo")).date()
+    campaigns = database.get_campaigns_for_store(store["id"])
+    eligible = [item for item in campaigns if _campaign_is_deliverable(item, today)]
+    if len(eligible) != 1:
+        result["ad"] = None
+        return result
+
+    campaign = eligible[0]
+    result["ad"] = {
+        "title": campaign.get("title"),
+        "body": campaign.get("body"),
+        "link": campaign.get("landing_url"),
+        "media": campaign.get("media_url"),
+        "store": store.get("name") or "未設定",
+        "id": campaign.get("ad_id"),
+        # Public opaque identifier used only to validate event attribution.
+        "campaignId": campaign.get("campaign_id"),
+    }
+    return result
 
 def delete_draft_coupon(coupon_id):
     """Delete only a draft coupon; coupon_events remain available as history."""
@@ -324,8 +386,28 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send_bytes(b"", 302, "text/plain; charset=utf-8", {"Location": "/admin/login"})
             return self.serve_file("admin.html")
         if path == "/api/public-config":
-            try: return self.send_json(public_config())
-            except Exception as e: return self.send_json({"error": str(e)}, 500)
+            try:
+                query = parse_qs(urlparse(self.path).query, keep_blank_values=True, max_num_fields=100)
+            except ValueError:
+                return self.send_json({"ok": False, "error": "invalid_request"}, 400)
+            if "store" not in query:
+                try: return self.send_json(public_config())
+                except Exception as e: return self.send_json({"error": str(e)}, 500)
+
+            store_values = query["store"]
+            if (len(store_values) != 1 or not store_values[0]
+                    or len(store_values[0]) > PUBLIC_CODE_MAX_LENGTH
+                    or not PUBLIC_CODE_PATTERN.fullmatch(store_values[0])):
+                return self.send_json({"ok": False, "error": "invalid_store"}, 400)
+            if not database.database_enabled():
+                return self.send_json({"ok": False, "error": "store_delivery_unavailable"}, 503)
+            try:
+                config = public_config_for_store(store_values[0])
+            except Exception:
+                return self.send_json({"ok": False, "error": "store_delivery_unavailable"}, 503)
+            if config is None:
+                return self.send_json({"ok": False, "error": "store_not_found"}, 404)
+            return self.send_json(config)
         if path == "/api/coupons":
             try: return self.send_json({"coupons": list_available_coupons()})
             except Exception as e: return self.send_json({"error": str(e)}, 500)
@@ -400,6 +482,29 @@ class Handler(BaseHTTPRequestHandler):
                 body = self.read_body(); payload = json.loads(body.decode("utf-8"))
                 event_type = payload.get("type")
                 if event_type not in {"impression", "click"}: return self.send_json({"error":"invalid event"}, 400)
+                has_store_context = "storeCode" in payload or "campaignId" in payload
+                if has_store_context:
+                    store_code = payload.get("storeCode")
+                    campaign_id = payload.get("campaignId")
+                    ad_id = payload.get("adId")
+                    if (not isinstance(store_code, str)
+                            or len(store_code) > PUBLIC_CODE_MAX_LENGTH
+                            or not PUBLIC_CODE_PATTERN.fullmatch(store_code)
+                            or not isinstance(campaign_id, str) or not campaign_id or len(campaign_id) > 512
+                            or not isinstance(ad_id, str) or not ad_id or len(ad_id) > 512):
+                        return self.send_json({"error":"invalid event"}, 400)
+                    if not database.database_enabled():
+                        return self.send_json({"error":"event unavailable"}, 503)
+                    try:
+                        recorded = database.record_store_ad_event(
+                            event_type, store_code, campaign_id, ad_id,
+                            delivery_date=datetime.now(ZoneInfo("Asia/Tokyo")).date(),
+                        )
+                    except Exception:
+                        return self.send_json({"error":"event unavailable"}, 503)
+                    if not recorded:
+                        return self.send_json({"error":"invalid event"}, 400)
+                    return self.send_json({"ok": True})
                 record_event(event_type, payload.get("store", ""), payload.get("adId", "main"))
                 return self.send_json({"ok": True})
             except Exception as e: return self.send_json({"error": str(e)}, 400)

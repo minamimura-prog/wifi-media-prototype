@@ -1,6 +1,6 @@
 """PostgreSQL persistence for the prototype's existing JSON-shaped state API."""
 
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 import hashlib
 import json
 import os
@@ -561,6 +561,39 @@ def record_event(event_type, store_name, ad_id="main", occurred_at=None):
                 (event_type, store["id"] if store else None, store_name or "未設定", ad_id,
                  campaign["id"] if campaign else None, occurred_at),
             )
+
+
+def record_store_ad_event(event_type, public_code, campaign_id, ad_id, delivery_date):
+    """Record a store delivery event only for the exact active assignment.
+
+    The public code, campaign ID, and ad ID are untrusted request values. An
+    INSERT ... SELECT verifies their complete relationship atomically through
+    campaign_stores; ads.store_id is deliberately not consulted.
+    """
+    if event_type not in {"impression", "click"}:
+        raise ValueError("invalid event type")
+    if not isinstance(delivery_date, date) or isinstance(delivery_date, datetime):
+        raise ValueError("delivery_date must be a date")
+    occurred_at = datetime.now(timezone.utc)
+    with pool().connection() as conn:
+        with conn.transaction():
+            row = conn.execute(
+                "INSERT INTO ad_events "
+                "(event_type, store_id, store_name, ad_id, campaign_id, occurred_at) "
+                "SELECT %s, s.id, s.name, a.id, c.id, %s "
+                "FROM stores s "
+                "JOIN campaign_stores cs ON cs.store_id = s.id "
+                "JOIN campaigns c ON c.id = cs.campaign_id "
+                "JOIN ads a ON a.id = c.ad_id "
+                "WHERE s.public_code = %s AND c.id = %s AND a.id = %s "
+                "AND c.status = 'active' AND a.published IS TRUE "
+                "AND (c.starts_on IS NULL OR c.starts_on <= %s) "
+                "AND (c.ends_on IS NULL OR c.ends_on >= %s) "
+                "RETURNING id",
+                (event_type, occurred_at, public_code, campaign_id, ad_id,
+                 delivery_date, delivery_date),
+            ).fetchone()
+    return row is not None
 
 
 def record_coupon_event(event):
