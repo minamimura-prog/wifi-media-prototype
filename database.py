@@ -304,7 +304,7 @@ def get_store_by_id(store_id):
 
 
 def get_campaigns_for_store(store_id):
-    """Return campaigns assigned through campaign_stores, with schedule and ad data."""
+    """Return store-delivery candidates, excluding the reserved global campaign."""
     if store_id is None:
         return []
     with pool().connection() as conn:
@@ -315,9 +315,9 @@ def get_campaigns_for_store(store_id):
             "FROM campaign_stores cs "
             "JOIN campaigns c ON c.id = cs.campaign_id "
             "JOIN ads a ON a.id = c.ad_id "
-            "WHERE cs.store_id = %s "
+            "WHERE cs.store_id = %s AND c.id <> %s "
             "ORDER BY c.created_at, c.id",
-            (str(store_id),),
+            (str(store_id), "default"),
         ).fetchall()
     return [dict(row) for row in rows]
 
@@ -331,8 +331,11 @@ def load_state():
         ad = conn.execute(
             "SELECT a.id, a.store_id, a.title, a.body, a.landing_url, a.media_url, "
             "a.starts_on, a.ends_on, a.published, s.name AS store_name "
-            "FROM ads a LEFT JOIN stores s ON s.id = a.store_id "
-            "ORDER BY a.updated_at DESC, a.id LIMIT 1"
+            "FROM campaigns c "
+            "JOIN ads a ON a.id = c.ad_id "
+            "LEFT JOIN stores s ON s.id = a.store_id "
+            "WHERE c.id = %s",
+            ("default",),
         ).fetchone()
         global_settings = conn.execute(
             "SELECT settings FROM store_settings WHERE id = 'global'"
@@ -586,11 +589,12 @@ def record_store_ad_event(event_type, public_code, campaign_id, ad_id, delivery_
                 "JOIN campaigns c ON c.id = cs.campaign_id "
                 "JOIN ads a ON a.id = c.ad_id "
                 "WHERE s.public_code = %s AND c.id = %s AND a.id = %s "
+                "AND c.id <> %s "
                 "AND c.status = 'active' AND a.published IS TRUE "
                 "AND (c.starts_on IS NULL OR c.starts_on <= %s) "
                 "AND (c.ends_on IS NULL OR c.ends_on >= %s) "
                 "RETURNING id",
-                (event_type, occurred_at, public_code, campaign_id, ad_id,
+                (event_type, occurred_at, public_code, campaign_id, ad_id, "default",
                  delivery_date, delivery_date),
             ).fetchone()
     return row is not None
