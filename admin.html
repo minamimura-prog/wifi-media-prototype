@@ -767,6 +767,7 @@ input:focus, textarea:focus, select:focus {
 .store-campaign-status.is-period-error{color:#ffb4b4}
 </style></head><body><div class="app"><aside class="side"><div class="logo">Wi-Fi MEDIA<small>広告・店舗・効果測定</small></div><div class="nav active" data-page="dashboard" onclick="navigateTo('dashboard')">ダッシュボード</div><div class="nav" data-page="ads" onclick="navigateTo('ads')">広告管理</div><div class="nav" data-page="stores" onclick="navigateTo('stores')">店舗管理</div><div class="nav" data-page="analytics" onclick="navigateTo('analytics')">効果測定</div><div class="nav" data-page="coupons" onclick="navigateTo('coupons')">クーポン管理</div><div class="nav" data-page="design" onclick="navigateTo('design')">Webデザイン</div><div class="side-logout"><button class="logout-button" id="logout-button" type="button" onclick="logout()">LOGOUT</button></div></aside><main class="main" id="main"></main></div><div class="modalbg" id="modal"><div class="modal"><button class="close" onclick="closeModal()">閉じる</button><h2 id="modalTitle">編集</h2><div id="modalBody"></div></div></div><script>let S=null;
 let adTarget='global', adStores=null, adStoreId=null, adCampaigns=[], selectedCampaignId=null, adCampaign=null, adCreatingNew=false, adCampaignCount=0, adStoreLoading=false, adStoreError='', adStoreRequestSeq=0, adStoresLoading=false, adStoresRequestSeq=0, adSaving=false, adSaveError='';
+let adCreateIdempotencyKey=null, adCreateAttempt=null, adCreateUncertain=false, adCreateBlocked=false, adCreateStoreId=null;
 async function apiFetch(url, options){
   const response=await window.fetch(url, options);
   if(response.status===401){
@@ -775,8 +776,9 @@ async function apiFetch(url, options){
   }
   return response;
 }
-const PAGE_RENDERERS={dashboard:()=>dashboard(),ads:()=>ads(),stores:()=>stores(),analytics:()=>reports(),coupons:()=>couponManager(),design:()=>design()};function setActivePage(page){document.querySelectorAll('.side .nav').forEach(item=>item.classList.toggle('active',item.dataset.page===page))}function resolvePage(){const page=location.hash.slice(1);if(Object.prototype.hasOwnProperty.call(PAGE_RENDERERS,page))return page;history.replaceState(null,'',location.pathname+location.search+'#dashboard');return 'dashboard'}function renderCurrentPage(){if(!S)return;const page=resolvePage();setActivePage(page);PAGE_RENDERERS[page]()}function navigateTo(page){if(!Object.prototype.hasOwnProperty.call(PAGE_RENDERERS,page))return;if(location.hash==='#'+page){renderCurrentPage();return}location.hash=page}window.addEventListener('hashchange',()=>{if(S)renderCurrentPage()});async function load(){S=await apiFetch('/api/state').then(r=>r.json());renderCurrentPage()}async function save(){await apiFetch('/api/state',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(S)});await load();toast('保存しました')}function shell(t,s,c){document.getElementById('main').innerHTML=`<div class="pagehead"><div><h1>${t}</h1><div class="sub">${s}</div></div></div>${c}`}async function dashboard(){const a=await apiFetch('/api/analytics').then(r=>r.json());if(location.hash!=='#dashboard')return;shell('<span class="dashboard-title">Dashboard</span><span class="dashboard-title-ja">ダッシュボード</span>','Wi-Fi接続・広告配信・店舗状況をまとめて確認できます.',`<div class="dashboard-view"><div class="dashboard-system-status"><div><div class="dashboard-console-name">Wi-Fi MEDIA Admin Console</div><div class="dashboard-console-message">Connected. All systems operational.</div></div><span class="dashboard-online"><i></i> ONLINE</span></div><div class="grid"><div class="card dashboard-metric-card dashboard-store-card"><div class="label">登録店舗</div><div class="metric store">${S.stores.length}</div></div><div class="card dashboard-metric-card dashboard-connection-card"><div class="label">今月の接続</div><div class="metric connection">${a.impressions.toLocaleString()}</div></div><div class="card dashboard-metric-card dashboard-click-card"><div class="label">広告クリック</div><div class="metric click">${a.clicks.toLocaleString()}</div></div><div class="card dashboard-metric-card dashboard-ctr-card"><div class="label">CTR</div><div class="metric ctr">${a.ctr}%</div></div></div><div class="layout"><section class="card dashboard-delivery-card"><div class="section dashboard-delivery-section"><span class="dashboard-terminal-label">STORE DELIVERY STATUS</span><span>店舗別 配信状況</span></div><table class="dashboard-data-table"><thead><tr><th>店舗</th><th>広告</th><th>接続</th><th>状態</th><th></th></tr></thead><tbody>${S.stores.map((x,i)=>`<tr><td><b>${x.name}</b><br><small>${x.type}</small></td><td>${S.ad.title}</td><td>${x.users.toLocaleString()}</td><td><span class="badge ${x.status==='停止中'?'off':''}">${x.status}</span></td><td><button class="secondary" onclick="editStore(${i})">編集</button></td></tr>`).join('')}</tbody></table></section><section class="card dashboard-preview-card"><div class="dashboard-preview-head"><div><span class="dashboard-terminal-label">LIVE PREVIEW</span><div class="section">Webページ プレビュー</div></div><span class="dashboard-connected"><i></i> CONNECTED</span></div><div class="phonewrap dashboard-crt-frame"><div class="phone"><iframe src="/?preview=1" title="preview"></iframe></div></div><div class="dashboard-preview-footer"><span>SCANLINE MODE : ON</span><span class="dashboard-signal"><i></i><i></i><i></i></span></div></section></div></div>`)}function ads(){
-  adTarget='global';adStoreId=null;adCampaigns=[];selectedCampaignId=null;adCampaign=null;adCreatingNew=false;adCampaignCount=0;adStoreLoading=false;adStoreError='';adSaveError='';adStoreRequestSeq++;
+const PAGE_RENDERERS={dashboard:()=>dashboard(),ads:()=>ads(),stores:()=>stores(),analytics:()=>reports(),coupons:()=>couponManager(),design:()=>design()};function setActivePage(page){document.querySelectorAll('.side .nav').forEach(item=>item.classList.toggle('active',item.dataset.page===page))}function resolvePage(){const page=location.hash.slice(1);if(Object.prototype.hasOwnProperty.call(PAGE_RENDERERS,page))return page;history.replaceState(null,'',location.pathname+location.search+'#dashboard');return 'dashboard'}function renderCurrentPage(){if(!S)return;const page=resolvePage();setActivePage(page);PAGE_RENDERERS[page]()}function navigateTo(page){if(adSaving&&adTarget==='store'&&adCreatingNew)return;if(!Object.prototype.hasOwnProperty.call(PAGE_RENDERERS,page))return;if(location.hash==='#'+page){renderCurrentPage();return}location.hash=page}window.addEventListener('hashchange',()=>{if(adSaving&&adTarget==='store'&&adCreatingNew){history.replaceState(null,'',location.pathname+location.search+'#ads');return}if(S)renderCurrentPage()});async function load(){S=await apiFetch('/api/state').then(r=>r.json());renderCurrentPage()}async function save(){await apiFetch('/api/state',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(S)});await load();toast('保存しました')}function shell(t,s,c){document.getElementById('main').innerHTML=`<div class="pagehead"><div><h1>${t}</h1><div class="sub">${s}</div></div></div>${c}`}async function dashboard(){const a=await apiFetch('/api/analytics').then(r=>r.json());if(location.hash!=='#dashboard')return;shell('<span class="dashboard-title">Dashboard</span><span class="dashboard-title-ja">ダッシュボード</span>','Wi-Fi接続・広告配信・店舗状況をまとめて確認できます.',`<div class="dashboard-view"><div class="dashboard-system-status"><div><div class="dashboard-console-name">Wi-Fi MEDIA Admin Console</div><div class="dashboard-console-message">Connected. All systems operational.</div></div><span class="dashboard-online"><i></i> ONLINE</span></div><div class="grid"><div class="card dashboard-metric-card dashboard-store-card"><div class="label">登録店舗</div><div class="metric store">${S.stores.length}</div></div><div class="card dashboard-metric-card dashboard-connection-card"><div class="label">今月の接続</div><div class="metric connection">${a.impressions.toLocaleString()}</div></div><div class="card dashboard-metric-card dashboard-click-card"><div class="label">広告クリック</div><div class="metric click">${a.clicks.toLocaleString()}</div></div><div class="card dashboard-metric-card dashboard-ctr-card"><div class="label">CTR</div><div class="metric ctr">${a.ctr}%</div></div></div><div class="layout"><section class="card dashboard-delivery-card"><div class="section dashboard-delivery-section"><span class="dashboard-terminal-label">STORE DELIVERY STATUS</span><span>店舗別 配信状況</span></div><table class="dashboard-data-table"><thead><tr><th>店舗</th><th>広告</th><th>接続</th><th>状態</th><th></th></tr></thead><tbody>${S.stores.map((x,i)=>`<tr><td><b>${x.name}</b><br><small>${x.type}</small></td><td>${S.ad.title}</td><td>${x.users.toLocaleString()}</td><td><span class="badge ${x.status==='停止中'?'off':''}">${x.status}</span></td><td><button class="secondary" onclick="editStore(${i})">編集</button></td></tr>`).join('')}</tbody></table></section><section class="card dashboard-preview-card"><div class="dashboard-preview-head"><div><span class="dashboard-terminal-label">LIVE PREVIEW</span><div class="section">Webページ プレビュー</div></div><span class="dashboard-connected"><i></i> CONNECTED</span></div><div class="phonewrap dashboard-crt-frame"><div class="phone"><iframe src="/?preview=1" title="preview"></iframe></div></div><div class="dashboard-preview-footer"><span>SCANLINE MODE : ON</span><span class="dashboard-signal"><i></i><i></i><i></i></span></div></section></div></div>`)}function ads(){
+  if(adCreatingNew&&adCreateUncertain&&adCreateStoreId){adTarget='store';adStoreId=adCreateStoreId;adStoreLoading=false;adStoreError='';adSaveError=adSaveError||'前回の保存結果を確認できません。同じ内容で再試行するか、画面を再読み込みして登録状況を確認してください。';renderAds();return;}
+  resetAdCreateIdempotency();adTarget='global';adStoreId=null;adCampaigns=[];selectedCampaignId=null;adCampaign=null;adCreatingNew=false;adCampaignCount=0;adStoreLoading=false;adStoreError='';adSaveError='';adStoreRequestSeq++;
   renderAds();loadAdStores();
 }
 function resolveStoreCampaignSelection(campaigns, preferredId){
@@ -788,14 +790,44 @@ function applyStoreCampaigns(campaigns, preferredId){
   const selection=resolveStoreCampaignSelection(campaigns,preferredId);
   adCampaigns=selection.campaigns;selectedCampaignId=selection.selectedCampaignId;adCampaignCount=adCampaigns.length;adCampaign=selection.campaign;
 }
+function secureAdCreateKey(){
+  const cryptoApi=window.crypto;
+  try{
+    if(typeof cryptoApi?.randomUUID==='function')return cryptoApi.randomUUID();
+    if(typeof cryptoApi?.getRandomValues==='function'){
+      const bytes=cryptoApi.getRandomValues(new Uint8Array(16));
+      return Array.from(bytes,value=>value.toString(16).padStart(2,'0')).join('');
+    }
+  }catch(_){return null;}
+  return null;
+}
+function resetAdCreateIdempotency(){
+  adCreateIdempotencyKey=null;adCreateAttempt=null;adCreateUncertain=false;adCreateBlocked=false;adCreateStoreId=null;
+}
+function beginAdCreateIdempotency(storeId){
+  const key=secureAdCreateKey();
+  if(!key)return false;
+  adCreateIdempotencyKey=key;adCreateAttempt=null;adCreateUncertain=false;adCreateBlocked=false;adCreateStoreId=String(storeId);
+  return true;
+}
+function rotateAdCreateIdempotency(storeId){
+  const key=secureAdCreateKey();
+  if(!key){adCreateIdempotencyKey=null;adCreateAttempt=null;adCreateUncertain=false;adCreateBlocked=true;adCreateStoreId=String(storeId);return false;}
+  adCreateIdempotencyKey=key;adCreateAttempt=null;adCreateUncertain=false;adCreateBlocked=false;adCreateStoreId=String(storeId);return true;
+}
+function adCreateFormFingerprint(storeId,values){
+  return JSON.stringify({storeId:String(storeId),title:values.title,body:values.body,startsOn:values.startsOn,endsOn:values.endsOn,landingUrl:values.landingUrl,publication:values.publication});
+}
 function selectStoreCampaign(campaignId){
   if(adTarget!=='store'||adSaving||adStoreLoading)return;
+  if(adCreatingNew&&adCreateUncertain){setAdSaveFeedback('前回の保存結果が未確定です。同じ内容で再試行するか、画面を再読み込みして登録状況を確認してください。');return;}
   const selected=adCampaigns.find(item=>item.campaignId===campaignId);
   if(!selected)return;
-  adCreatingNew=false;selectedCampaignId=selected.campaignId;adCampaign=selected;adSaveError='';renderAds();
+  resetAdCreateIdempotency();adCreatingNew=false;selectedCampaignId=selected.campaignId;adCampaign=selected;adSaveError='';renderAds();
 }
 function startNewStoreAd(){
   if(adTarget!=='store'||adSaving||adStoreLoading||adStoreError||adCreatingNew)return;
+  if(!beginAdCreateIdempotency(adStoreId)){setAdSaveFeedback('安全な保存キーを生成できません。対応ブラウザで再度お試しください。');return;}
   adCreatingNew=true;selectedCampaignId=null;adCampaign=null;adSaveError='';renderAds();
 }
 function displayCampaignDate(value){
@@ -836,11 +868,11 @@ function renderAds(){
   const selectedCampaign=selectedCampaignId===null?null:adCampaigns.find(item=>item.campaignId===selectedCampaignId)||null;
   adCampaign=selectedCampaign;
   const campaign=adCampaign||{};
-  const formData=isGlobal?{title:S.ad.title,body:S.ad.body,start:S.ad.start,end:S.ad.end,link:S.ad.link,media:S.ad.media}:adCreatingNew?{}:campaign;
+  const formData=isGlobal?{title:S.ad.title,body:S.ad.body,start:S.ad.start,end:S.ad.end,link:S.ad.link,media:S.ad.media}:adCreatingNew&&adCreateUncertain&&adCreateAttempt?{title:adCreateAttempt.payload.title,body:adCreateAttempt.payload.body,startsOn:adCreateAttempt.payload.startsOn,endsOn:adCreateAttempt.payload.endsOn,landingUrl:adCreateAttempt.payload.landingUrl}:adCreatingNew?{}:campaign;
   const lockStore=!isGlobal;
   const storeReadOnly=lockStore&&(adStoreLoading||!!adStoreError||(!adCreatingNew&&!selectedCampaignId));
-  const storeSaveLocked=storeReadOnly||(lockStore&&!adCreatingNew&&!selectedCampaignId);
-  const formDisabled=adSaving||storeReadOnly;
+  const storeSaveLocked=storeReadOnly||(lockStore&&!adCreatingNew&&!selectedCampaignId)||(lockStore&&adCreatingNew&&adCreateBlocked);
+  const formDisabled=adSaving||storeReadOnly||(lockStore&&adCreatingNew&&adCreateBlocked);
   let notice='';
   if(!isGlobal){
     if(adStoreLoading)notice='<div class="ad-store-notice" role="status">店舗広告を読み込んでいます…</div>';
@@ -859,10 +891,10 @@ function renderAds(){
   const globalStoreOptions=S.stores.map(x=>`<option value="${esc(x.name)}" ${isGlobal&&String(x.name)===String(S.ad.store)?'selected':''}>${esc(x.name)}</option>`).join('');
   const formStoreOptions=isGlobal?globalStoreOptions:(adStores||[]).map(x=>`<option value="${esc(x.name)}" ${String(x.id)===String(adStoreId)?'selected':''}>${esc(x.name)}</option>`).join('');
   const publicState=adCreatingNew?'draft':campaign.status==='active'&&campaign.published===true?'active':'draft';
-  const saveLabel=isGlobal?'保存して公開':adCreatingNew?'新しい広告を登録':selectedCampaignId?'店舗別広告を保存':'広告を選択してください';
-  const storeCampaignPanel=lockStore?`<section class="ad-store-campaigns" aria-label="店舗広告一覧"><div class="ad-store-campaigns-head"><strong>STORE ADS</strong><span>店舗広告一覧</span></div>${adStoreLoading?'<p class="sub">店舗広告を読み込んでいます…</p>':adStoreError?`<p class="ad-target-error" role="alert">${esc(adStoreError)}</p>`:adCampaigns.length===0?'<p class="sub">この店舗には広告がまだありません。</p>':`<div class="store-campaign-list">${adCampaigns.map(item=>{const status=storeCampaignStatus(item);return `<button type="button" class="store-campaign-row ${item.campaignId===selectedCampaignId&&!adCreatingNew?'is-selected':''}" data-store-campaign-id="${esc(item.campaignId)}" aria-pressed="${item.campaignId===selectedCampaignId&&!adCreatingNew?'true':'false'}" ${adSaving?'disabled':''}><span class="store-campaign-title">${esc(item.title||'無題の広告')}</span><span class="store-campaign-status ${status.className}">${status.label}</span><span class="store-campaign-period">${esc(displayCampaignPeriod(item))}</span></button>`}).join('')}</div>`}<button type="button" class="store-campaign-add" onclick="startNewStoreAd()" ${adSaving||adStoreLoading||!!adStoreError||adCreatingNew?'disabled':''}>＋ 新しい広告を追加</button><p class="store-campaign-preview-note">右側のプレビューは店舗の現在の公開状態を表示します。</p></section>`:'';
+  const saveLabel=isGlobal?'保存して公開':adCreatingNew&&adCreateBlocked?'再読み込みして登録状況を確認':adCreatingNew?'新しい広告を登録':selectedCampaignId?'店舗別広告を保存':'広告を選択してください';
+  const storeCampaignPanel=lockStore?`<section class="ad-store-campaigns" aria-label="店舗広告一覧"><div class="ad-store-campaigns-head"><strong>STORE ADS</strong><span>店舗広告一覧</span></div>${adStoreLoading?'<p class="sub">店舗広告を読み込んでいます…</p>':adStoreError?`<p class="ad-target-error" role="alert">${esc(adStoreError)}</p>`:adCampaigns.length===0?'<p class="sub">この店舗には広告がまだありません。</p>':`<div class="store-campaign-list">${adCampaigns.map(item=>{const status=storeCampaignStatus(item);return `<button type="button" class="store-campaign-row ${item.campaignId===selectedCampaignId&&!adCreatingNew?'is-selected':''}" data-store-campaign-id="${esc(item.campaignId)}" aria-pressed="${item.campaignId===selectedCampaignId&&!adCreatingNew?'true':'false'}" ${adSaving||(adCreatingNew&&adCreateUncertain)?'disabled':''}><span class="store-campaign-title">${esc(item.title||'無題の広告')}</span><span class="store-campaign-status ${status.className}">${status.label}</span><span class="store-campaign-period">${esc(displayCampaignPeriod(item))}</span></button>`}).join('')}</div>`}<button type="button" class="store-campaign-add" onclick="startNewStoreAd()" ${adSaving||adStoreLoading||!!adStoreError||adCreatingNew?'disabled':''}>＋ 新しい広告を追加</button><p class="store-campaign-preview-note">右側のプレビューは店舗の現在の公開状態を表示します。</p></section>`:'';
   shell('<span class="ad-title">AD MANAGEMENT</span><span class="ad-title-ja">広告管理</span>','広告内容・掲載期間・リンク・画像/GIFを管理します.',
-  `<div class="ad-management-view"><div class="ad-system-status"><div><div class="ad-console-name">AD DELIVERY CONTROL</div><div class="ad-console-message">Editing current advertisement configuration.</div></div><span class="ad-ready"><i></i> READY</span></div><div class="ad-target-row"><label for="adDeliveryTarget">配信対象</label><select id="adDeliveryTarget" onchange="changeAdTarget(this.value)" ${adStoresLoading||adSaving?'disabled':''}><option value="global" ${isGlobal?'selected':''}>全店舗共通</option>${storeOptions}</select></div><div class="layout ad-layout"><section class="card ad-panel ad-config-panel"><div class="section ad-panel-heading"><span class="ad-terminal-label">AD CONFIGURATION</span><span>${isGlobal?'現在の広告':`${esc(store?.name||'選択店舗')}の広告`}</span></div>${storeCampaignPanel}${notice}${lockStore?`<p id="adSaveFeedback" class="ad-store-notice ad-target-error" role="alert" ${adSaveError?'':'hidden'}>${esc(adSaveError)}</p>`:''}<div class="field"><label>店舗</label><select id="aStore" ${lockStore||adSaving?'disabled':''}>${formStoreOptions}</select></div><div class="field"><label>タイトル</label><input id="aTitle" maxlength="500" value="${esc(fieldValue('title'))}" ${formDisabled?'disabled':''}></div><div class="field"><label>本文</label><textarea id="aBody" maxlength="24000" ${formDisabled?'disabled':''}>${esc(fieldValue('body'))}</textarea></div><div class="twocol"><div class="field"><label>掲載開始</label><input id="aStart" type="date" value="${esc(fieldValue(isGlobal?'start':'startsOn'))}" ${formDisabled?'disabled':''}></div><div class="field"><label>掲載終了</label><input id="aEnd" type="date" value="${esc(fieldValue(isGlobal?'end':'endsOn'))}" ${formDisabled?'disabled':''}></div></div><div class="field"><label>「詳しく見る」のリンク先</label><input id="aLink" type="url" maxlength="4096" value="${esc(fieldValue(isGlobal?'link':'landingUrl'))}" placeholder="https://..." ${formDisabled?'disabled':''}></div>${lockStore?`<div class="field"><label for="adPublishState">公開状態</label><select id="adPublishState" ${formDisabled?'disabled':''}><option value="active" ${publicState==='active'?'selected':''}>公開中</option><option value="draft" ${publicState==='draft'?'selected':''}>非公開</option></select></div>`:''}<div class="field"><label>画像 / GIF</label><input id="aFile" type="file" accept=".gif,image/gif,image/png,image/jpeg,image/webp" ${formDisabled?'disabled':''}>${storeMediaReadout}<div class="previewbox ad-upload-note"><strong>MEDIA UPLOAD</strong><span>GIF / JPG / JPEG / PNG / WebP</span><small>GIFを選ぶとサーバーへアップロードし、公開ページのメインビジュアルとして表示できます。</small></div></div><div class="actions ad-actions"><button id="adSaveButton" class="ad-primary ${lockStore&&storeSaveLocked?'ad-store-disabled':''}" onclick="publishAd()" ${adSaving||storeSaveLocked?'disabled':''}>${adSaving?'保存中…':saveLabel}</button><button class="secondary ad-secondary" onclick="openAdPublicPage()" ${adSaving?'disabled':''}>公開ページを開く</button></div>${lockStore?'<p class="ad-store-notice">店舗別広告は保存すると選択店舗へ反映されます。</p>':''}</section><section class="card ad-panel ad-preview-panel"><div class="ad-preview-head"><div><span class="ad-terminal-label">LIVE AD PREVIEW</span><div class="section">広告プレビュー</div></div><span class="ad-connected"><i></i> CONNECTED</span></div><div class="phonewrap ad-crt-frame"><div class="phone ad-crt-phone"><iframe id="adPreviewFrame" src="${adPreviewUrl()}" title="preview"></iframe></div></div><div class="ad-preview-footer"><span>PREVIEW MODE : LIVE</span><span class="ad-signal"><i></i><i></i><i></i></span></div></section></div></div>`);
+  `<div class="ad-management-view"><div class="ad-system-status"><div><div class="ad-console-name">AD DELIVERY CONTROL</div><div class="ad-console-message">Editing current advertisement configuration.</div></div><span class="ad-ready"><i></i> READY</span></div><div class="ad-target-row"><label for="adDeliveryTarget">配信対象</label><select id="adDeliveryTarget" onchange="changeAdTarget(this.value)" ${adStoresLoading||adSaving||(adCreatingNew&&adCreateUncertain)?'disabled':''}><option value="global" ${isGlobal?'selected':''}>全店舗共通</option>${storeOptions}</select></div><div class="layout ad-layout"><section class="card ad-panel ad-config-panel"><div class="section ad-panel-heading"><span class="ad-terminal-label">AD CONFIGURATION</span><span>${isGlobal?'現在の広告':`${esc(store?.name||'選択店舗')}の広告`}</span></div>${storeCampaignPanel}${notice}${lockStore?`<p id="adSaveFeedback" class="ad-store-notice ad-target-error" role="alert" ${adSaveError?'':'hidden'}>${esc(adSaveError)}</p>`:''}<div class="field"><label>店舗</label><select id="aStore" ${lockStore||adSaving?'disabled':''}>${formStoreOptions}</select></div><div class="field"><label>タイトル</label><input id="aTitle" maxlength="500" value="${esc(fieldValue('title'))}" ${formDisabled?'disabled':''}></div><div class="field"><label>本文</label><textarea id="aBody" maxlength="24000" ${formDisabled?'disabled':''}>${esc(fieldValue('body'))}</textarea></div><div class="twocol"><div class="field"><label>掲載開始</label><input id="aStart" type="date" value="${esc(fieldValue(isGlobal?'start':'startsOn'))}" ${formDisabled?'disabled':''}></div><div class="field"><label>掲載終了</label><input id="aEnd" type="date" value="${esc(fieldValue(isGlobal?'end':'endsOn'))}" ${formDisabled?'disabled':''}></div></div><div class="field"><label>「詳しく見る」のリンク先</label><input id="aLink" type="url" maxlength="4096" value="${esc(fieldValue(isGlobal?'link':'landingUrl'))}" placeholder="https://..." ${formDisabled?'disabled':''}></div>${lockStore?`<div class="field"><label for="adPublishState">公開状態</label><select id="adPublishState" ${formDisabled?'disabled':''}><option value="active" ${publicState==='active'?'selected':''}>公開中</option><option value="draft" ${publicState==='draft'?'selected':''}>非公開</option></select></div>`:''}<div class="field"><label>画像 / GIF</label><input id="aFile" type="file" accept=".gif,image/gif,image/png,image/jpeg,image/webp" ${formDisabled||(adCreatingNew&&adCreateUncertain)?'disabled':''}>${storeMediaReadout}<div class="previewbox ad-upload-note"><strong>MEDIA UPLOAD</strong><span>GIF / JPG / JPEG / PNG / WebP</span><small>GIFを選ぶとサーバーへアップロードし、公開ページのメインビジュアルとして表示できます。</small></div></div><div class="actions ad-actions"><button id="adSaveButton" class="ad-primary ${lockStore&&storeSaveLocked?'ad-store-disabled':''}" onclick="publishAd()" ${adSaving||storeSaveLocked?'disabled':''}>${adSaving?'保存中…':saveLabel}</button><button class="secondary ad-secondary" onclick="openAdPublicPage()" ${adSaving?'disabled':''}>公開ページを開く</button></div>${lockStore?'<p class="ad-store-notice">店舗別広告は保存すると選択店舗へ反映されます。</p>':''}</section><section class="card ad-panel ad-preview-panel"><div class="ad-preview-head"><div><span class="ad-terminal-label">LIVE AD PREVIEW</span><div class="section">広告プレビュー</div></div><span class="ad-connected"><i></i> CONNECTED</span></div><div class="phonewrap ad-crt-frame"><div class="phone ad-crt-phone"><iframe id="adPreviewFrame" src="${adPreviewUrl()}" title="preview"></iframe></div></div><div class="ad-preview-footer"><span>PREVIEW MODE : LIVE</span><span class="ad-signal"><i></i><i></i><i></i></span></div></section></div></div>`);
   document.querySelectorAll('[data-store-campaign-id]').forEach(button=>button.addEventListener('click',()=>selectStoreCampaign(button.dataset.storeCampaignId)));
   if(adStoresLoading){const select=document.getElementById('adDeliveryTarget');if(select)select.innerHTML='<option value="global">全店舗共通</option><option value="" disabled selected>店舗一覧を読み込み中…</option>';}
 }
@@ -881,7 +913,7 @@ async function loadAdStores(){
     if(!Array.isArray(payload.stores))throw new Error('店舗一覧を読み込めませんでした。');
     adStores=payload.stores.filter(x=>x&&x.id!==undefined&&typeof x.name==='string'&&typeof x.publicCode==='string');
     if(adTarget==='store'&&!adStores.some(x=>String(x.id)===String(adStoreId))){
-      adStoreRequestSeq++;adTarget='global';adStoreId=null;adCampaigns=[];selectedCampaignId=null;adCampaign=null;adCreatingNew=false;adCampaignCount=0;adStoreLoading=false;adStoreError='';adSaveError='';
+      resetAdCreateIdempotency();adStoreRequestSeq++;adTarget='global';adStoreId=null;adCampaigns=[];selectedCampaignId=null;adCampaign=null;adCreatingNew=false;adCampaignCount=0;adStoreLoading=false;adStoreError='';adSaveError='';
     }
     adStoresLoading=false;renderAds();
   }catch(error){
@@ -891,13 +923,18 @@ async function loadAdStores(){
 }
 async function changeAdTarget(value){
   if(adSaving)return;
+  const requestedStoreId=value==='global'?null:String(value);
+  if(adTarget==='store'&&adCreatingNew&&adCreateUncertain&&String(adCreateStoreId)===String(adStoreId)){
+    if(requestedStoreId!==String(adStoreId)){adSaveError='前回の保存結果が未確定です。別店舗へ移動する前に、同じ内容で再試行するか画面を再読み込みして登録状況を確認してください。';renderAds();return;}
+    renderAds();return;
+  }
   const select=document.getElementById('adDeliveryTarget');
   if(value==='global'){
-    adStoreRequestSeq++;adTarget='global';adStoreId=null;adCampaigns=[];selectedCampaignId=null;adCampaign=null;adCreatingNew=false;adCampaignCount=0;adStoreLoading=false;adStoreError='';adSaveError='';renderAds();return;
+    resetAdCreateIdempotency();adStoreRequestSeq++;adTarget='global';adStoreId=null;adCampaigns=[];selectedCampaignId=null;adCampaign=null;adCreatingNew=false;adCampaignCount=0;adStoreLoading=false;adStoreError='';adSaveError='';renderAds();return;
   }
   const store=adStores?.find(x=>String(x.id)===String(value));
   if(!store){if(select)select.value='global';return;}
-  adTarget='store';adStoreId=String(store.id);adCampaigns=[];selectedCampaignId=null;adCampaign=null;adCreatingNew=false;adCampaignCount=0;adStoreLoading=true;adStoreError='';adSaveError='';
+  resetAdCreateIdempotency();adTarget='store';adStoreId=String(store.id);adCampaigns=[];selectedCampaignId=null;adCampaign=null;adCreatingNew=false;adCampaignCount=0;adStoreLoading=true;adStoreError='';adSaveError='';
   const seq=++adStoreRequestSeq;renderAds();
   try{
     const response=await apiFetch(`/api/admin/stores/${encodeURIComponent(store.id)}/campaigns`);
@@ -926,17 +963,17 @@ function updateAdSavingUI(){
   const button=document.getElementById('adSaveButton');
   const selector=document.getElementById('adDeliveryTarget');
   const publicPageButton=document.querySelector('.ad-secondary');
-  if(selector)selector.disabled=adSaving||adStoresLoading;
+  if(selector)selector.disabled=adSaving||adStoresLoading||(adCreatingNew&&adCreateUncertain);
   if(publicPageButton)publicPageButton.disabled=adSaving;
-  document.querySelectorAll('.store-campaign-row,.store-campaign-add').forEach(el=>{el.disabled=adSaving||el.classList.contains('store-campaign-add')&&(adStoreLoading||!!adStoreError);});
+  document.querySelectorAll('.store-campaign-row,.store-campaign-add').forEach(el=>{el.disabled=adSaving||(adCreatingNew&&adCreateUncertain)||el.classList.contains('store-campaign-add')&&(adStoreLoading||!!adStoreError);});
   if(button){
     const storeReadOnly=adTarget==='store'&&(adStoreLoading||!!adStoreError||(!adCreatingNew&&!selectedCampaignId));
-    button.disabled=adSaving||storeReadOnly;
-    button.textContent=adSaving?'保存中…':adTarget==='global'?'保存して公開':adCreatingNew?'新しい広告を登録':selectedCampaignId?'店舗別広告を保存':'広告を選択してください';
+    button.disabled=adSaving||storeReadOnly||(adCreatingNew&&adCreateBlocked);
+    button.textContent=adSaving?'保存中…':adTarget==='global'?'保存して公開':adCreatingNew&&adCreateBlocked?'再読み込みして確認':adCreatingNew?'新しい広告を登録':selectedCampaignId?'店舗別広告を保存':'広告を選択してください';
   }
   document.querySelectorAll('#aStore,#aTitle,#aBody,#aStart,#aEnd,#aLink,#aFile,#adPublishState').forEach(el=>{
     if(adTarget==='global')el.disabled=adSaving;
-    else el.disabled=adSaving||adStoreLoading||!!adStoreError||(!adCreatingNew&&!selectedCampaignId);
+    else el.disabled=adSaving||adStoreLoading||!!adStoreError||(!adCreatingNew&&!selectedCampaignId)||(adCreatingNew&&adCreateBlocked)||(el.id==='aFile'&&adCreatingNew&&adCreateUncertain);
   });
 }
 function reloadStoreAdPreview(){
@@ -980,50 +1017,85 @@ async function publishStoreAd(){
   const validation=validateStoreAd({title,startsOn,endsOn});if(validation){setAdSaveFeedback(validation);return;}
   const campaignId=isUpdate?selectedCampaignId:null;
   if(isUpdate&&(!adCampaign||adCampaign.campaignId!==campaignId)){setAdSaveFeedback('広告情報を確認できません。画面を再読み込みしてください。');return;}
+  if(isCreate&&(adCreateBlocked||!adCreateIdempotencyKey||String(adCreateStoreId)!==storeId)){
+    setAdSaveFeedback('保存状態を確認できません。画面を再読み込みして登録状況を確認してください。');return;
+  }
   const mediaInput=document.getElementById('aFile'),file=mediaInput?.files?.[0]||null;
+  const formValues={title,body,startsOn,endsOn,landingUrl,publication};
+  const formFingerprint=isCreate?adCreateFormFingerprint(storeId,formValues):null;
+  if(isCreate&&adCreateUncertain&&(!adCreateAttempt||adCreateAttempt.storeId!==storeId||adCreateAttempt.key!==adCreateIdempotencyKey||adCreateAttempt.formFingerprint!==formFingerprint)){
+    setAdSaveFeedback('前回の保存結果を確認できません。同じ内容で再試行するか、画面を再読み込みして登録状況を確認してください。内容を変更したまま再送することはできません。');return;
+  }
+  adSaveError='';setAdSaveFeedback('');adSaving=true;updateAdSavingUI();
+  let mutationSucceeded=false,mutationResult=null,postAttemptStarted=false;
   const operationSeq=++adStoreRequestSeq;
   const isCurrent=()=>adTarget==='store'&&String(adStoreId)===storeId&&adStoreRequestSeq===operationSeq&&location.hash==='#ads';
   const feedbackIfCurrent=message=>{if(isCurrent())setAdSaveFeedback(message);};
-  adSaveError='';setAdSaveFeedback('');adSaving=true;updateAdSavingUI();
-  let mutationSucceeded=false,mutationResult=null;
   const recoverSuccessfulMutation=message=>{
     if(!isCurrent())return;
     const recoveredCampaign=mutationResult?.campaign;
-    if(recoveredCampaign&&typeof recoveredCampaign.campaignId==='string'&&recoveredCampaign.campaignId){
-      applyStoreCampaigns([recoveredCampaign],recoveredCampaign.campaignId);adCreatingNew=false;adStoreError='';adStoreLoading=false;renderAds();reloadStoreAdPreview();
-    }else{applyStoreCampaigns([],null);adCreatingNew=false;selectedCampaignId=null;adCampaign=null;adStoreError='保存結果を確認できませんでした。再読み込みしてください。';adStoreLoading=false;renderAds();}
+    if(recoveredCampaign&&typeof recoveredCampaign.campaignId==='string'&&recoveredCampaign.campaignId){applyStoreCampaigns([recoveredCampaign],recoveredCampaign.campaignId);adCreatingNew=false;adStoreError='';adStoreLoading=false;renderAds();reloadStoreAdPreview();}
+    else{applyStoreCampaigns([],null);adCreatingNew=false;selectedCampaignId=null;adCampaign=null;adStoreError='保存結果を確認できませんでした。再読み込みしてください。';adStoreLoading=false;renderAds();}
     setAdSaveFeedback(message);
   };
   try{
-    let mediaUrl=isUpdate?(typeof adCampaign.mediaUrl==='string'?adCampaign.mediaUrl:''):'';
-    if(file){
-      const form=new FormData();form.append('file',file);
-      const upload=await apiFetch('/api/upload',{method:'POST',body:form});
-      if(!upload.ok){feedbackIfCurrent(storeSaveErrorMessage(upload.status));return;}
-      let uploadResult;try{uploadResult=await upload.json();}catch(_){feedbackIfCurrent('画像をアップロードできませんでした。');return;}
-      if(typeof uploadResult.url!=='string'||!uploadResult.url){feedbackIfCurrent('画像をアップロードできませんでした。');return;}
-      mediaUrl=uploadResult.url;
+    let payload;
+    if(isCreate&&adCreateUncertain){
+      payload=adCreateAttempt.payload;
+    }else{
+      let mediaUrl=isUpdate?(typeof adCampaign.mediaUrl==='string'?adCampaign.mediaUrl:''):'';
+      if(file){
+        const form=new FormData();form.append('file',file);
+        const upload=await apiFetch('/api/upload',{method:'POST',body:form});
+        if(!upload.ok){feedbackIfCurrent(storeSaveErrorMessage(upload.status));return;}
+        let uploadResult;try{uploadResult=await upload.json();}catch(_){feedbackIfCurrent('画像をアップロードできませんでした。');return;}
+        if(typeof uploadResult.url!=='string'||!uploadResult.url){feedbackIfCurrent('画像をアップロードできませんでした。');return;}
+        mediaUrl=uploadResult.url;
+      }
+      const published=publication==='active';
+      payload={
+        name:isUpdate&&typeof adCampaign.name==='string'&&adCampaign.name.trim()?adCampaign.name:storeCampaignNameFromTitle(title),
+        status:published?'active':'draft',startsOn,endsOn,title,body,landingUrl,mediaUrl,published,
+      };
+      if(isCreate)adCreateAttempt={storeId,key:adCreateIdempotencyKey,formFingerprint,payload};
     }
-    const published=publication==='active';
-    const payload={
-      name:isUpdate&&typeof adCampaign.name==='string'&&adCampaign.name.trim()?adCampaign.name:storeCampaignNameFromTitle(title),
-      status:published?'active':'draft',startsOn,endsOn,title,body,landingUrl,mediaUrl,published,
-    };
     const base=`/api/admin/stores/${encodeURIComponent(storeId)}/campaigns`;
     const url=isUpdate?`${base}/${encodeURIComponent(campaignId)}`:base;
-    const response=await apiFetch(url,{method:isUpdate?'PUT':'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
-    if(!response.ok){feedbackIfCurrent(storeSaveErrorMessage(response.status));return;}
+    const headers={'Content-Type':'application/json'};
+    if(isCreate)headers['Idempotency-Key']=adCreateIdempotencyKey;
+    postAttemptStarted=!isUpdate;
+    const response=await apiFetch(url,{method:isUpdate?'PUT':'POST',headers,body:JSON.stringify(payload)});
+    if(!response.ok){
+      let errorCode='';try{const errorBody=await response.json();errorCode=errorBody?.error||'';}catch(_){}
+      const mismatch409=response.status===409&&errorCode==='idempotency_mismatch';
+      const overlap409=response.status===409&&errorCode==='store_campaign_conflict';
+      const unknown409=response.status===409&&!mismatch409&&!overlap409;
+      let rotateFailed=false;
+      if(isCreate){
+        if(overlap409){rotateFailed=!rotateAdCreateIdempotency(storeId);}
+        else if(mismatch409){
+          adCreateUncertain=true;adCreateBlocked=true;feedbackIfCurrent('保存状態を確認できません。画面を再読み込みして、広告が登録されているか確認してください。自動では再登録しません。');updateAdSavingUI();
+        }else if(unknown409){
+          adCreateUncertain=true;adCreateBlocked=true;feedbackIfCurrent('保存状態を確認できません。画面を再読み込みして登録状況を確認してください。自動では再登録しません。');updateAdSavingUI();
+        }else if(response.status===503||response.status>=500){
+          adCreateUncertain=true;feedbackIfCurrent('保存結果を確認できません。入力を変更せず、同じ内容で再試行してください。');
+        }else if(!adCreateUncertain){
+          // The server rejects these statuses before the idempotent DB helper.
+          adCreateAttempt=null;
+        }
+      }
+      if(mismatch409||unknown409)return;
+      if(rotateFailed){feedbackIfCurrent('期間競合は解消されましたが、安全な再試行キーを生成できません。画面を再読み込みしてください。');updateAdSavingUI();}
+      else feedbackIfCurrent(storeSaveErrorMessage(response.status));
+      return;
+    }
     mutationSucceeded=true;
     try{mutationResult=await response.json();}catch(_){mutationResult=null;}
     const returnedCampaignId=mutationResult?.campaign?.campaignId;
     if(isCreate&&(typeof returnedCampaignId!=='string'||!returnedCampaignId)){
-      adCreatingNew=false;selectedCampaignId=null;adCampaign=null;
-      const refreshedAfterCreate=await apiFetch(base);
-      if(!isCurrent())return;
-      if(refreshedAfterCreate.ok){const latest=await refreshedAfterCreate.json();if(!isCurrent())return;if(Array.isArray(latest.campaigns)){adCampaigns=latest.campaigns;adCampaignCount=adCampaigns.length;}}
-      if(!isCurrent())return;
-      adStoreLoading=false;adStoreError='';renderAds();setAdSaveFeedback('保存しましたが、作成した広告IDを確認できません。広告一覧から選択してください。');return;
+      adCreateUncertain=true;feedbackIfCurrent('保存結果を確認できません。同じ内容で再試行するか、画面を再読み込みして登録状況を確認してください。');return;
     }
+    if(isCreate){resetAdCreateIdempotency();adCreatingNew=false;selectedCampaignId=returnedCampaignId;}
     const refreshed=await apiFetch(base);
     if(!refreshed.ok){recoverSuccessfulMutation('保存しましたが、最新情報を再取得できませんでした。画面を再読み込みしてください。');return;}
     let result;try{result=await refreshed.json();}catch(_){recoverSuccessfulMutation('保存しましたが、最新情報を再取得できませんでした。画面を再読み込みしてください。');return;}
@@ -1040,7 +1112,9 @@ async function publishStoreAd(){
     reloadStoreAdPreview();
     toast('店舗別広告を保存しました');
   }catch(_){
-    if(mutationSucceeded)recoverSuccessfulMutation('保存しましたが、最新情報を再取得できませんでした。画面を再読み込みしてください。');
+    if(isCreate&&postAttemptStarted&&adCreateAttempt){
+      adCreateUncertain=true;feedbackIfCurrent('前回の保存結果を確認できません。同じ内容で再試行するか、画面を再読み込みして登録状況を確認してください。');
+    }else if(mutationSucceeded)recoverSuccessfulMutation('保存しましたが、最新情報を再取得できませんでした。画面を再読み込みしてください。');
     else feedbackIfCurrent('保存できませんでした。時間をおいて再度お試しください。');
   }finally{
     adSaving=false;updateAdSavingUI();
