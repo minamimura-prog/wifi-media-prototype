@@ -24,6 +24,44 @@ ADMIN_LOGIN_LOCK_DURATION = timedelta(minutes=15)
 _PUBLIC_CODE_RE = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 
 
+class StoreCampaignConflictError(Exception):
+    """Raised when a store already has a publicly deliverable campaign in the same period."""
+
+
+def _campaign_periods_overlap(left_start, left_end, right_start, right_end):
+    """Treat inclusive campaign dates with NULL endpoints as unbounded."""
+    return not (
+        (left_end is not None and right_start is not None and left_end < right_start)
+        or (right_end is not None and left_start is not None and right_end < left_start)
+    )
+
+
+def _ensure_store_campaign_period_available(
+    conn, store_id, campaign, exclude_campaign_id=None
+):
+    if campaign.get("status") != "active" or campaign.get("published") is not True:
+        return
+    sql = (
+        "SELECT c.id, c.starts_on, c.ends_on "
+        "FROM campaign_stores cs "
+        "JOIN campaigns c ON c.id = cs.campaign_id "
+        "JOIN ads a ON a.id = c.ad_id "
+        "WHERE cs.store_id = %s AND c.id <> %s "
+        "AND c.status = 'active' AND a.published IS TRUE"
+    )
+    params = [str(store_id), "default"]
+    if exclude_campaign_id is not None:
+        sql += " AND c.id <> %s"
+        params.append(str(exclude_campaign_id))
+    existing_campaigns = conn.execute(sql, tuple(params)).fetchall()
+    for existing in existing_campaigns:
+        if _campaign_periods_overlap(
+            existing["starts_on"], existing["ends_on"],
+            campaign.get("starts_on"), campaign.get("ends_on"),
+        ):
+            raise StoreCampaignConflictError("store campaign delivery periods overlap")
+
+
 def database_enabled():
     return bool(DATABASE_URL)
 
@@ -359,11 +397,12 @@ def create_store_campaign(store_id, campaign_id, ad_id, campaign):
     with pool().connection() as conn:
         with conn.transaction():
             store = conn.execute(
-                "SELECT id FROM stores WHERE id = %s FOR KEY SHARE",
+                "SELECT id FROM stores WHERE id = %s FOR UPDATE",
                 (str(store_id),),
             ).fetchone()
             if not store:
                 return None
+            _ensure_store_campaign_period_available(conn, store_id, campaign)
             # campaign_stores is the sole delivery assignment. Keep the legacy
             # ads.store_id column NULL rather than maintaining a second mapping.
             conn.execute(
@@ -392,6 +431,12 @@ def update_store_campaign(store_id, campaign_id, campaign):
         return None
     with pool().connection() as conn:
         with conn.transaction():
+            store = conn.execute(
+                "SELECT id FROM stores WHERE id = %s FOR UPDATE",
+                (str(store_id),),
+            ).fetchone()
+            if not store:
+                return None
             current = conn.execute(
                 "SELECT c.id AS campaign_id, c.ad_id "
                 "FROM campaign_stores cs "
@@ -406,6 +451,9 @@ def update_store_campaign(store_id, campaign_id, campaign):
             ).fetchone()
             if not current:
                 return None
+            _ensure_store_campaign_period_available(
+                conn, store_id, campaign, exclude_campaign_id=current["campaign_id"]
+            )
             conn.execute(
                 "UPDATE campaigns SET name = %s, starts_on = %s, ends_on = %s, "
                 "status = %s, updated_at = now() WHERE id = %s",
