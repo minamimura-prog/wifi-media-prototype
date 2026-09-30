@@ -977,6 +977,7 @@ async function addCoupon(){const title=document.getElementById('cTitle').value.t
 
   const storeRows=Object.entries(a.byStore||{});
   const adRows=a.byAd||[];
+  const storeCampaignRows=a.storeCampaignAds||[];
   const maxValue=(rows,key)=>rows.reduce((max,row)=>Math.max(max,Number(row[key])||0),0);
   const barWidth=(value,max)=>max>0?Math.min(100,Math.max(0,(Number(value)||0)/max*100)):0;
   const storeMaxImpressions=maxValue(storeRows.map(([,x])=>x),'impressions');
@@ -1044,6 +1045,20 @@ async function addCoupon(){const title=document.getElementById('cTitle').value.t
       </table>
     </section>
   </div>
+
+  <section class="card analytics-panel" style="margin-top:18px">
+    <div class="analytics-section-heading"><span class="analytics-terminal-label">STORE AD PERFORMANCE</span><div class="section">店舗別広告効果</div></div>
+    <div style="overflow-x:auto">
+      <table>
+        <thead><tr><th>店舗</th><th>広告</th><th>表示回数</th><th>クリック</th><th>CTR</th></tr></thead>
+        <tbody>
+          ${storeCampaignRows.length?storeCampaignRows.map(x=>`
+            <tr><td>${esc(x.storeName||'')}</td><td>${esc(x.adTitle||x.adId||'')}${x.campaignName?`<br><small>${esc(x.campaignName)}</small>`:''}</td><td style="color:var(--neon-green)">${Number(x.impressions||0).toLocaleString()}</td><td style="color:var(--signal-cyan)">${Number(x.clicks||0).toLocaleString()}</td><td style="color:#B45CFF">${(Number(x.ctr)||0).toFixed(1)}%</td></tr>
+          `).join(''):'<tr><td colspan="5">店舗別広告の計測データはまだありません。</td></tr>'}
+        </tbody>
+      </table>
+    </div>
+  </section>
 
   <section class="card analytics-panel analytics-daily" style="margin-top:18px">
     <div class="analytics-section-heading"><span class="analytics-terminal-label">DAILY LOG</span><div class="section">日別の実測データ</div></div>

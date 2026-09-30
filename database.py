@@ -613,6 +613,18 @@ def analytics():
             "FROM ad_events e LEFT JOIN ads a ON a.id = e.ad_id "
             "GROUP BY e.ad_id, a.title ORDER BY ad_name, e.ad_id"
         ).fetchall()
+        store_campaign_ads = conn.execute(
+            "SELECT e.store_id, e.store_name, e.campaign_id, c.name AS campaign_name, "
+            "e.ad_id, a.title AS ad_title, "
+            "count(*) FILTER (WHERE e.event_type = 'impression') AS impressions, "
+            "count(*) FILTER (WHERE e.event_type = 'click') AS clicks "
+            "FROM ad_events e "
+            "JOIN campaigns c ON c.id = e.campaign_id "
+            "JOIN ads a ON a.id = e.ad_id "
+            "WHERE e.campaign_id IS NOT NULL AND e.campaign_id <> 'default' "
+            "GROUP BY e.store_id, e.store_name, e.campaign_id, c.name, e.ad_id, a.title "
+            "ORDER BY e.store_name, a.title, e.campaign_id, e.ad_id"
+        ).fetchall()
         periods = conn.execute(
             "SELECT to_char(occurred_at AT TIME ZONE 'Asia/Tokyo', 'YYYY-MM-DD') AS date, "
             "count(*) FILTER (WHERE event_type = 'impression') AS impressions, "
@@ -650,6 +662,21 @@ def analytics():
                 "ctr": round(row["clicks"] / row["impressions"] * 100, 2) if row["impressions"] else 0,
             }
             for row in ads
+        ],
+        "storeCampaignAds": [
+            {
+                "storeId": row["store_id"],
+                "storeName": row["store_name"],
+                "campaignId": row["campaign_id"],
+                "campaignName": row["campaign_name"],
+                "adId": row["ad_id"],
+                "adTitle": row["ad_title"],
+                "impressions": row["impressions"],
+                "clicks": row["clicks"],
+                "ctr": round(row["clicks"] / row["impressions"] * 100, 1)
+                if row["impressions"] else 0,
+            }
+            for row in store_campaign_ads
         ],
         "daily": shape(periods, "date"), "monthly": shape(months, "month"),
     }
