@@ -861,7 +861,9 @@ function setAdSaveFeedback(message){
 function updateAdSavingUI(){
   const button=document.getElementById('adSaveButton');
   const selector=document.getElementById('adDeliveryTarget');
+  const publicPageButton=document.querySelector('.ad-secondary');
   if(selector)selector.disabled=adSaving||adStoresLoading;
+  if(publicPageButton)publicPageButton.disabled=adSaving;
   if(button){
     const storeReadOnly=adTarget==='store'&&(adStoreLoading||!!adStoreError||adCampaignCount>1);
     button.disabled=adSaving||storeReadOnly;
