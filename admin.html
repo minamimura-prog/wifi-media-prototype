@@ -1052,9 +1052,13 @@ async function addCoupon(){const title=document.getElementById('cTitle').value.t
       <table>
         <thead><tr><th>店舗</th><th>広告</th><th>表示回数</th><th>クリック</th><th>CTR</th></tr></thead>
         <tbody>
-          ${storeCampaignRows.length?storeCampaignRows.map(x=>`
-            <tr><td>${esc(x.storeName||'')}</td><td>${esc(x.adTitle||x.adId||'')}${x.campaignName?`<br><small>${esc(x.campaignName)}</small>`:''}</td><td style="color:var(--neon-green)">${Number(x.impressions||0).toLocaleString()}</td><td style="color:var(--signal-cyan)">${Number(x.clicks||0).toLocaleString()}</td><td style="color:#B45CFF">${(Number(x.ctr)||0).toFixed(1)}%</td></tr>
-          `).join(''):'<tr><td colspan="5">店舗別広告の計測データはまだありません。</td></tr>'}
+          ${storeCampaignRows.length?storeCampaignRows.map(x=>{
+            const adTitle=x.adTitle||x.adId||'';
+            const campaignName=x.campaignName||'';
+            const showCampaignName=campaignName.trim()!==String(adTitle).trim();
+            return `
+            <tr><td>${esc(x.storeName||'')}</td><td>${esc(adTitle)}${showCampaignName?`<br><small>${esc(campaignName)}</small>`:''}</td><td style="color:var(--neon-green)">${Number(x.impressions||0).toLocaleString()}</td><td style="color:var(--signal-cyan)">${Number(x.clicks||0).toLocaleString()}</td><td style="color:#B45CFF">${(Number(x.ctr)||0).toFixed(1)}%</td></tr>
+          `}).join(''):'<tr><td colspan="5">店舗別広告の計測データはまだありません。</td></tr>'}
         </tbody>
       </table>
     </div>
