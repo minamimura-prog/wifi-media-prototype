@@ -19,6 +19,7 @@ ALLOWED = {".gif", ".jpg", ".jpeg", ".png", ".webp"}
 MAX_BYTES = 12 * 1024 * 1024
 ADMIN_CAMPAIGN_MAX_BYTES = 64 * 1024
 ADMIN_CAMPAIGN_STATUSES = {"draft", "active"}
+IDEMPOTENCY_KEY_PATTERN = re.compile(r"^[A-Za-z0-9._~:-]{16,255}$")
 LOCK = threading.Lock()
 COUPON_EVENT_TYPES = {"view", "copy", "redeem"}
 ADMIN_SESSION_COOKIE = "wifi_media_admin_session"
@@ -102,6 +103,19 @@ def _validate_admin_campaign(payload):
         "media_url": payload["mediaUrl"],
         "published": payload["published"],
     }
+
+
+def _read_idempotency_key(headers):
+    """Return (key, valid); a missing header preserves legacy POST behavior."""
+    values = headers.get_all("Idempotency-Key", [])
+    if not values:
+        return None, True
+    if len(values) != 1:
+        return None, False
+    key = values[0]
+    if not isinstance(key, str) or not IDEMPOTENCY_KEY_PATTERN.fullmatch(key):
+        return None, False
+    return key, True
 
 
 def _admin_campaign_json(row):
@@ -646,6 +660,9 @@ class Handler(BaseHTTPRequestHandler):
         if store_route:
             if not self.require_admin_session(): return
             if not self.require_same_origin(): return
+            idempotency_key, valid_key = _read_idempotency_key(self.headers)
+            if not valid_key:
+                return self.send_json({"ok": False, "error": "invalid_idempotency_key"}, 400)
             if not database.database_enabled():
                 return self.send_json({"ok": False, "error": "admin_data_unavailable"}, 503)
             store_id, _ = store_route
@@ -655,14 +672,30 @@ class Handler(BaseHTTPRequestHandler):
             campaign_id = "campaign-" + uuid.uuid4().hex
             ad_id = "ad-" + uuid.uuid4().hex
             try:
-                created = database.create_store_campaign(store_id, campaign_id, ad_id, campaign)
+                if idempotency_key is None:
+                    created = database.create_store_campaign(
+                        store_id, campaign_id, ad_id, campaign
+                    )
+                else:
+                    created = database.create_store_campaign_idempotent(
+                        store_id, campaign_id, ad_id, campaign, idempotency_key
+                    )
+            except database.StoreCampaignIdempotencyMismatchError:
+                return self.send_json(
+                    {"ok": False, "error": "idempotency_mismatch"}, 409
+                )
             except database.StoreCampaignConflictError:
                 return self.send_json({"ok": False, "error": "store_campaign_conflict"}, 409)
             except Exception:
                 return self.send_json({"ok": False}, 503)
             if created is None:
                 return self.send_json({"ok": False, "error": "not_found"}, 404)
-            return self.send_json({"campaign": _admin_campaign_json(created)}, 201)
+            status = 201
+            if idempotency_key is not None and (
+                created["campaign_id"] != campaign_id or created["ad_id"] != ad_id
+            ):
+                status = 200
+            return self.send_json({"campaign": _admin_campaign_json(created)}, status)
         if path == "/api/coupon_event":
             try:
                 payload = json.loads(self.read_body().decode("utf-8"))
