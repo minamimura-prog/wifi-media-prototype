@@ -102,6 +102,20 @@ CREATE TABLE IF NOT EXISTS campaign_stores (
     PRIMARY KEY (campaign_id, store_id)
 );
 
+-- Persistent replay guard for store-campaign creation. Deliberately no foreign
+-- keys: retain the key tombstone if a store/campaign/ad is later deleted so a
+-- delayed retry cannot silently create a replacement campaign.
+CREATE TABLE IF NOT EXISTS store_campaign_idempotency (
+    idempotency_key TEXT PRIMARY KEY
+        CHECK (length(idempotency_key) BETWEEN 1 AND 255),
+    store_id TEXT NOT NULL,
+    payload_hash TEXT NOT NULL
+        CHECK (payload_hash ~ '^[0-9a-f]{64}$'),
+    campaign_id TEXT NOT NULL,
+    ad_id TEXT NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 CREATE TABLE IF NOT EXISTS ad_events (
     id BIGSERIAL PRIMARY KEY,
     event_type TEXT NOT NULL CHECK (event_type IN ('impression', 'click')),

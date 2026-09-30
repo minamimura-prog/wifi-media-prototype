@@ -28,6 +28,34 @@ class StoreCampaignConflictError(Exception):
     """Raised when a store already has a publicly deliverable campaign in the same period."""
 
 
+class StoreCampaignIdempotencyMismatchError(Exception):
+    """Raised when an idempotency key is reused for another store or payload."""
+
+
+_STORE_CAMPAIGN_IDEMPOTENCY_MAX_KEY_LENGTH = 255
+
+
+def _store_campaign_payload_hash(campaign):
+    """Hash the validated store-campaign request using stable API field names."""
+    starts_on = campaign.get("starts_on")
+    ends_on = campaign.get("ends_on")
+    canonical = {
+        "name": campaign["name"],
+        "status": campaign["status"],
+        "startsOn": starts_on.isoformat() if starts_on is not None else None,
+        "endsOn": ends_on.isoformat() if ends_on is not None else None,
+        "title": campaign["title"],
+        "body": campaign["body"],
+        "landingUrl": campaign["landing_url"],
+        "mediaUrl": campaign["media_url"],
+        "published": campaign["published"],
+    }
+    encoded = json.dumps(
+        canonical, sort_keys=True, separators=(",", ":"), ensure_ascii=False
+    ).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
 def _campaign_periods_overlap(left_start, left_end, right_start, right_end):
     """Treat inclusive campaign dates with NULL endpoints as unbounded."""
     return not (
@@ -421,6 +449,94 @@ def create_store_campaign(store_id, campaign_id, ad_id, campaign):
             conn.execute(
                 "INSERT INTO campaign_stores (campaign_id, store_id) VALUES (%s, %s)",
                 (campaign_id, str(store_id)),
+            )
+    return _admin_campaign_result(campaign_id, ad_id, campaign)
+
+
+def create_store_campaign_idempotent(
+    store_id, campaign_id, ad_id, campaign, idempotency_key
+):
+    """Create once per key and return the original IDs for an identical retry.
+
+    The key claim, overlap check, three campaign inserts, and durable result
+    record share one transaction. The unique key insert serializes cross-store
+    races; the store row lock remains the common lock used by ordinary POST/PUT.
+    """
+    if (not isinstance(idempotency_key, str) or not idempotency_key
+            or len(idempotency_key) > _STORE_CAMPAIGN_IDEMPOTENCY_MAX_KEY_LENGTH
+            or any(ord(char) < 33 or ord(char) == 127 for char in idempotency_key)):
+        raise ValueError("invalid idempotency key")
+    if campaign_id == "default" or ad_id == "main":
+        raise ValueError("reserved identifiers")
+    payload_hash = _store_campaign_payload_hash(campaign)
+    store_id = str(store_id)
+    with pool().connection() as conn:
+        with conn.transaction():
+            existing = conn.execute(
+                "SELECT store_id, payload_hash, campaign_id, ad_id "
+                "FROM store_campaign_idempotency WHERE idempotency_key = %s",
+                (idempotency_key,),
+            ).fetchone()
+            if existing:
+                if (str(existing["store_id"]) != store_id
+                        or existing["payload_hash"] != payload_hash):
+                    raise StoreCampaignIdempotencyMismatchError(
+                        "idempotency key was already used for a different request"
+                    )
+                return _admin_campaign_result(
+                    existing["campaign_id"], existing["ad_id"], campaign
+                )
+
+            store = conn.execute(
+                "SELECT id FROM stores WHERE id = %s FOR UPDATE",
+                (store_id,),
+            ).fetchone()
+            if not store:
+                return None
+
+            claimed = conn.execute(
+                "INSERT INTO store_campaign_idempotency "
+                "(idempotency_key, store_id, payload_hash, campaign_id, ad_id) "
+                "VALUES (%s, %s, %s, %s, %s) "
+                "ON CONFLICT (idempotency_key) DO NOTHING "
+                "RETURNING idempotency_key",
+                (idempotency_key, store_id, payload_hash, campaign_id, ad_id),
+            ).fetchone()
+            if not claimed:
+                existing = conn.execute(
+                    "SELECT store_id, payload_hash, campaign_id, ad_id "
+                    "FROM store_campaign_idempotency WHERE idempotency_key = %s",
+                    (idempotency_key,),
+                ).fetchone()
+                if (not existing or str(existing["store_id"]) != store_id
+                        or existing["payload_hash"] != payload_hash):
+                    raise StoreCampaignIdempotencyMismatchError(
+                        "idempotency key was already used for a different request"
+                    )
+                return _admin_campaign_result(
+                    existing["campaign_id"], existing["ad_id"], campaign
+                )
+
+            _ensure_store_campaign_period_available(conn, store_id, campaign)
+            # Keep the legacy ads.store_id column NULL: campaign_stores remains
+            # the sole source of truth for store delivery assignment.
+            conn.execute(
+                "INSERT INTO ads "
+                "(id, store_id, title, body, landing_url, media_url, published) "
+                "VALUES (%s, NULL, %s, %s, %s, %s, %s)",
+                (ad_id, campaign["title"], campaign["body"],
+                 campaign["landing_url"], campaign["media_url"],
+                 campaign["published"]),
+            )
+            conn.execute(
+                "INSERT INTO campaigns (id, ad_id, name, starts_on, ends_on, status) "
+                "VALUES (%s, %s, %s, %s, %s, %s)",
+                (campaign_id, ad_id, campaign["name"], campaign["starts_on"],
+                 campaign["ends_on"], campaign["status"]),
+            )
+            conn.execute(
+                "INSERT INTO campaign_stores (campaign_id, store_id) VALUES (%s, %s)",
+                (campaign_id, store_id),
             )
     return _admin_campaign_result(campaign_id, ad_id, campaign)
 
