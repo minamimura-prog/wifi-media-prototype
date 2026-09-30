@@ -1,5 +1,5 @@
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, urlparse, unquote
 from http.cookies import SimpleCookie
 from email.parser import BytesParser
 from email.policy import default
@@ -17,6 +17,8 @@ UPLOADS = os.path.join(BASE, "uploads")
 PORT = int(os.environ.get("PORT", "5050"))
 ALLOWED = {".gif", ".jpg", ".jpeg", ".png", ".webp"}
 MAX_BYTES = 12 * 1024 * 1024
+ADMIN_CAMPAIGN_MAX_BYTES = 64 * 1024
+ADMIN_CAMPAIGN_STATUSES = {"draft", "active"}
 LOCK = threading.Lock()
 COUPON_EVENT_TYPES = {"view", "copy", "redeem"}
 ADMIN_SESSION_COOKIE = "wifi_media_admin_session"
@@ -25,6 +27,102 @@ PUBLIC_CODE_PATTERN = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 # The database CHECK constrains the format but not length. Keep a practical
 # HTTP input bound while accepting manually assigned valid public codes.
 PUBLIC_CODE_MAX_LENGTH = 128
+
+def _safe_admin_route_id(raw_value):
+    value = unquote(raw_value)
+    if (not value or len(value) > 256 or "/" in value or "\\" in value
+            or any(ord(char) < 32 or ord(char) == 127 for char in value)):
+        return None
+    return value
+
+
+def _admin_store_campaign_route(path, include_campaign=False):
+    parts = path.split("/")
+    expected_length = 7 if include_campaign else 6
+    if (len(parts) != expected_length or parts[:4] != ["", "api", "admin", "stores"]
+            or parts[5] != "campaigns"):
+        return None
+    store_id = _safe_admin_route_id(parts[4])
+    campaign_id = _safe_admin_route_id(parts[6]) if include_campaign else None
+    if store_id is None or (include_campaign and campaign_id is None):
+        return None
+    return store_id, campaign_id
+
+
+def _parse_admin_campaign_date(value, field_name):
+    if value is None or value == "":
+        return None
+    if not isinstance(value, str) or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", value):
+        raise ValueError(f"invalid {field_name}")
+    try:
+        return date.fromisoformat(value)
+    except ValueError as exc:
+        raise ValueError(f"invalid {field_name}") from exc
+
+
+def _validate_admin_campaign(payload):
+    if not isinstance(payload, dict):
+        raise ValueError("invalid payload")
+    allowed = {
+        "name", "status", "startsOn", "endsOn", "title", "body",
+        "landingUrl", "mediaUrl", "published",
+    }
+    required = {"name", "status", "title", "body", "landingUrl", "mediaUrl", "published"}
+    if not required.issubset(payload) or not set(payload).issubset(allowed):
+        raise ValueError("invalid fields")
+
+    text_limits = {
+        "name": 200, "title": 500, "body": 24000,
+        "landingUrl": 4096, "mediaUrl": 4096,
+    }
+    for key, limit in text_limits.items():
+        value = payload[key]
+        if not isinstance(value, str) or len(value) > limit:
+            raise ValueError(f"invalid {key}")
+    if not payload["name"].strip() or not payload["title"].strip():
+        raise ValueError("name and title are required")
+    if (not isinstance(payload["status"], str)
+            or payload["status"] not in ADMIN_CAMPAIGN_STATUSES):
+        raise ValueError("invalid status")
+    if type(payload["published"]) is not bool:
+        raise ValueError("invalid published")
+
+    starts_on = _parse_admin_campaign_date(payload.get("startsOn"), "startsOn")
+    ends_on = _parse_admin_campaign_date(payload.get("endsOn"), "endsOn")
+    if starts_on is not None and ends_on is not None and starts_on > ends_on:
+        raise ValueError("invalid date range")
+    return {
+        "name": payload["name"],
+        "status": payload["status"],
+        "starts_on": starts_on,
+        "ends_on": ends_on,
+        "title": payload["title"],
+        "body": payload["body"],
+        "landing_url": payload["landingUrl"],
+        "media_url": payload["mediaUrl"],
+        "published": payload["published"],
+    }
+
+
+def _admin_campaign_json(row):
+    def iso(value):
+        return value.isoformat() if value is not None else None
+    return {
+        "campaignId": row["campaign_id"],
+        "adId": row["ad_id"],
+        "name": row["campaign_name"],
+        "status": row["campaign_status"],
+        "startsOn": iso(row.get("starts_on")),
+        "endsOn": iso(row.get("ends_on")),
+        "title": row["title"],
+        "body": row["body"],
+        "landingUrl": row["landing_url"],
+        "mediaUrl": row["media_url"],
+        "published": row["published"],
+        "createdAt": iso(row.get("campaign_created_at")),
+        "updatedAt": iso(row.get("campaign_updated_at")),
+    }
+
 
 def admin_development_mode():
     """Allow HTTP cookies only when both development switches are explicit."""
@@ -300,6 +398,26 @@ class Handler(BaseHTTPRequestHandler):
         if self.request_origin_is_same(): return True
         self.send_json({"ok": False, "error": "forbidden"}, 403)
         return False
+    def read_admin_campaign_payload(self):
+        content_type = self.headers.get("Content-Type", "").split(";", 1)[0].strip().lower()
+        if content_type != "application/json":
+            return None, 415
+        try:
+            length = int(self.headers.get("Content-Length", "0"))
+        except (TypeError, ValueError):
+            return None, 400
+        if length <= 0:
+            return None, 400
+        if length > ADMIN_CAMPAIGN_MAX_BYTES:
+            return None, 413
+        try:
+            body = self.rfile.read(length)
+            if len(body) != length:
+                return None, 400
+            raw_payload = json.loads(body.decode("utf-8"))
+            return _validate_admin_campaign(raw_payload), None
+        except (UnicodeDecodeError, json.JSONDecodeError, ValueError):
+            return None, 400
     def admin_login_client_ip(self):
         if os.environ.get("RENDER", "").strip().lower() == "true":
             values = self.headers.get_all("CF-Connecting-IP", [])
@@ -385,6 +503,35 @@ class Handler(BaseHTTPRequestHandler):
             if not self.has_valid_admin_session():
                 return self.send_bytes(b"", 302, "text/plain; charset=utf-8", {"Location": "/admin/login"})
             return self.serve_file("admin.html")
+        if path == "/api/admin/stores":
+            if not self.require_admin_session(): return
+            if not database.database_enabled():
+                return self.send_json({"ok": False, "error": "admin_data_unavailable"}, 503)
+            try:
+                stores = database.list_admin_stores()
+                return self.send_json({"stores": [
+                    {"id": row["id"], "name": row["name"], "publicCode": row["public_code"]}
+                    for row in stores
+                ]})
+            except Exception:
+                return self.send_json({"ok": False}, 503)
+        store_route = _admin_store_campaign_route(path)
+        if store_route:
+            if not self.require_admin_session(): return
+            if not database.database_enabled():
+                return self.send_json({"ok": False, "error": "admin_data_unavailable"}, 503)
+            store_id, _ = store_route
+            try:
+                store = database.get_store_by_id(store_id)
+                if not store:
+                    return self.send_json({"ok": False, "error": "not_found"}, 404)
+                campaigns = database.get_admin_campaigns_for_store(store_id)
+                return self.send_json({
+                    "store": {"id": store["id"], "name": store["name"], "publicCode": store["public_code"]},
+                    "campaigns": [_admin_campaign_json(row) for row in campaigns],
+                })
+            except Exception:
+                return self.send_json({"ok": False}, 503)
         if path == "/api/public-config":
             try:
                 query = parse_qs(urlparse(self.path).query, keep_blank_values=True, max_num_fields=100)
@@ -434,6 +581,29 @@ class Handler(BaseHTTPRequestHandler):
         if path.startswith("/uploads/"):
             return self.serve_upload(os.path.basename(path))
         return self.send_bytes(b"not found", 404, "text/plain; charset=utf-8")
+    def do_PUT(self):
+        path = urlparse(self.path).path
+        store_route = _admin_store_campaign_route(path, include_campaign=True)
+        if not store_route:
+            return self.send_json({"ok": False, "error": "not found"}, 404)
+        if not self.require_admin_session(): return
+        if not self.require_same_origin(): return
+        if not database.database_enabled():
+            return self.send_json({"ok": False, "error": "admin_data_unavailable"}, 503)
+        store_id, campaign_id = store_route
+        if campaign_id == "default":
+            return self.send_json({"ok": False, "error": "not_found"}, 404)
+        campaign, error_status = self.read_admin_campaign_payload()
+        if error_status:
+            return self.send_json({"ok": False, "error": "invalid_request"}, error_status)
+        try:
+            updated = database.update_store_campaign(store_id, campaign_id, campaign)
+        except Exception:
+            return self.send_json({"ok": False}, 503)
+        if updated is None:
+            return self.send_json({"ok": False, "error": "not_found"}, 404)
+        return self.send_json({"campaign": _admin_campaign_json(updated)})
+
     def do_DELETE(self):
         path = urlparse(self.path).path
         prefix = "/api/coupons/"
@@ -470,6 +640,25 @@ class Handler(BaseHTTPRequestHandler):
         path = urlparse(self.path).path
         if path == "/api/admin/login": return self.handle_admin_login()
         if path == "/api/admin/logout": return self.handle_admin_logout()
+        store_route = _admin_store_campaign_route(path)
+        if store_route:
+            if not self.require_admin_session(): return
+            if not self.require_same_origin(): return
+            if not database.database_enabled():
+                return self.send_json({"ok": False, "error": "admin_data_unavailable"}, 503)
+            store_id, _ = store_route
+            campaign, error_status = self.read_admin_campaign_payload()
+            if error_status:
+                return self.send_json({"ok": False, "error": "invalid_request"}, error_status)
+            campaign_id = "campaign-" + uuid.uuid4().hex
+            ad_id = "ad-" + uuid.uuid4().hex
+            try:
+                created = database.create_store_campaign(store_id, campaign_id, ad_id, campaign)
+            except Exception:
+                return self.send_json({"ok": False}, 503)
+            if created is None:
+                return self.send_json({"ok": False, "error": "not_found"}, 404)
+            return self.send_json({"campaign": _admin_campaign_json(created)}, 201)
         if path == "/api/coupon_event":
             try:
                 payload = json.loads(self.read_body().decode("utf-8"))

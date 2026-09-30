@@ -322,6 +322,121 @@ def get_campaigns_for_store(store_id):
     return [dict(row) for row in rows]
 
 
+def list_admin_stores():
+    """Return the minimal store fields used by authenticated admin tools."""
+    with pool().connection() as conn:
+        rows = conn.execute(
+            "SELECT id, name, public_code FROM stores ORDER BY created_at, id"
+        ).fetchall()
+    return [dict(row) for row in rows]
+
+
+def get_admin_campaigns_for_store(store_id):
+    """Return editable store campaigns, excluding reserved global records."""
+    if store_id is None:
+        return []
+    with pool().connection() as conn:
+        rows = conn.execute(
+            "SELECT c.id AS campaign_id, c.ad_id, c.name AS campaign_name, "
+            "c.status AS campaign_status, c.starts_on, c.ends_on, "
+            "c.created_at AS campaign_created_at, c.updated_at AS campaign_updated_at, "
+            "a.title, a.body, a.landing_url, a.media_url, a.published, "
+            "a.created_at AS ad_created_at, a.updated_at AS ad_updated_at "
+            "FROM campaign_stores cs "
+            "JOIN campaigns c ON c.id = cs.campaign_id "
+            "JOIN ads a ON a.id = c.ad_id "
+            "WHERE cs.store_id = %s AND c.id <> %s AND a.id <> %s "
+            "ORDER BY c.created_at, c.id",
+            (str(store_id), "default", "main"),
+        ).fetchall()
+    return [dict(row) for row in rows]
+
+
+def create_store_campaign(store_id, campaign_id, ad_id, campaign):
+    """Create an ad, campaign, and assignment atomically for one store."""
+    if campaign_id == "default" or ad_id == "main":
+        raise ValueError("reserved identifiers")
+    with pool().connection() as conn:
+        with conn.transaction():
+            store = conn.execute(
+                "SELECT id FROM stores WHERE id = %s FOR KEY SHARE",
+                (str(store_id),),
+            ).fetchone()
+            if not store:
+                return None
+            # campaign_stores is the sole delivery assignment. Keep the legacy
+            # ads.store_id column NULL rather than maintaining a second mapping.
+            conn.execute(
+                "INSERT INTO ads "
+                "(id, store_id, title, body, landing_url, media_url, published) "
+                "VALUES (%s, NULL, %s, %s, %s, %s, %s)",
+                (ad_id, campaign["title"], campaign["body"], campaign["landing_url"],
+                 campaign["media_url"], campaign["published"]),
+            )
+            conn.execute(
+                "INSERT INTO campaigns (id, ad_id, name, starts_on, ends_on, status) "
+                "VALUES (%s, %s, %s, %s, %s, %s)",
+                (campaign_id, ad_id, campaign["name"], campaign["starts_on"],
+                 campaign["ends_on"], campaign["status"]),
+            )
+            conn.execute(
+                "INSERT INTO campaign_stores (campaign_id, store_id) VALUES (%s, %s)",
+                (campaign_id, str(store_id)),
+            )
+    return _admin_campaign_result(campaign_id, ad_id, campaign)
+
+
+def update_store_campaign(store_id, campaign_id, campaign):
+    """Update only an exclusively-owned, non-global campaign assigned to a store."""
+    if campaign_id == "default":
+        return None
+    with pool().connection() as conn:
+        with conn.transaction():
+            current = conn.execute(
+                "SELECT c.id AS campaign_id, c.ad_id "
+                "FROM campaign_stores cs "
+                "JOIN campaigns c ON c.id = cs.campaign_id "
+                "JOIN ads a ON a.id = c.ad_id "
+                "WHERE cs.store_id = %s AND c.id = %s "
+                "AND c.id <> %s AND a.id <> %s "
+                "AND NOT EXISTS (SELECT 1 FROM campaigns other "
+                "WHERE other.ad_id = a.id AND other.id <> c.id) "
+                "FOR UPDATE OF cs, c, a",
+                (str(store_id), str(campaign_id), "default", "main"),
+            ).fetchone()
+            if not current:
+                return None
+            conn.execute(
+                "UPDATE campaigns SET name = %s, starts_on = %s, ends_on = %s, "
+                "status = %s, updated_at = now() WHERE id = %s",
+                (campaign["name"], campaign["starts_on"], campaign["ends_on"],
+                 campaign["status"], current["campaign_id"]),
+            )
+            conn.execute(
+                "UPDATE ads SET title = %s, body = %s, landing_url = %s, media_url = %s, "
+                "published = %s, updated_at = now() WHERE id = %s",
+                (campaign["title"], campaign["body"], campaign["landing_url"],
+                 campaign["media_url"], campaign["published"], current["ad_id"]),
+            )
+    return _admin_campaign_result(current["campaign_id"], current["ad_id"], campaign)
+
+
+def _admin_campaign_result(campaign_id, ad_id, campaign):
+    return {
+        "campaign_id": campaign_id,
+        "ad_id": ad_id,
+        "campaign_name": campaign["name"],
+        "campaign_status": campaign["status"],
+        "starts_on": campaign["starts_on"],
+        "ends_on": campaign["ends_on"],
+        "title": campaign["title"],
+        "body": campaign["body"],
+        "landing_url": campaign["landing_url"],
+        "media_url": campaign["media_url"],
+        "published": campaign["published"],
+    }
+
+
 def load_state():
     with pool().connection() as conn:
         stores = conn.execute(
