@@ -8,6 +8,7 @@ from zoneinfo import ZoneInfo
 import ipaddress
 import hmac, json, os, secrets, uuid, mimetypes, threading
 import re
+import logging
 import database
 import migrate_to_postgres
 
@@ -156,6 +157,94 @@ def expired_admin_session_cookie():
     return admin_session_cookie("", max_age=0) + "; Expires=Thu, 01 Jan 1970 00:00:00 GMT"
 
 os.makedirs(UPLOADS, exist_ok=True)
+
+R2_CONFIG_ENV = (
+    "R2_BUCKET_NAME",
+    "R2_ACCESS_KEY_ID",
+    "R2_SECRET_ACCESS_KEY",
+    "R2_ACCOUNT_ID",
+    "R2_PUBLIC_BASE_URL",
+)
+R2_CLIENT = None
+R2_CLIENT_LOCK = threading.Lock()
+R2_IMAGE_TYPES = {
+    "jpeg": (".jpg", "image/jpeg"),
+    "png": (".png", "image/png"),
+    "gif": (".gif", "image/gif"),
+    "webp": (".webp", "image/webp"),
+}
+
+
+class R2StorageConfigurationError(Exception):
+    pass
+
+
+def _detect_upload_image(content):
+    """Identify supported raster image signatures without trusting filenames."""
+    if not content:
+        raise ValueError("empty image")
+    if len(content) >= 24 and content.startswith(b"\x89PNG\r\n\x1a\n"):
+        return R2_IMAGE_TYPES["png"]
+    if len(content) >= 6 and content[:6] in (b"GIF87a", b"GIF89a"):
+        return R2_IMAGE_TYPES["gif"]
+    if len(content) >= 3 and content[:3] == b"\xff\xd8\xff":
+        return R2_IMAGE_TYPES["jpeg"]
+    if (len(content) >= 12 and content[:4] == b"RIFF"
+            and content[8:12] == b"WEBP"):
+        return R2_IMAGE_TYPES["webp"]
+    raise ValueError("unsupported image")
+
+
+def _r2_settings():
+    settings = {key: os.environ.get(key, "").strip() for key in R2_CONFIG_ENV}
+    if any(not value for value in settings.values()):
+        raise R2StorageConfigurationError("R2 configuration unavailable")
+    public_base = settings["R2_PUBLIC_BASE_URL"].rstrip("/")
+    parsed_base = urlparse(public_base)
+    if (parsed_base.scheme != "https" or not parsed_base.netloc
+            or parsed_base.username or parsed_base.password
+            or parsed_base.query or parsed_base.fragment):
+        raise R2StorageConfigurationError("R2 public URL configuration invalid")
+    settings["R2_PUBLIC_BASE_URL"] = public_base
+    return settings
+
+
+def _r2_client(settings):
+    global R2_CLIENT
+    if R2_CLIENT is None:
+        with R2_CLIENT_LOCK:
+            if R2_CLIENT is None:
+                import boto3
+                R2_CLIENT = boto3.client(
+                    "s3",
+                    endpoint_url=(
+                        f"https://{settings['R2_ACCOUNT_ID']}.r2.cloudflarestorage.com"
+                    ),
+                    aws_access_key_id=settings["R2_ACCESS_KEY_ID"],
+                    aws_secret_access_key=settings["R2_SECRET_ACCESS_KEY"],
+                    region_name="auto",
+                )
+    return R2_CLIENT
+
+
+def _store_uploaded_image(content, extension, content_type):
+    name = uuid.uuid4().hex + extension
+    is_render_service = os.environ.get("RENDER", "").strip().lower() == "true"
+    if admin_development_mode() and not is_render_service:
+        with open(os.path.join(UPLOADS, name), "wb") as image_file:
+            image_file.write(content)
+        return "/uploads/" + name
+
+    settings = _r2_settings()
+    object_key = "uploads/" + name
+    _r2_client(settings).put_object(
+        Bucket=settings["R2_BUCKET_NAME"],
+        Key=object_key,
+        Body=content,
+        ContentType=content_type,
+        CacheControl="public, max-age=31536000, immutable",
+    )
+    return settings["R2_PUBLIC_BASE_URL"] + "/" + object_key
 
 def load_state():
     if database.database_enabled():
@@ -745,6 +834,14 @@ class Handler(BaseHTTPRequestHandler):
             if not self.require_admin_session(): return
             if not self.require_same_origin(): return
             try:
+                try:
+                    request_length = int(self.headers.get("Content-Length", "0"))
+                except (TypeError, ValueError):
+                    return self.send_json({"ok": False, "error": "invalid_request"}, 400)
+                if request_length <= 0:
+                    return self.send_json({"ok": False, "error": "invalid_request"}, 400)
+                if request_length > MAX_BYTES:
+                    return self.send_json({"ok": False, "error": "file_too_large"}, 413)
                 body = self.read_body(); ctype = self.headers.get("Content-Type", "")
                 if "multipart/form-data" not in ctype: return self.send_json({"error":"multipart/form-data required"}, 400)
                 header_blob = ("Content-Type: " + ctype + "\r\nMIME-Version: 1.0\r\n\r\n").encode("utf-8")
@@ -754,11 +851,27 @@ class Handler(BaseHTTPRequestHandler):
                 ext = os.path.splitext(part.get_filename() or "")[1].lower()
                 if ext not in ALLOWED: return self.send_json({"error":"gif/jpg/png/webp only"}, 400)
                 content = part.get_payload(decode=True) or b""
-                if len(content) > MAX_BYTES: return self.send_json({"error":"12MB以下のファイルにしてください"}, 400)
-                name = uuid.uuid4().hex + ext
-                with open(os.path.join(UPLOADS, name), "wb") as f: f.write(content)
-                return self.send_json({"url":"/uploads/" + name})
-            except Exception: return self.send_json({"ok": False}, 400)
+                if len(content) > MAX_BYTES:
+                    return self.send_json({"ok": False, "error": "file_too_large"}, 413)
+                detected_ext, content_type = _detect_upload_image(content)
+                compatible_extensions = {detected_ext}
+                if detected_ext == ".jpg":
+                    compatible_extensions.add(".jpeg")
+                if ext not in compatible_extensions:
+                    return self.send_json({"ok": False, "error": "unsupported_image"}, 400)
+            except ValueError:
+                return self.send_json({"ok": False, "error": "invalid_image"}, 400)
+            except Exception:
+                return self.send_json({"ok": False, "error": "invalid_request"}, 400)
+            try:
+                image_url = _store_uploaded_image(content, detected_ext, content_type)
+                return self.send_json({"url": image_url})
+            except R2StorageConfigurationError:
+                logging.error("Image storage unavailable: R2 configuration is missing or invalid")
+                return self.send_json({"ok": False, "error": "image_storage_unavailable"}, 503)
+            except Exception as exc:
+                logging.error("Image storage upload failed (%s)", type(exc).__name__)
+                return self.send_json({"ok": False, "error": "image_storage_unavailable"}, 503)
         return self.send_json({"error":"not found"}, 404)
 
 def build_analytics(events):
