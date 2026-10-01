@@ -1,5 +1,16 @@
+CREATE TABLE IF NOT EXISTS companies (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    code TEXT NOT NULL UNIQUE,
+    business_type TEXT NOT NULL DEFAULT '',
+    status TEXT NOT NULL DEFAULT 'active',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 CREATE TABLE IF NOT EXISTS stores (
     id TEXT PRIMARY KEY,
+    company_id TEXT REFERENCES companies(id),
     public_code TEXT,
     name TEXT NOT NULL,
     store_type TEXT NOT NULL DEFAULT '',
@@ -10,6 +21,9 @@ CREATE TABLE IF NOT EXISTS stores (
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+ALTER TABLE stores ADD COLUMN IF NOT EXISTS company_id TEXT REFERENCES companies(id);
+CREATE INDEX IF NOT EXISTS stores_company_id_idx ON stores (company_id);
 
 ALTER TABLE stores ADD COLUMN IF NOT EXISTS public_code TEXT;
 ALTER TABLE stores ALTER COLUMN public_code DROP NOT NULL;

@@ -623,8 +623,22 @@ class Handler(BaseHTTPRequestHandler):
             try:
                 stores = database.list_admin_stores()
                 return self.send_json({"stores": [
-                    {"id": row["id"], "name": row["name"], "publicCode": row["public_code"]}
+                    {"id": row["id"], "name": row["name"], "publicCode": row["public_code"],
+                     "companyId": row.get("company_id")}
                     for row in stores
+                ]})
+            except Exception:
+                return self.send_json({"ok": False}, 503)
+        if path == "/api/admin/companies":
+            if not self.require_admin_session(): return
+            if not database.database_enabled():
+                return self.send_json({"ok": False, "error": "admin_data_unavailable"}, 503)
+            try:
+                companies = database.list_companies()
+                return self.send_json({"companies": [
+                    {"id": row["id"], "name": row["name"], "code": row["code"],
+                     "businessType": row["business_type"], "status": row["status"]}
+                    for row in companies
                 ]})
             except Exception:
                 return self.send_json({"ok": False}, 503)

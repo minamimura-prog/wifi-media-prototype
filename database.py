@@ -354,7 +354,7 @@ def get_store_by_public_code(public_code):
         return None
     with pool().connection() as conn:
         row = conn.execute(
-            "SELECT id, public_code, name, store_type, wifi, monthly_users, legacy_clicks, status "
+            "SELECT id, company_id, public_code, name, store_type, wifi, monthly_users, legacy_clicks, status "
             "FROM stores WHERE public_code = %s",
             (public_code,),
         ).fetchone()
@@ -367,7 +367,7 @@ def get_store_by_id(store_id):
         return None
     with pool().connection() as conn:
         row = conn.execute(
-            "SELECT id, public_code, name, store_type, wifi, monthly_users, legacy_clicks, status "
+            "SELECT id, company_id, public_code, name, store_type, wifi, monthly_users, legacy_clicks, status "
             "FROM stores WHERE id = %s",
             (str(store_id),),
         ).fetchone()
@@ -398,9 +398,57 @@ def list_admin_stores():
     """Return the minimal store fields used by authenticated admin tools."""
     with pool().connection() as conn:
         rows = conn.execute(
-            "SELECT id, name, public_code FROM stores ORDER BY created_at, id"
+            "SELECT id, company_id, name, public_code FROM stores ORDER BY created_at, id"
         ).fetchall()
     return [dict(row) for row in rows]
+
+
+def list_companies():
+    """Return company records for authenticated administration tools."""
+    with pool().connection() as conn:
+        rows = conn.execute(
+            "SELECT id, name, code, business_type, status, created_at, updated_at "
+            "FROM companies ORDER BY created_at, id"
+        ).fetchall()
+    return [dict(row) for row in rows]
+
+
+def get_company(company_id):
+    """Return one company by its internal ID, or None if it does not exist."""
+    if company_id is None:
+        return None
+    with pool().connection() as conn:
+        row = conn.execute(
+            "SELECT id, name, code, business_type, status, created_at, updated_at "
+            "FROM companies WHERE id = %s",
+            (str(company_id),),
+        ).fetchone()
+    return dict(row) if row else None
+
+
+def save_company(company):
+    """Insert or update one company record; store assignments are not changed."""
+    if not isinstance(company, dict):
+        raise ValueError("company must be an object")
+    company_id = company.get("id")
+    name = company.get("name")
+    code = company.get("code")
+    business_type = company.get("business_type", "")
+    status = company.get("status", "active")
+    if not all(isinstance(value, str) and value.strip() for value in (company_id, name, code)):
+        raise ValueError("company id, name, and code are required")
+    if not isinstance(business_type, str) or not isinstance(status, str) or not status.strip():
+        raise ValueError("invalid company fields")
+    with pool().connection() as conn:
+        row = conn.execute(
+            "INSERT INTO companies (id, name, code, business_type, status) "
+            "VALUES (%s, %s, %s, %s, %s) "
+            "ON CONFLICT (id) DO UPDATE SET name=EXCLUDED.name, code=EXCLUDED.code, "
+            "business_type=EXCLUDED.business_type, status=EXCLUDED.status, updated_at=now() "
+            "RETURNING id, name, code, business_type, status, created_at, updated_at",
+            (company_id.strip(), name.strip(), code.strip(), business_type.strip(), status.strip()),
+        ).fetchone()
+    return dict(row)
 
 
 def get_admin_campaigns_for_store(store_id):
@@ -624,7 +672,7 @@ def _admin_campaign_result(campaign_id, ad_id, campaign):
 def load_state():
     with pool().connection() as conn:
         stores = conn.execute(
-            "SELECT id, name, store_type, wifi, monthly_users, legacy_clicks, status "
+            "SELECT id, company_id, name, store_type, wifi, monthly_users, legacy_clicks, status "
             "FROM stores ORDER BY created_at, id"
         ).fetchall()
         ad = conn.execute(
@@ -668,7 +716,7 @@ def load_state():
         "design": config.get("design", {}),
         "ad": ad_data,
         "stores": [{
-            "id": row["id"], "name": row["name"], "type": row["store_type"],
+            "id": row["id"], "companyId": row["company_id"], "name": row["name"], "type": row["store_type"],
             "wifi": row["wifi"], "users": row["monthly_users"],
             "clicks": row["legacy_clicks"], "status": row["status"],
         } for row in stores],
