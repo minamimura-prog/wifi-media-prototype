@@ -58,12 +58,16 @@ CREATE TABLE IF NOT EXISTS ads (
     body TEXT NOT NULL DEFAULT '',
     landing_url TEXT NOT NULL DEFAULT '',
     media_url TEXT NOT NULL DEFAULT '',
+    media_url_mobile TEXT NOT NULL DEFAULT '',
     starts_on DATE,
     ends_on DATE,
     published BOOLEAN NOT NULL DEFAULT FALSE,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+ALTER TABLE ads
+    ADD COLUMN IF NOT EXISTS media_url_mobile TEXT NOT NULL DEFAULT '';
 
 CREATE TABLE IF NOT EXISTS campaigns (
     id TEXT PRIMARY KEY,

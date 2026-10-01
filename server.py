@@ -67,7 +67,7 @@ def _validate_admin_campaign(payload):
         raise ValueError("invalid payload")
     allowed = {
         "name", "status", "startsOn", "endsOn", "title", "body",
-        "landingUrl", "mediaUrl", "published",
+        "landingUrl", "mediaUrl", "mediaUrlMobile", "published",
     }
     required = {"name", "status", "title", "body", "landingUrl", "mediaUrl", "published"}
     if not required.issubset(payload) or not set(payload).issubset(allowed):
@@ -81,6 +81,10 @@ def _validate_admin_campaign(payload):
         value = payload[key]
         if not isinstance(value, str) or len(value) > limit:
             raise ValueError(f"invalid {key}")
+    if "mediaUrlMobile" in payload:
+        value = payload["mediaUrlMobile"]
+        if not isinstance(value, str) or len(value) > 4096:
+            raise ValueError("invalid mediaUrlMobile")
     if not payload["name"].strip() or not payload["title"].strip():
         raise ValueError("name and title are required")
     if (not isinstance(payload["status"], str)
@@ -93,7 +97,7 @@ def _validate_admin_campaign(payload):
     ends_on = _parse_admin_campaign_date(payload.get("endsOn"), "endsOn")
     if starts_on is not None and ends_on is not None and starts_on > ends_on:
         raise ValueError("invalid date range")
-    return {
+    campaign = {
         "name": payload["name"],
         "status": payload["status"],
         "starts_on": starts_on,
@@ -104,6 +108,9 @@ def _validate_admin_campaign(payload):
         "media_url": payload["mediaUrl"],
         "published": payload["published"],
     }
+    if "mediaUrlMobile" in payload:
+        campaign["media_url_mobile"] = payload["mediaUrlMobile"]
+    return campaign
 
 
 def _read_idempotency_key(headers):
@@ -133,6 +140,7 @@ def _admin_campaign_json(row):
         "body": row["body"],
         "landingUrl": row["landing_url"],
         "mediaUrl": row["media_url"],
+        "mediaUrlMobile": row.get("media_url_mobile") or "",
         "published": row["published"],
         "createdAt": iso(row.get("campaign_created_at")),
         "updatedAt": iso(row.get("campaign_updated_at")),
@@ -315,9 +323,10 @@ def public_config():
             "brand", "buttonText", "buttonColor", "buttonTextColor",
             "showBrand", "showBody", "showButton",
         )},
-        "ad": {key: ad.get(key) for key in (
-            "title", "body", "link", "media", "store", "id",
-        )},
+        "ad": {key: (ad.get(key) or "") if key == "mediaMobile" else ad.get(key)
+               for key in (
+                   "title", "body", "link", "media", "store", "id", "mediaMobile",
+               )},
     }
 
 def _campaign_date(value):
@@ -370,6 +379,7 @@ def public_config_for_store(public_code):
         "body": campaign.get("body"),
         "link": campaign.get("landing_url"),
         "media": campaign.get("media_url"),
+        "mediaMobile": campaign.get("media_url_mobile") or "",
         "store": store.get("name") or "未設定",
         "id": campaign.get("ad_id"),
         # Public opaque identifier used only to validate event attribution.

@@ -50,6 +50,11 @@ def _store_campaign_payload_hash(campaign):
         "mediaUrl": campaign["media_url"],
         "published": campaign["published"],
     }
+    # Preserve hashes created before the mobile image field existed when the
+    # field is missing or blank. A real mobile URL is part of request identity.
+    media_url_mobile = campaign.get("media_url_mobile")
+    if media_url_mobile:
+        canonical["mediaUrlMobile"] = media_url_mobile
     encoded = json.dumps(
         canonical, sort_keys=True, separators=(",", ":"), ensure_ascii=False
     ).encode("utf-8")
@@ -377,7 +382,8 @@ def get_campaigns_for_store(store_id):
         rows = conn.execute(
             "SELECT c.id AS campaign_id, c.ad_id, c.name AS campaign_name, "
             "c.starts_on, c.ends_on, c.status AS campaign_status, "
-            "a.title, a.body, a.landing_url, a.media_url, a.published "
+            "a.title, a.body, a.landing_url, a.media_url, "
+            "COALESCE(a.media_url_mobile, '') AS media_url_mobile, a.published "
             "FROM campaign_stores cs "
             "JOIN campaigns c ON c.id = cs.campaign_id "
             "JOIN ads a ON a.id = c.ad_id "
@@ -406,7 +412,8 @@ def get_admin_campaigns_for_store(store_id):
             "SELECT c.id AS campaign_id, c.ad_id, c.name AS campaign_name, "
             "c.status AS campaign_status, c.starts_on, c.ends_on, "
             "c.created_at AS campaign_created_at, c.updated_at AS campaign_updated_at, "
-            "a.title, a.body, a.landing_url, a.media_url, a.published, "
+            "a.title, a.body, a.landing_url, a.media_url, "
+            "COALESCE(a.media_url_mobile, '') AS media_url_mobile, a.published, "
             "a.created_at AS ad_created_at, a.updated_at AS ad_updated_at "
             "FROM campaign_stores cs "
             "JOIN campaigns c ON c.id = cs.campaign_id "
@@ -435,10 +442,11 @@ def create_store_campaign(store_id, campaign_id, ad_id, campaign):
             # ads.store_id column NULL rather than maintaining a second mapping.
             conn.execute(
                 "INSERT INTO ads "
-                "(id, store_id, title, body, landing_url, media_url, published) "
-                "VALUES (%s, NULL, %s, %s, %s, %s, %s)",
+                "(id, store_id, title, body, landing_url, media_url, media_url_mobile, published) "
+                "VALUES (%s, NULL, %s, %s, %s, %s, %s, %s)",
                 (ad_id, campaign["title"], campaign["body"], campaign["landing_url"],
-                 campaign["media_url"], campaign["published"]),
+                 campaign["media_url"], campaign.get("media_url_mobile") or "",
+                 campaign["published"]),
             )
             conn.execute(
                 "INSERT INTO campaigns (id, ad_id, name, starts_on, ends_on, status) "
@@ -522,11 +530,11 @@ def create_store_campaign_idempotent(
             # the sole source of truth for store delivery assignment.
             conn.execute(
                 "INSERT INTO ads "
-                "(id, store_id, title, body, landing_url, media_url, published) "
-                "VALUES (%s, NULL, %s, %s, %s, %s, %s)",
+                "(id, store_id, title, body, landing_url, media_url, media_url_mobile, published) "
+                "VALUES (%s, NULL, %s, %s, %s, %s, %s, %s)",
                 (ad_id, campaign["title"], campaign["body"],
                  campaign["landing_url"], campaign["media_url"],
-                 campaign["published"]),
+                 campaign.get("media_url_mobile") or "", campaign["published"]),
             )
             conn.execute(
                 "INSERT INTO campaigns (id, ad_id, name, starts_on, ends_on, status) "
@@ -554,7 +562,8 @@ def update_store_campaign(store_id, campaign_id, campaign):
             if not store:
                 return None
             current = conn.execute(
-                "SELECT c.id AS campaign_id, c.ad_id "
+                "SELECT c.id AS campaign_id, c.ad_id, "
+                "COALESCE(a.media_url_mobile, '') AS media_url_mobile "
                 "FROM campaign_stores cs "
                 "JOIN campaigns c ON c.id = cs.campaign_id "
                 "JOIN ads a ON a.id = c.ad_id "
@@ -576,12 +585,22 @@ def update_store_campaign(store_id, campaign_id, campaign):
                 (campaign["name"], campaign["starts_on"], campaign["ends_on"],
                  campaign["status"], current["campaign_id"]),
             )
-            conn.execute(
-                "UPDATE ads SET title = %s, body = %s, landing_url = %s, media_url = %s, "
-                "published = %s, updated_at = now() WHERE id = %s",
-                (campaign["title"], campaign["body"], campaign["landing_url"],
-                 campaign["media_url"], campaign["published"], current["ad_id"]),
-            )
+            if "media_url_mobile" in campaign:
+                conn.execute(
+                    "UPDATE ads SET title = %s, body = %s, landing_url = %s, media_url = %s, "
+                    "media_url_mobile = %s, published = %s, updated_at = now() WHERE id = %s",
+                    (campaign["title"], campaign["body"], campaign["landing_url"],
+                     campaign["media_url"], campaign.get("media_url_mobile") or "",
+                     campaign["published"], current["ad_id"]),
+                )
+            else:
+                conn.execute(
+                    "UPDATE ads SET title = %s, body = %s, landing_url = %s, media_url = %s, "
+                    "published = %s, updated_at = now() WHERE id = %s",
+                    (campaign["title"], campaign["body"], campaign["landing_url"],
+                     campaign["media_url"], campaign["published"], current["ad_id"]),
+                )
+            campaign.setdefault("media_url_mobile", current["media_url_mobile"] or "")
     return _admin_campaign_result(current["campaign_id"], current["ad_id"], campaign)
 
 
@@ -597,6 +616,7 @@ def _admin_campaign_result(campaign_id, ad_id, campaign):
         "body": campaign["body"],
         "landing_url": campaign["landing_url"],
         "media_url": campaign["media_url"],
+        "media_url_mobile": campaign.get("media_url_mobile") or "",
         "published": campaign["published"],
     }
 
@@ -609,6 +629,7 @@ def load_state():
         ).fetchall()
         ad = conn.execute(
             "SELECT a.id, a.store_id, a.title, a.body, a.landing_url, a.media_url, "
+            "COALESCE(a.media_url_mobile, '') AS media_url_mobile, "
             "a.starts_on, a.ends_on, a.published, s.name AS store_name "
             "FROM campaigns c "
             "JOIN ads a ON a.id = c.ad_id "
@@ -639,6 +660,7 @@ def load_state():
     ad_data = {
         "id": ad["id"], "store": ad["store_name"] or "未設定",
         "title": ad["title"], "body": ad["body"], "media": ad["media_url"],
+        "mediaMobile": ad["media_url_mobile"] or "",
         "link": ad["landing_url"], "start": _date(ad["starts_on"]),
         "end": _date(ad["ends_on"]), "published": ad["published"],
     } if ad else {}
@@ -694,14 +716,18 @@ def save_state(data):
             store_ids = _store_ids(conn)
             ad_id = str(ad.get("id") or "main")
             store_id = store_ids.get(ad.get("store"))
+            has_mobile_media = "mediaMobile" in ad
+            mobile_media = ad.get("mediaMobile") or ""
             conn.execute(
-                "INSERT INTO ads (id, store_id, title, body, landing_url, media_url, starts_on, ends_on, published) "
-                "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s) "
+                "INSERT INTO ads (id, store_id, title, body, landing_url, media_url, media_url_mobile, starts_on, ends_on, published) "
+                "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s) "
                 "ON CONFLICT (id) DO UPDATE SET store_id=EXCLUDED.store_id, title=EXCLUDED.title, "
                 "body=EXCLUDED.body, landing_url=EXCLUDED.landing_url, media_url=EXCLUDED.media_url, "
+                "media_url_mobile=CASE WHEN %s THEN EXCLUDED.media_url_mobile ELSE ads.media_url_mobile END, "
                 "starts_on=EXCLUDED.starts_on, ends_on=EXCLUDED.ends_on, published=EXCLUDED.published, updated_at=now()",
                 (ad_id, store_id, ad.get("title", ""), ad.get("body", ""), ad.get("link", ""),
-                 ad.get("media", ""), _date(ad.get("start")), _date(ad.get("end")), bool(ad.get("published", False))),
+                 ad.get("media", ""), mobile_media, _date(ad.get("start")), _date(ad.get("end")),
+                 bool(ad.get("published", False)), has_mobile_media),
             )
             campaign_id = "default"
             conn.execute(
