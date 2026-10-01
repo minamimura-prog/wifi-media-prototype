@@ -32,6 +32,10 @@ class StoreCampaignIdempotencyMismatchError(Exception):
     """Raised when an idempotency key is reused for another store or payload."""
 
 
+class CompanyCodeConflictError(Exception):
+    """Raised when a company code is already assigned to another company."""
+
+
 _STORE_CAMPAIGN_IDEMPOTENCY_MAX_KEY_LENGTH = 255
 
 
@@ -449,6 +453,45 @@ def save_company(company):
             (company_id.strip(), name.strip(), code.strip(), business_type.strip(), status.strip()),
         ).fetchone()
     return dict(row)
+
+
+def create_company(company_id, name, code, business_type="", status="active"):
+    """Create a company without changing existing company or store records."""
+    try:
+        with pool().connection() as conn:
+            row = conn.execute(
+                "INSERT INTO companies (id, name, code, business_type, status) "
+                "VALUES (%s, %s, %s, %s, %s) "
+                "RETURNING id, name, code, business_type, status, created_at, updated_at",
+                (str(company_id), name, code, business_type, status),
+            ).fetchone()
+    except psycopg.errors.UniqueViolation as exc:
+        if exc.diag.constraint_name == "companies_code_key":
+            raise CompanyCodeConflictError from exc
+        raise
+    return dict(row)
+
+
+def assign_store_company(store_id, company_id):
+    """Assign a store to a company, or explicitly clear the assignment with None."""
+    with pool().connection() as conn:
+        with conn.transaction():
+            store = conn.execute(
+                "SELECT id FROM stores WHERE id = %s FOR UPDATE", (str(store_id),)
+            ).fetchone()
+            if not store:
+                return "store_not_found"
+            if company_id is not None:
+                company = conn.execute(
+                    "SELECT id FROM companies WHERE id = %s", (str(company_id),)
+                ).fetchone()
+                if not company:
+                    return "company_not_found"
+            conn.execute(
+                "UPDATE stores SET company_id = %s, updated_at = now() WHERE id = %s",
+                (str(company_id) if company_id is not None else None, str(store_id)),
+            )
+    return "ok"
 
 
 def get_admin_campaigns_for_store(store_id):

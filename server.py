@@ -29,6 +29,8 @@ PUBLIC_CODE_PATTERN = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 # The database CHECK constrains the format but not length. Keep a practical
 # HTTP input bound while accepting manually assigned valid public codes.
 PUBLIC_CODE_MAX_LENGTH = 128
+COMPANY_CODE_PATTERN = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
+ADMIN_COMPANY_MAX_BYTES = 16 * 1024
 
 def _safe_admin_route_id(raw_value):
     value = unquote(raw_value)
@@ -36,6 +38,38 @@ def _safe_admin_route_id(raw_value):
             or any(ord(char) < 32 or ord(char) == 127 for char in value)):
         return None
     return value
+
+
+def _admin_store_company_route(path):
+    parts = path.split("/")
+    if (len(parts) != 6 or parts[:4] != ["", "api", "admin", "stores"]
+            or parts[5] != "company"):
+        return None
+    return _safe_admin_route_id(parts[4])
+
+
+def _validate_admin_company(payload):
+    if not isinstance(payload, dict):
+        raise ValueError("invalid payload")
+    allowed = {"name", "code", "businessType", "status"}
+    if not {"name", "code"}.issubset(payload) or not set(payload).issubset(allowed):
+        raise ValueError("invalid fields")
+    name = payload["name"]
+    code = payload["code"]
+    business_type = payload.get("businessType", "")
+    status = payload.get("status", "active")
+    if (not isinstance(name, str) or not name.strip() or len(name.strip()) > 200
+            or not isinstance(code, str) or not COMPANY_CODE_PATTERN.fullmatch(code)
+            or len(code) > 100):
+        raise ValueError("invalid name or code")
+    if not isinstance(business_type, str) or len(business_type) > 100:
+        raise ValueError("invalid businessType")
+    if not isinstance(status, str) or status not in {"active", "inactive"}:
+        raise ValueError("invalid status")
+    return {
+        "name": name.strip(), "code": code,
+        "business_type": business_type.strip(), "status": status,
+    }
 
 
 def _admin_store_campaign_route(path, include_campaign=False):
@@ -531,6 +565,25 @@ class Handler(BaseHTTPRequestHandler):
             return _validate_admin_campaign(raw_payload), None
         except (UnicodeDecodeError, json.JSONDecodeError, ValueError):
             return None, 400
+    def read_admin_json_payload(self, max_bytes=ADMIN_COMPANY_MAX_BYTES):
+        content_type = self.headers.get("Content-Type", "").split(";", 1)[0].strip().lower()
+        if content_type != "application/json":
+            return None, 415
+        try:
+            length = int(self.headers.get("Content-Length", "0"))
+        except (TypeError, ValueError):
+            return None, 400
+        if length <= 0:
+            return None, 400
+        if length > max_bytes:
+            return None, 413
+        try:
+            body = self.rfile.read(length)
+            if len(body) != length:
+                return None, 400
+            return json.loads(body.decode("utf-8")), None
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            return None, 400
     def admin_login_client_ip(self):
         if os.environ.get("RENDER", "").strip().lower() == "true":
             values = self.headers.get_all("CF-Connecting-IP", [])
@@ -710,6 +763,37 @@ class Handler(BaseHTTPRequestHandler):
         return self.send_bytes(b"not found", 404, "text/plain; charset=utf-8")
     def do_PUT(self):
         path = urlparse(self.path).path
+        company_store_id = _admin_store_company_route(path)
+        if company_store_id is not None:
+            if not self.require_admin_session(): return
+            if not self.require_same_origin(): return
+            if not database.database_enabled():
+                return self.send_json({"ok": False, "error": "admin_data_unavailable"}, 503)
+            payload, error_status = self.read_admin_json_payload()
+            if error_status:
+                return self.send_json({"ok": False, "error": "invalid_request"}, error_status)
+            if not isinstance(payload, dict) or set(payload) != {"companyId"}:
+                return self.send_json({"ok": False, "error": "invalid_request"}, 400)
+            requested_company_id = payload["companyId"]
+            if requested_company_id is not None:
+                if (isinstance(requested_company_id, bool)
+                        or not isinstance(requested_company_id, (str, int))):
+                    return self.send_json({"ok": False, "error": "invalid_request"}, 400)
+                requested_company_id = str(requested_company_id)
+                if (not requested_company_id.strip() or len(requested_company_id) > 256
+                        or any(ord(char) < 32 or ord(char) == 127
+                               for char in requested_company_id)):
+                    return self.send_json({"ok": False, "error": "invalid_request"}, 400)
+            try:
+                result = database.assign_store_company(company_store_id, requested_company_id)
+            except Exception:
+                return self.send_json({"ok": False}, 503)
+            if result == "store_not_found":
+                return self.send_json({"ok": False, "error": "store_not_found"}, 404)
+            if result == "company_not_found":
+                return self.send_json({"ok": False, "error": "company_not_found"}, 404)
+            return self.send_json({"ok": True, "storeId": company_store_id,
+                                   "companyId": requested_company_id})
         store_route = _admin_store_campaign_route(path, include_campaign=True)
         if not store_route:
             return self.send_json({"ok": False, "error": "not found"}, 404)
@@ -769,6 +853,32 @@ class Handler(BaseHTTPRequestHandler):
         path = urlparse(self.path).path
         if path == "/api/admin/login": return self.handle_admin_login()
         if path == "/api/admin/logout": return self.handle_admin_logout()
+        if path == "/api/admin/companies":
+            if not self.require_admin_session(): return
+            if not self.require_same_origin(): return
+            if not database.database_enabled():
+                return self.send_json({"ok": False, "error": "admin_data_unavailable"}, 503)
+            raw_payload, error_status = self.read_admin_json_payload()
+            if error_status:
+                return self.send_json({"ok": False, "error": "invalid_request"}, error_status)
+            try:
+                company = _validate_admin_company(raw_payload)
+            except (TypeError, ValueError):
+                return self.send_json({"ok": False, "error": "invalid_request"}, 400)
+            try:
+                created = database.create_company(
+                    "company-" + uuid.uuid4().hex,
+                    company["name"], company["code"],
+                    company["business_type"], company["status"],
+                )
+            except database.CompanyCodeConflictError:
+                return self.send_json({"ok": False, "error": "company_code_conflict"}, 409)
+            except Exception:
+                return self.send_json({"ok": False}, 503)
+            return self.send_json({"company": {
+                "id": created["id"], "name": created["name"], "code": created["code"],
+                "businessType": created["business_type"], "status": created["status"],
+            }}, 201)
         store_route = _admin_store_campaign_route(path)
         if store_route:
             if not self.require_admin_session(): return
