@@ -775,11 +775,13 @@ input:focus, textarea:focus, select:focus {
 .company-panel-heading{display:flex;flex-direction:column;gap:5px;margin:0 0 15px;padding-bottom:11px;border-bottom:1px solid rgba(76,229,255,.16);color:#d8f7f7}.company-terminal-label{color:var(--signal-cyan);font:600 10px ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.13em}.company-panel-heading .section{margin:0;color:#e0f3f4}
 .company-management-view .field label{color:#c7dadd}.company-management-view input,.company-management-view select{width:100%;color:#e7f0f2;background:rgba(5,12,15,.92);border:1px solid #38515a;border-radius:5px;color-scheme:dark}.company-management-view .field small{display:block;margin-top:5px;color:#92bcb7;font-size:11px;line-height:1.5}
 .company-primary{padding:9px 13px;color:#07110e;background:linear-gradient(100deg,#a8f451,#72f0d6);border:1px solid #b7ff8c}.company-primary:disabled,.company-row-save:disabled{opacity:.55;cursor:wait}.company-notice{margin:12px 0 0;padding:9px 11px;border:1px solid rgba(76,229,255,.35);border-left:2px solid var(--signal-cyan);background:rgba(76,229,255,.06);color:#c8f8f4;font-size:12px;line-height:1.6}.company-notice.is-error{border-color:#713b43;border-left-color:#ff707b;background:rgba(113,59,67,.15);color:#ffb4b4}.company-table-scroll{width:100%;overflow-x:auto}.company-data-table{min-width:560px}.company-data-table th{color:#8fdde3;font:600 10px ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.08em}.company-data-table td{vertical-align:middle}.company-code{color:#a8c6c5;font:11px ui-monospace,SFMono-Regular,Menlo,monospace}.company-business-type{color:#a8c6c5;font-size:12px}.company-status{display:inline-block;padding:3px 7px;border:1px solid rgba(183,255,86,.38);border-radius:4px;background:rgba(183,255,86,.08);color:#b7ff56;font-size:11px}.company-status.is-inactive{border-color:#53606b;background:rgba(166,173,183,.08);color:#a6adb7}.company-empty,.company-loading,.company-error{padding:12px 2px;color:#a8c6c5;font-size:13px;line-height:1.7}.company-store-table{min-width:650px}.company-store-name{font-weight:700;color:#e5f4f4}.company-store-code{display:block;margin-top:3px;color:#829da2;font:10px ui-monospace,SFMono-Regular,Menlo,monospace;overflow-wrap:anywhere}.company-store-controls{display:flex;align-items:center;gap:8px;min-width:245px}.company-store-controls select{min-width:155px}.company-row-save{flex:none;padding:7px 10px;border:1px solid rgba(76,229,255,.5);border-radius:4px;background:rgba(5,12,15,.9);color:#c8f8f4;font-size:11px}.company-row-save:hover:not(:disabled){border-color:var(--signal-cyan);box-shadow:0 0 8px rgba(76,229,255,.14)}.company-row-notice{display:block;margin-top:5px;color:var(--neon-green);font-size:11px}.company-row-notice.is-error{color:#ffb4b4}
+.store-company-field select{color-scheme:dark}.store-company-field small{display:block;margin-top:5px;color:#92bcb7;font-size:11px;line-height:1.5}.store-management-view .company-notice{margin:0 0 14px}
 @media(max-width:900px){.company-layout{grid-template-columns:minmax(0,1fr)}}@media(max-width:700px){.company-system-status{align-items:flex-start}.company-panel{padding:14px}.company-data-table th,.company-data-table td{padding:10px 7px}}
 </style></head><body><div class="app"><aside class="side"><div class="logo">Wi-Fi MEDIA<small>広告・店舗・効果測定</small></div><div class="nav active" data-page="dashboard" onclick="navigateTo('dashboard')">ダッシュボード</div><div class="nav" data-page="ads" onclick="navigateTo('ads')">広告管理</div><div class="nav" data-page="stores" onclick="navigateTo('stores')">店舗管理</div><div class="nav" data-page="companies" onclick="navigateTo('companies')">企業管理</div><div class="nav" data-page="analytics" onclick="navigateTo('analytics')">効果測定</div><div class="nav" data-page="coupons" onclick="navigateTo('coupons')">クーポン管理</div><div class="nav" data-page="design" onclick="navigateTo('design')">Webデザイン</div><div class="side-logout"><button class="logout-button" id="logout-button" type="button" onclick="logout()">LOGOUT</button></div></aside><main class="main" id="main"></main></div><div class="modalbg" id="modal"><div class="modal"><button class="close" onclick="closeModal()">閉じる</button><h2 id="modalTitle">編集</h2><div id="modalBody"></div></div></div><script>let S=null;
 let adTarget='global', adStores=null, adStoreId=null, adCampaigns=[], selectedCampaignId=null, adCampaign=null, adCreatingNew=false, adCampaignCount=0, adStoreLoading=false, adStoreError='', adStoreRequestSeq=0, adStoresLoading=false, adStoresRequestSeq=0, adSaving=false, adSaveError='';
 let adCreateIdempotencyKey=null, adCreateAttempt=null, adCreateUncertain=false, adCreateBlocked=false, adCreateStoreId=null;
 let companyAdminData={companies:[],stores:[]}, companyDataLoaded=false, companyRequestSeq=0, companyCreateSaving=false, companyAssignSaving=new Set(), companyFormNotice='', companyFormNoticeType='', companyLoadError='', companyStoreNotices={}, companyFormValues={name:'',code:'',businessType:'',status:'active'};
+let storeCompanyOptionsData=[], storeCompanyOptionsError='', storeSavePending=false, storeSaveFeedback='', storeSaveFeedbackType='';
 async function apiFetch(url, options){
   const response=await window.fetch(url, options);
   if(response.status===401){
@@ -1265,7 +1267,136 @@ async function saveStoreCompany(storeId){
     if(location.hash==='#companies')renderCompanyManagement();
   }
 }
-async function deleteStore(i){if(!confirm(`「${S.stores[i].name}」を削除しますか？`))return;S.stores.splice(i,1);await save();stores()} function editStore(i){const x=S.stores[i];openModal('店舗を編集',`<div class="field"><label>店舗名</label><input id="sName" value="${esc(x.name)}"></div><div class="field"><label>業態</label><input id="sType" value="${esc(x.type)}"></div><div class="field"><label>Wi-Fi</label><input id="sWifi" value="${esc(x.wifi)}"></div><div class="field"><label>月間接続数</label><input id="sUsers" type="number" value="${x.users}"></div><div class="field"><label>状態</label><select id="sStatus"><option ${x.status==='稼働中'?'selected':''}>稼働中</option><option ${x.status==='停止中'?'selected':''}>停止中</option></select></div><button onclick="saveStore(${i})">保存</button>`)}function addStore(){S.stores.push({id:Date.now().toString(),name:'新規店舗',type:'店舗',wifi:'Guest Wi-Fi',users:0,clicks:0,status:'稼働中'});stores();save()}function saveStore(i){const x=S.stores[i];x.name=document.getElementById('sName').value;x.type=document.getElementById('sType').value;x.wifi=document.getElementById('sWifi').value;x.users=+document.getElementById('sUsers').value;x.status=document.getElementById('sStatus').value;closeModal();save()}async function reports(){
+async function loadStoreCompanyOptions(){
+  storeCompanyOptionsError='';
+  try{
+    const response=await companyApiFetch('/api/admin/companies');
+    if(!response.ok)throw new Error(companyApiError(new Error(String(response.status))));
+    const payload=await response.json();
+    storeCompanyOptionsData=Array.isArray(payload.companies)?payload.companies:[];
+    companyDataLoaded=true;
+    return true;
+  }catch(error){
+    storeCompanyOptionsError=error.message||'企業一覧を取得できませんでした。';
+    return false;
+  }
+}
+function storeCompanyOptions(currentCompanyId){
+  const current=currentCompanyId===null||currentCompanyId===undefined?'':String(currentCompanyId);
+  const active=storeCompanyOptionsData.filter(company=>company.status==='active');
+  const currentCompany=storeCompanyOptionsData.find(company=>String(company.id)===current);
+  const options=[`<option value="" ${current===''?'selected':''}>未所属</option>`,...active.map(company=>`<option value="${esc(company.id)}" ${String(company.id)===current?'selected':''}>${esc(company.name)}${company.status==='inactive'?'（停止中）':''}</option>`)];
+  if(current&&currentCompany?.status==='inactive'&&!active.some(company=>String(company.id)===current))options.push(`<option value="${esc(currentCompany.id)}" selected>${esc(currentCompany.name)}（停止中・現在の所属）</option>`);
+  if(current&&!currentCompany)options.push(`<option value="${esc(current)}" selected>現在の所属企業（ID: ${esc(current)}）</option>`);
+  return options.join('');
+}
+function renderStores(){
+  const feedback=storeSaveFeedback?`<div class="company-notice ${storeSaveFeedbackType==='error'?'is-error':''}" role="${storeSaveFeedbackType==='error'?'alert':'status'}">${esc(storeSaveFeedback)}</div>`:'';
+  const rows=S.stores.map((x,i)=>`<tr><td><b>${esc(x.name)}</b></td><td>${esc(x.type)}</td><td>${esc(x.wifi)}</td><td class="store-users">${Number(x.users||0).toLocaleString()}</td><td><span class="store-state ${x.status==='停止中'?'is-off':'is-online'}"><i></i>${esc(x.status)}</span></td><td class="store-row-actions"><button class="secondary store-edit" onclick="editStore(${i})">編集</button> <button class="secondary store-delete" onclick="deleteStore(${i})">削除</button></td></tr>`).join('');
+  shell('<span class="store-title">STORE MANAGEMENT</span><span class="store-title-ja">店舗管理</span>','Wi-Fiを設置している店舗・ホテル・拠点を管理します.',`<div class="store-management-view"><div class="store-system-status"><div><div class="store-console-name">STORE NETWORK CONTROL</div><div class="store-console-message">Managing registered Wi-Fi locations.</div></div><span class="store-online"><i></i> ONLINE</span></div>${feedback}<section class="card store-panel"><div class="store-panel-head"><div><span class="store-terminal-label">REGISTERED LOCATIONS</span><div class="store-panel-title">店舗一覧</div></div><div class="actions store-actions" style="justify-content:flex-end;margin-bottom:12px"><button class="store-primary" onclick="addStore()" ${storeSavePending?'disabled':''}>＋ 店舗を追加</button></div></div><div class="store-table-scroll"><table class="store-data-table"><thead><tr><th>店舗</th><th>業態</th><th>Wi-Fi</th><th>月間接続</th><th>状態</th><th></th></tr></thead><tbody>${rows}</tbody></table></div></section></div>`);
+}
+function stores(){renderStores()}
+function newStoreId(){
+  const cryptoApi=window.crypto;
+  let candidate='';
+  try{candidate=typeof cryptoApi?.randomUUID==='function'?`store-${cryptoApi.randomUUID()}`:'';}catch{}
+  if(!candidate)candidate=`store-${Date.now()}-${Math.random().toString(36).slice(2,12)}`;
+  while(S.stores.some(store=>String(store.id)===candidate))candidate=`store-${Date.now()}-${Math.random().toString(36).slice(2,12)}`;
+  return candidate;
+}
+function openStoreForm(store,isNew){
+  const currentCompanyId=store.companyId??'';
+  const currentInactive=storeCompanyOptionsData.find(company=>String(company.id)===String(currentCompanyId))?.status==='inactive';
+  const companyWarning=storeCompanyOptionsError?`<div class="company-notice is-error" role="alert">${esc(storeCompanyOptionsError)} 所属企業は変更できません。</div>`:'';
+  openModal(isNew?'店舗を追加':'店舗を編集',`<form id="storeEditForm" onsubmit="saveStore(event)" data-store-id="${esc(store.id)}" data-is-new="${isNew?'true':'false'}" data-original-company-id="${esc(currentCompanyId)}"><div class="field"><label for="sName">店舗名</label><input id="sName" maxlength="200" required value="${esc(store.name)}"></div><div class="field store-company-field"><label for="sCompanyId">所属企業</label><select id="sCompanyId" ${storeCompanyOptionsError?'disabled':''}>${storeCompanyOptions(currentCompanyId)}</select><small>${isNew?'店舗の登録後、選択した企業へ所属させます。':'店舗情報の保存後、所属企業の変更を専用APIで反映します。'}${currentInactive?' 現在の停止中企業への所属は維持できます。':''}</small></div>${companyWarning}<div class="field"><label for="sType">業態</label><input id="sType" value="${esc(store.type)}"></div><div class="field"><label for="sWifi">Wi-Fi</label><input id="sWifi" value="${esc(store.wifi)}"></div><div class="field"><label for="sUsers">月間接続数</label><input id="sUsers" type="number" min="0" value="${esc(store.users)}"></div><div class="field"><label for="sStatus">状態</label><select id="sStatus"><option ${store.status==='稼働中'?'selected':''}>稼働中</option><option ${store.status==='停止中'?'selected':''}>停止中</option></select></div><button type="submit" class="company-primary" ${storeSavePending||storeCompanyOptionsError?'disabled':''}>${storeSavePending?'保存中…':'保存'}</button></form>`);
+}
+async function addStore(){
+  if(storeSavePending)return;
+  const ready=await loadStoreCompanyOptions();
+  if(!ready){storeSaveFeedback=storeCompanyOptionsError;storeSaveFeedbackType='error';renderStores();return;}
+  storeSaveFeedback='';storeSaveFeedbackType='';
+  openStoreForm({id:newStoreId(),name:'',type:'店舗',wifi:'Guest Wi-Fi',users:0,clicks:0,status:'稼働中',companyId:null},true);
+}
+async function editStore(i){
+  if(storeSavePending)return;
+  const store=S.stores[i];if(!store)return;
+  const ready=await loadStoreCompanyOptions();
+  if(!ready){storeSaveFeedback=storeCompanyOptionsError;storeSaveFeedbackType='error';renderStores();return;}
+  openStoreForm(store,false);
+}
+async function refreshStoreState(){
+  const response=await apiFetch('/api/state');
+  if(!response.ok)throw new Error('店舗情報を再取得できませんでした。');
+  const state=await response.json();
+  if(!state||!Array.isArray(state.stores))throw new Error('店舗情報を確認できませんでした。');
+  S=state;
+  return state;
+}
+async function refreshStoreCompanyData(){
+  const [companiesResponse,storesResponse]=await Promise.all([companyApiFetch('/api/admin/companies'),companyApiFetch('/api/admin/stores')]);
+  if(!companiesResponse.ok||!storesResponse.ok)throw new Error('企業所属の最新状態を再取得できませんでした。');
+  const [companiesPayload,storesPayload]=await Promise.all([companiesResponse.json(),storesResponse.json()]);
+  storeCompanyOptionsData=Array.isArray(companiesPayload.companies)?companiesPayload.companies:[];
+  companyAdminData={companies:storeCompanyOptionsData,stores:Array.isArray(storesPayload.stores)?storesPayload.stores:[]};
+  companyDataLoaded=true;
+}
+async function saveStore(event){
+  event.preventDefault();if(storeSavePending)return;
+  const form=document.getElementById('storeEditForm');if(!form)return;
+  const isNew=form.dataset.isNew==='true', storeId=form.dataset.storeId;
+  if(!storeId)return;
+  const name=document.getElementById('sName').value.trim();
+  if(!name){alert('店舗名を入力してください。');return;}
+  const selectedCompanyId=document.getElementById('sCompanyId').value;
+  const companyId=selectedCompanyId===''?null:selectedCompanyId;
+  const originalCompanyId=form.dataset.originalCompanyId||'';
+  const companyChanged=isNew?companyId!==null:String(companyId??'')!==String(originalCompanyId);
+  const source=isNew?{id:storeId,name:'',type:'店舗',wifi:'Guest Wi-Fi',users:0,clicks:0,status:'稼働中'}:S.stores.find(store=>String(store.id)===String(storeId));
+  if(!source){storeSaveFeedback='編集対象の店舗を確認できません。店舗一覧を再読み込みしてください。';storeSaveFeedbackType='error';closeModal();renderStores();return;}
+  const updatedStore={...source,name,type:document.getElementById('sType').value.trim(),wifi:document.getElementById('sWifi').value.trim(),users:Math.max(0,Number(document.getElementById('sUsers').value)||0),status:document.getElementById('sStatus').value};
+  const nextState={...S,stores:isNew?[...S.stores,updatedStore]:S.stores.map(store=>String(store.id)===String(storeId)?updatedStore:store)};
+  storeSavePending=true;storeSaveFeedback='';storeSaveFeedbackType='';let storeSaved=false;
+  const submitButton=form.querySelector('button[type="submit"]');if(submitButton){submitButton.disabled=true;submitButton.textContent='保存中…';}
+  try{
+    const saveResponse=await apiFetch('/api/state',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(nextState)});
+    if(!saveResponse.ok)throw new Error('店舗情報を保存できませんでした。');
+    storeSaved=true;
+    const savedState=await refreshStoreState();
+    const savedStore=savedState.stores.find(store=>String(store.id)===String(storeId));
+    if(!savedStore)throw new Error('店舗本体は保存されましたが、保存結果から対象店舗を確認できませんでした。');
+    if(isNew){
+      const storesResponse=await companyApiFetch('/api/admin/stores');
+      if(!storesResponse.ok)throw new Error('店舗本体は保存されましたが、所属企業を更新できませんでした。店舗IDを確認できません。');
+      const storesPayload=await storesResponse.json();
+      const verified=Array.isArray(storesPayload.stores)&&storesPayload.stores.some(store=>String(store.id)===String(storeId));
+      if(!verified)throw new Error('店舗本体は保存されましたが、所属企業を更新できませんでした。対象店舗を安全に確認できません。');
+    }
+    if(companyChanged){
+      const companyResponse=await companyApiFetch(`/api/admin/stores/${encodeURIComponent(storeId)}/company`,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({companyId})});
+      if(!companyResponse.ok){
+        const reason=companyApiError(new Error(String(companyResponse.status)),'企業所属を更新できませんでした。');
+        await refreshStoreState().catch(()=>{});await refreshStoreCompanyData().catch(()=>{});
+        throw new Error(`店舗は保存されましたが、所属企業を更新できませんでした。${reason}`);
+      }
+      try{await refreshStoreState();await refreshStoreCompanyData();}
+      catch{storeSaveFeedback='店舗情報と所属企業は保存されましたが、最新状態の再取得に失敗しました。画面を再読み込みしてください。';storeSaveFeedbackType='error';}
+    }else{
+      await refreshStoreCompanyData().catch(()=>{});
+    }
+    closeModal();
+    if(!storeSaveFeedback){storeSaveFeedback='店舗情報を保存しました。';storeSaveFeedbackType='success';}
+    renderStores();
+  }catch(error){
+    closeModal();
+    if(!storeSaveFeedback){
+      if(storeSaved){storeSaveFeedback=error.message?.startsWith('店舗は保存されました')||error.message?.startsWith('店舗本体は保存されました')?error.message:'店舗は保存されましたが、所属企業の状態を確認できませんでした。最新状態を再読み込みしてください。';storeSaveFeedbackType='error';await refreshStoreState().catch(()=>{});await refreshStoreCompanyData().catch(()=>{});}
+      else{storeSaveFeedback=error.message||'店舗を保存できませんでした。';storeSaveFeedbackType='error';}
+    }
+    renderStores();
+  }finally{storeSavePending=false;}
+}
+async function deleteStore(i){if(!confirm(`「${S.stores[i].name}」を削除しますか？`))return;S.stores.splice(i,1);await save();stores()}
+async function reports(){
   const a=await apiFetch('/api/analytics').then(r=>r.json());
   const couponAnalytics=await apiFetch('/api/coupon_analytics').then(r=>r.ok?r.json():Promise.reject(new Error('coupon analytics unavailable'))).catch(()=>({total:0,byType:{},byCoupon:[],unavailable:true}));
   // apiFetch leaves the chain pending after a 401 redirect, so this fallback handles other failures only.
