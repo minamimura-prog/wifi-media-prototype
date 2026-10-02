@@ -411,7 +411,7 @@ def list_admin_stores():
     """Return the minimal store fields used by authenticated admin tools."""
     with pool().connection() as conn:
         rows = conn.execute(
-            "SELECT id, company_id, name, public_code FROM stores ORDER BY created_at, id"
+            "SELECT id, company_id, name, public_code, status FROM stores ORDER BY created_at, id"
         ).fetchall()
     return [dict(row) for row in rows]
 
@@ -532,11 +532,13 @@ def create_store_campaign(store_id, campaign_id, ad_id, campaign):
     with pool().connection() as conn:
         with conn.transaction():
             store = conn.execute(
-                "SELECT id FROM stores WHERE id = %s FOR UPDATE",
+                "SELECT id, status FROM stores WHERE id = %s FOR UPDATE",
                 (str(store_id),),
             ).fetchone()
             if not store:
                 return None
+            if store.get("status") != "稼働中":
+                raise StoreInactiveError("store_inactive")
             _ensure_store_campaign_period_available(conn, store_id, campaign)
             # campaign_stores is the sole delivery assignment. Keep the legacy
             # ads.store_id column NULL rather than maintaining a second mapping.
@@ -596,11 +598,13 @@ def create_store_campaign_idempotent(
                 )
 
             store = conn.execute(
-                "SELECT id FROM stores WHERE id = %s FOR UPDATE",
+                "SELECT id, status FROM stores WHERE id = %s FOR UPDATE",
                 (store_id,),
             ).fetchone()
             if not store:
                 return None
+            if store.get("status") != "稼働中":
+                raise StoreInactiveError("store_inactive")
 
             claimed = conn.execute(
                 "INSERT INTO store_campaign_idempotency "
@@ -799,6 +803,29 @@ def save_state(data):
     ad = data.get("ad") or {}
     with pool().connection() as conn:
         with conn.transaction():
+            ad_id = str(ad.get("id") or "main")
+            current_ad = conn.execute(
+                "SELECT store_id FROM ads WHERE id = %s FOR UPDATE", (ad_id,)
+            ).fetchone()
+            current_default_store_id = current_ad.get("store_id") if current_ad else None
+            preexisting_store_id = _store_ids(conn).get(ad.get("store"))
+            preexisting_target_store = None
+            existing_default_assignment = None
+            if preexisting_store_id:
+                preexisting_target_store = conn.execute(
+                    "SELECT id, status FROM stores WHERE id = %s FOR UPDATE",
+                    (str(preexisting_store_id),),
+                ).fetchone()
+                existing_default_assignment = conn.execute(
+                    "SELECT 1 FROM campaign_stores WHERE campaign_id = %s AND store_id = %s",
+                    ("default", str(preexisting_store_id)),
+                ).fetchone()
+            previously_configured_target = bool(
+                preexisting_store_id and (
+                    str(current_default_store_id or "") == str(preexisting_store_id)
+                    or existing_default_assignment
+                )
+            )
             for store in stores:
                 store_id = str(store.get("id") or store.get("name") or "store")
                 public_code = _unique_public_code(conn, store_id)
@@ -814,8 +841,20 @@ def save_state(data):
                 )
 
             store_ids = _store_ids(conn)
-            ad_id = str(ad.get("id") or "main")
             store_id = store_ids.get(ad.get("store"))
+            target_store = None
+            if store_id:
+                target_store = conn.execute(
+                    "SELECT id, status FROM stores WHERE id = %s FOR UPDATE",
+                    (str(store_id),),
+                ).fetchone()
+            active_for_new_assignment = bool(
+                target_store and target_store.get("status") == "稼働中"
+                and (preexisting_target_store is None
+                     or preexisting_target_store.get("status") == "稼働中")
+            )
+            if target_store and not active_for_new_assignment and not previously_configured_target:
+                raise StoreInactiveError("store_inactive")
             has_mobile_media = "mediaMobile" in ad
             mobile_media = ad.get("mediaMobile") or ""
             conn.execute(
@@ -838,9 +877,14 @@ def save_state(data):
                 (campaign_id, ad_id, ad.get("title", ""), _date(ad.get("start")), _date(ad.get("end")),
                  "active" if ad.get("published") else "draft"),
             )
-            conn.execute("DELETE FROM campaign_stores WHERE campaign_id = %s", (campaign_id,))
             target_id = store_id
-            if target_id:
+            preserve_stopped_default_assignment = bool(
+                target_store and not active_for_new_assignment
+                and previously_configured_target
+            )
+            if not preserve_stopped_default_assignment:
+                conn.execute("DELETE FROM campaign_stores WHERE campaign_id = %s", (campaign_id,))
+            if target_id and not preserve_stopped_default_assignment:
                 conn.execute(
                     "INSERT INTO campaign_stores (campaign_id, store_id) VALUES (%s, %s) ON CONFLICT DO NOTHING",
                     (campaign_id, target_id),

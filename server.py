@@ -301,6 +301,30 @@ def load_state():
 def save_state(data, preserve_latest_events=True):
     if database.database_enabled():
         return database.save_state(data)
+    requested_store = (data.get("ad") or {}).get("store")
+    requested_store_record = next(
+        (store for store in data.get("stores", [])
+         if store.get("name") == requested_store),
+        None,
+    )
+    try:
+        with open(DATA, "r", encoding="utf-8") as f:
+            current_state = json.load(f)
+    except (OSError, json.JSONDecodeError):
+        current_state = {}
+    current_store = (current_state.get("ad") or {}).get("store")
+    current_store_record = next(
+        (store for store in current_state.get("stores", [])
+         if store.get("name") == requested_store),
+        None,
+    )
+    target_is_not_active = bool(
+        requested_store_record and requested_store_record.get("status") != "稼働中"
+    ) or bool(
+        current_store_record and current_store_record.get("status") != "稼働中"
+    )
+    if target_is_not_active and current_store != requested_store:
+        raise database.StoreInactiveError("store_inactive")
     # The admin page submits a cached snapshot; retain newer events recorded
     # after that snapshot was loaded.
     if preserve_latest_events:
@@ -793,7 +817,7 @@ class Handler(BaseHTTPRequestHandler):
                 stores = database.list_admin_stores()
                 return self.send_json({"stores": [
                     {"id": row["id"], "name": row["name"], "publicCode": row["public_code"],
-                     "companyId": row.get("company_id")}
+                     "companyId": row.get("company_id"), "status": row.get("status")}
                     for row in stores
                 ]})
             except Exception:
@@ -1071,6 +1095,8 @@ class Handler(BaseHTTPRequestHandler):
                 )
             except database.StoreCampaignConflictError:
                 return self.send_json({"ok": False, "error": "store_campaign_conflict"}, 409)
+            except database.StoreInactiveError:
+                return self.send_json({"ok": False, "error": "store_inactive"}, 409)
             except Exception:
                 return self.send_json({"ok": False}, 503)
             if created is None:
@@ -1134,6 +1160,8 @@ class Handler(BaseHTTPRequestHandler):
             try:
                 body = self.read_body(); data = json.loads(body.decode("utf-8")); save_state(data)
                 return self.send_json({"ok": True})
+            except database.StoreInactiveError:
+                return self.send_json({"ok": False, "error": "store_inactive"}, 409)
             except Exception: return self.send_json({"ok": False}, 400)
         if path == "/api/upload":
             if not self.require_admin_session(): return
