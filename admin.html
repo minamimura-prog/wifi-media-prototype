@@ -781,16 +781,20 @@ input:focus, textarea:focus, select:focus {
 .store-company-field select{color-scheme:dark}.store-company-field small{display:block;margin-top:5px;color:#92bcb7;font-size:11px;line-height:1.5}.store-management-view .company-notice{margin:0 0 14px}
 @media(max-width:900px){.company-layout{grid-template-columns:minmax(0,1fr)}}@media(max-width:700px){.company-system-status{align-items:flex-start}.company-panel{padding:14px}.company-data-table th,.company-data-table td{padding:10px 7px}}
 
+/* Shared sidebar: use the approved dashboard sidebar on every admin page. */
+.app .side{display:block;width:220px;flex:none;padding:24px 14px;background:rgba(6,11,13,.96);border-right:1px solid rgba(76,229,255,.2);border-bottom:0;box-shadow:none}
+.app .logo{margin:2px 7px 30px;padding:8px 0;color:var(--neon-green);font:600 16px "Orbitron","IBM Plex Sans JP",sans-serif;letter-spacing:.08em;text-transform:uppercase;text-shadow:0 0 9px rgba(183,255,86,.2)}
+.app .logo small{margin-top:7px;color:#839498;font:11px "IBM Plex Sans JP",sans-serif;letter-spacing:0}
+.app .logo small::before{content:none}
+.app .nav{padding:12px 13px;margin:4px 0;border-left:2px solid transparent;border-radius:0;color:#a8b9bc;font-size:13px}
+.app .nav:hover{color:#d9fff1;background:rgba(76,229,255,.045);box-shadow:none}
+.app .nav.active{color:#d9fff1;background:linear-gradient(90deg,rgba(183,255,86,.1),transparent);box-shadow:inset 2px 0 0 var(--neon-green),inset 0 0 12px rgba(183,255,86,.035)}
+@media(min-width:701px) and (max-width:1050px){.app .side{width:180px}}
+@media(max-width:700px){.app{display:block}.app .side{display:block;width:auto;height:auto;position:static;align-self:auto;padding:12px;border-right:0;border-bottom:1px solid rgba(76,229,255,.2)}.app .logo{margin:0 5px 10px;padding:0}.app .nav{display:inline-block;padding:8px 10px;margin:2px;font-size:11px}}
+
 /* STEP 7-4 design refinement: match the approved static dashboard preview */
 body.dashboard-layout-active{background-color:#070b0d;background-image:radial-gradient(ellipse at 65% 8%,rgba(26,67,72,.18),transparent 40%),linear-gradient(rgba(76,229,255,.018) 1px,transparent 1px),linear-gradient(90deg,rgba(76,229,255,.018) 1px,transparent 1px);background-size:auto,24px 24px,24px 24px}
 .app.dashboard-layout-active{display:grid;grid-template-columns:220px minmax(0,1fr);background:transparent}
-.app.dashboard-layout-active .side{display:block;width:auto;padding:24px 14px;background:rgba(6,11,13,.96);border-right:1px solid rgba(76,229,255,.2);border-bottom:0;box-shadow:none}
-.app.dashboard-layout-active .logo{margin:2px 7px 30px;padding:8px 0;color:var(--neon-green);font:600 16px "Orbitron","IBM Plex Sans JP",sans-serif;letter-spacing:.08em;text-transform:uppercase;text-shadow:0 0 9px rgba(183,255,86,.2)}
-.app.dashboard-layout-active .logo small{margin-top:7px;color:#839498;font:11px "IBM Plex Sans JP",sans-serif;letter-spacing:0}
-.app.dashboard-layout-active .logo small::before{content:none}
-.app.dashboard-layout-active .nav{padding:12px 13px;margin:4px 0;border-left:2px solid transparent;border-radius:0;color:#a8b9bc;font-size:13px}
-.app.dashboard-layout-active .nav:hover{color:#d9fff1;background:rgba(76,229,255,.045);box-shadow:none}
-.app.dashboard-layout-active .nav.active{color:#d9fff1;background:linear-gradient(90deg,rgba(183,255,86,.1),transparent);box-shadow:inset 2px 0 0 var(--neon-green),inset 0 0 12px rgba(183,255,86,.035)}
 .app.dashboard-layout-active .main{width:auto;max-width:none;padding:30px}
 .app.dashboard-layout-active .pagehead{display:block;margin:0 0 18px;padding:0;border:0}
 .app.dashboard-layout-active .pagehead h1{margin:0;color:var(--neon-green);font:600 27px "Orbitron","IBM Plex Sans JP",sans-serif;letter-spacing:.06em;line-height:1.25;text-shadow:0 0 10px rgba(183,255,86,.16)}
@@ -843,7 +847,7 @@ body.dashboard-layout-active{background-color:#070b0d;background-image:radial-gr
 .dashboard-view .dashboard-preview-footer{color:#98a7a9;text-shadow:none}
 .dashboard-view .dashboard-signal i{width:2px;box-shadow:0 0 4px rgba(76,229,255,.3)}
 @media(max-width:1050px){.app.dashboard-layout-active{grid-template-columns:180px minmax(0,1fr)}.app.dashboard-layout-active .main{padding:22px}.dashboard-view .layout{grid-template-columns:1fr}.dashboard-view .dashboard-preview-card{max-width:440px}.dashboard-view .grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
-@media(max-width:700px){.app.dashboard-layout-active{display:block}.app.dashboard-layout-active .side{padding:12px;border-right:0;border-bottom:1px solid rgba(76,229,255,.2)}.app.dashboard-layout-active .logo{margin:0 5px 10px;padding:0}.app.dashboard-layout-active .nav{display:inline-block;padding:8px 10px;margin:2px;font-size:11px}.app.dashboard-layout-active .main{padding:15px}.dashboard-view .dashboard-filters{align-items:stretch;flex-direction:column;gap:10px;padding:11px}.dashboard-view .dashboard-filter-field{min-width:0}.dashboard-view .layout{grid-template-columns:minmax(0,1fr)}.dashboard-view .dashboard-delivery-card{overflow-x:auto}.dashboard-view .dashboard-preview-card{max-width:none}.dashboard-view .dashboard-crt-frame .phone{height:540px}}
+@media(max-width:700px){.app.dashboard-layout-active{display:block}.app.dashboard-layout-active .main{padding:15px}.dashboard-view .dashboard-filters{align-items:stretch;flex-direction:column;gap:10px;padding:11px}.dashboard-view .dashboard-filter-field{min-width:0}.dashboard-view .layout{grid-template-columns:minmax(0,1fr)}.dashboard-view .dashboard-delivery-card{overflow-x:auto}.dashboard-view .dashboard-preview-card{max-width:none}.dashboard-view .dashboard-crt-frame .phone{height:540px}}
 
 
 .dashboard-preview-stack{display:flex;flex-direction:column;gap:14px}
