@@ -399,6 +399,11 @@ def public_config_for_store(public_code):
     # Reuse the established global design settings; only replace its ad with a
     # campaign assigned through campaign_stores for this exact store.
     result = public_config()
+    result["storeStatus"] = store.get("status")
+    if store.get("status") == "停止中":
+        result["ad"] = None
+        return result
+
     # Campaign columns are DATE values; use the current service market's date.
     # This can later be replaced with a store-specific timezone.
     today = datetime.now(ZoneInfo("Asia/Tokyo")).date()
@@ -421,6 +426,19 @@ def public_config_for_store(public_code):
         "campaignId": campaign.get("campaign_id"),
     }
     return result
+
+def public_coupons_for_store(public_code):
+    """Return public coupons only when the addressed store is active.
+
+    None means the public code does not identify a store; an empty list means
+    the store exists but is temporarily stopped.
+    """
+    store = database.get_store_by_public_code(public_code)
+    if not store:
+        return None
+    if store.get("status") == "停止中":
+        return []
+    return list_available_coupons()
 
 def delete_draft_coupon(coupon_id):
     """Delete only a draft coupon; coupon_events remain available as history."""
@@ -770,6 +788,22 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send_json({"ok": False, "error": "store_not_found"}, 404)
             return self.send_json(config)
         if path == "/api/coupons":
+            query = parse_qs(urlparse(self.path).query, keep_blank_values=True)
+            if "store" in query:
+                store_values = query["store"]
+                if (len(store_values) != 1 or not store_values[0]
+                        or len(store_values[0]) > PUBLIC_CODE_MAX_LENGTH
+                        or not PUBLIC_CODE_PATTERN.fullmatch(store_values[0])):
+                    return self.send_json({"ok": False, "error": "invalid_store"}, 400)
+                if not database.database_enabled():
+                    return self.send_json({"ok": False, "error": "store_delivery_unavailable"}, 503)
+                try:
+                    coupons = public_coupons_for_store(store_values[0])
+                except Exception:
+                    return self.send_json({"ok": False, "error": "store_delivery_unavailable"}, 503)
+                if coupons is None:
+                    return self.send_json({"ok": False, "error": "store_not_found"}, 404)
+                return self.send_json({"coupons": coupons})
             try: return self.send_json({"coupons": list_available_coupons()})
             except Exception as e: return self.send_json({"error": str(e)}, 500)
         if path == "/api/coupon_analytics":
