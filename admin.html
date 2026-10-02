@@ -785,7 +785,7 @@ let adTarget='global', adStores=null, adStoreId=null, adCampaigns=[], selectedCa
 let adCreateIdempotencyKey=null, adCreateAttempt=null, adCreateUncertain=false, adCreateBlocked=false, adCreateStoreId=null;
 let companyAdminData={companies:[],stores:[]}, companyDataLoaded=false, companyDirectoryLoaded=false, companyRequestSeq=0, companyCreateSaving=false, companyAssignSaving=new Set(), companyFormNotice='', companyFormNoticeType='', companyLoadError='', companyStoreNotices={}, companyFormValues={name:'',code:'',businessType:'',status:'active'};
 let storeCompanyOptionsData=[], storeCompanyOptionsError='', storeSavePending=false, storeSaveFeedback='', storeSaveFeedbackType='';
-let dashboardSelectedCompany='all', dashboardStoreSearch='', dashboardDirectoryError='';
+let dashboardSelectedCompany='all', dashboardStoreSearch='', dashboardDirectoryError='', dashboardKpiRequestSeq=0, dashboardKpiAbortController=null;
 async function apiFetch(url, options){
   const response=await window.fetch(url, options);
   if(response.status===401){
@@ -824,18 +824,61 @@ function renderDashboardStores(){
   if(!stores.length){body.innerHTML='<tr><td colspan="5" class="dashboard-empty-row">条件に一致する店舗がありません</td></tr>';return;}
   body.innerHTML=stores.map((store,index)=>`<tr><td><span class="dashboard-store-number">${String(index+1).padStart(2,'0')}</span><span class="dashboard-store-identity"><b>${esc(store.name||'')}</b><small>${esc(store.companyName||(store.companyId?'所属企業情報なし':'未所属'))}</small></span></td><td>${esc(S.ad.title||'')}</td><td>${Number(store.users||0).toLocaleString()}</td><td><span class="badge ${store.status==='停止中'?'off':''}">${esc(store.status||'')}</span></td><td><button class="secondary" onclick="editStore(${S.stores.findIndex(item=>String(item.id)===String(store.id))})">編集</button></td></tr>`).join('');
 }
-function setDashboardCompany(value){dashboardSelectedCompany=value;renderDashboardStores();}
+function dashboardKpiScopeLabel(){
+  if(dashboardSelectedCompany==='all')return '全体';
+  if(dashboardSelectedCompany==='unassigned')return '未所属';
+  if(dashboardSelectedCompany.startsWith('company:')){
+    const id=dashboardSelectedCompany.slice(8);
+    return companyAdminData.companies.find(company=>String(company.id)===id)?.name||'選択中の企業';
+  }
+  return '全体';
+}
+function setDashboardKpiScopeLabel(){document.querySelectorAll('.dashboard-kpi-scope').forEach(node=>{node.textContent=dashboardKpiScopeLabel();});}
+function clearDashboardKpis(showError=false){
+  ['dashboardStoreCount','dashboardImpressions','dashboardClicks','dashboardCtr'].forEach(id=>{const node=document.getElementById(id);if(node)node.textContent='--';});
+  const errorNode=document.getElementById('dashboardKpiError');
+  if(errorNode){errorNode.hidden=!showError;errorNode.textContent=showError?'KPIを取得できませんでした。時間をおいて再度お試しください。':'';}
+  setDashboardKpiScopeLabel();
+}
+function dashboardKpiRequestUrl(selection){
+  if(selection==='all')return '/api/admin/dashboard-analytics?scope=all';
+  if(selection==='unassigned')return '/api/admin/dashboard-analytics?scope=unassigned';
+  if(selection.startsWith('company:'))return '/api/admin/dashboard-analytics?companyId='+encodeURIComponent(selection.slice(8));
+  return '/api/admin/dashboard-analytics?scope=all';
+}
+async function loadDashboardKpis(){
+  const requestId=++dashboardKpiRequestSeq;
+  if(dashboardKpiAbortController)dashboardKpiAbortController.abort();
+  dashboardKpiAbortController=typeof AbortController==='function'?new AbortController():null;
+  const selectedScope=dashboardSelectedCompany;
+  clearDashboardKpis(false);
+  try{
+    const response=await apiFetch(dashboardKpiRequestUrl(selectedScope),dashboardKpiAbortController?{signal:dashboardKpiAbortController.signal}:{});
+    if(!response.ok)throw new Error('dashboard analytics request failed');
+    const data=await response.json();
+    if(requestId!==dashboardKpiRequestSeq||selectedScope!==dashboardSelectedCompany||location.hash!=='#dashboard')return;
+    document.getElementById('dashboardStoreCount').textContent=Number(data.storeCount||0).toLocaleString();
+    document.getElementById('dashboardImpressions').textContent=Number(data.impressions||0).toLocaleString();
+    document.getElementById('dashboardClicks').textContent=Number(data.clicks||0).toLocaleString();
+    document.getElementById('dashboardCtr').textContent=Number(data.ctr||0).toFixed(2)+'%';
+  }catch(error){
+    if(error?.name==='AbortError'||requestId!==dashboardKpiRequestSeq||selectedScope!==dashboardSelectedCompany)return;
+    clearDashboardKpis(true);
+  }
+}
+function setDashboardCompany(value){dashboardSelectedCompany=value;renderDashboardStores();return loadDashboardKpis();}
 function setDashboardSearch(value){dashboardStoreSearch=value;renderDashboardStores();}
 async function dashboard(){
-  const analyticsPromise=apiFetch('/api/analytics').then(response=>response.json());
+  dashboardKpiRequestSeq++;
+  if(dashboardKpiAbortController)dashboardKpiAbortController.abort();
   dashboardDirectoryError='';
   try{await ensureDashboardCompanyData();}catch(error){dashboardDirectoryError=error.message||'企業・店舗一覧を読み込めませんでした。';}
-  const a=await analyticsPromise;
   if(location.hash!=='#dashboard')return;
   const companyOptions=companyAdminData.companies.map(company=>`<option value="company:${esc(company.id)}" ${dashboardSelectedCompany===`company:${String(company.id)}`?'selected':''}>${esc(company.name||'')}${company.status==='inactive'?'（inactive）':''}</option>`).join('');
-  shell('<span class="dashboard-title">Dashboard</span><span class="dashboard-title-ja">ダッシュボード</span>','Wi-Fi接続・広告配信・店舗状況をまとめて確認できます.',`<div class="dashboard-view"><div class="dashboard-system-status"><div><div class="dashboard-console-name">Wi-Fi MEDIA Admin Console</div><div class="dashboard-console-message">Connected. All systems operational.</div></div><span class="dashboard-online"><i></i> ONLINE</span></div><div class="dashboard-filters" aria-label="店舗フィルター"><label class="dashboard-filter-field"><span>企業</span><select id="dashboardCompanyFilter" onchange="setDashboardCompany(this.value)"><option value="all" ${dashboardSelectedCompany==='all'?'selected':''}>すべての企業</option>${companyOptions}<option value="unassigned" ${dashboardSelectedCompany==='unassigned'?'selected':''}>未所属</option></select></label><label class="dashboard-filter-field dashboard-search-field"><span>店舗検索</span><input id="dashboardStoreSearch" type="search" value="${esc(dashboardStoreSearch)}" placeholder="店舗名・public_codeを検索" oninput="setDashboardSearch(this.value)"></label></div>${dashboardDirectoryError?`<div class="dashboard-directory-note" role="status">${esc(dashboardDirectoryError)} 店舗の検索・企業別絞り込みには企業・店舗一覧が必要です。</div>`:''}<div class="grid"><div class="card dashboard-metric-card dashboard-store-card"><div class="label">登録店舗 <small class="dashboard-total-label">全体</small></div><div class="metric store">${S.stores.length}</div></div><div class="card dashboard-metric-card dashboard-connection-card"><div class="label">今月の接続 <small class="dashboard-total-label">全体</small></div><div class="metric connection">${a.impressions.toLocaleString()}</div></div><div class="card dashboard-metric-card dashboard-click-card"><div class="label">広告クリック <small class="dashboard-total-label">全体</small></div><div class="metric click">${a.clicks.toLocaleString()}</div></div><div class="card dashboard-metric-card dashboard-ctr-card"><div class="label">CTR <small class="dashboard-total-label">全体</small></div><div class="metric ctr">${a.ctr}%</div></div></div><div class="layout"><section class="card dashboard-delivery-card"><div class="section dashboard-delivery-section"><span class="dashboard-terminal-label">STORE DELIVERY STATUS</span><span>店舗別 配信状況</span></div><table class="dashboard-data-table"><thead><tr><th>店舗</th><th>広告</th><th>接続</th><th>状態</th><th></th></tr></thead><tbody id="dashboardStoreRows"></tbody></table></section><section class="card dashboard-preview-card"><div class="dashboard-preview-head"><div><span class="dashboard-terminal-label">LIVE PREVIEW</span><div class="section">Webページ プレビュー</div></div><span class="dashboard-connected"><i></i> CONNECTED</span></div><div class="phonewrap dashboard-crt-frame"><div class="phone"><iframe src="/?preview=1" title="preview"></iframe></div></div><div class="dashboard-preview-footer"><span>SCANLINE MODE : ON</span><span class="dashboard-signal"><i></i><i></i><i></i></span></div></section></div></div>`);
+  shell('<span class="dashboard-title">Dashboard</span><span class="dashboard-title-ja">ダッシュボード</span>','広告配信・店舗状況をまとめて確認できます.',`<div class="dashboard-view"><div class="dashboard-system-status"><div><div class="dashboard-console-name">Wi-Fi MEDIA Admin Console</div><div class="dashboard-console-message">Connected. All systems operational.</div></div><span class="dashboard-online"><i></i> ONLINE</span></div><div class="dashboard-filters" aria-label="店舗フィルター"><label class="dashboard-filter-field"><span>企業</span><select id="dashboardCompanyFilter" onchange="setDashboardCompany(this.value)"><option value="all" ${dashboardSelectedCompany==='all'?'selected':''}>すべての企業</option>${companyOptions}<option value="unassigned" ${dashboardSelectedCompany==='unassigned'?'selected':''}>未所属</option></select></label><label class="dashboard-filter-field dashboard-search-field"><span>店舗検索</span><input id="dashboardStoreSearch" type="search" value="${esc(dashboardStoreSearch)}" placeholder="店舗名・public_codeを検索" oninput="setDashboardSearch(this.value)"></label></div>${dashboardDirectoryError?`<div class="dashboard-directory-note" role="status">${esc(dashboardDirectoryError)} 店舗の検索・企業別絞り込みには企業・店舗一覧が必要です。</div>`:''}<div class="grid"><div class="card dashboard-metric-card dashboard-store-card"><div class="label">登録店舗 <small class="dashboard-total-label dashboard-kpi-scope">全体</small></div><div class="metric store" id="dashboardStoreCount">--</div></div><div class="card dashboard-metric-card dashboard-connection-card"><div class="label">今月の広告表示 <small class="dashboard-total-label dashboard-kpi-scope">全体</small></div><div class="metric connection" id="dashboardImpressions">--</div></div><div class="card dashboard-metric-card dashboard-click-card"><div class="label">今月の広告クリック <small class="dashboard-total-label dashboard-kpi-scope">全体</small></div><div class="metric click" id="dashboardClicks">--</div></div><div class="card dashboard-metric-card dashboard-ctr-card"><div class="label">CTR <small class="dashboard-total-label dashboard-kpi-scope">全体</small></div><div class="metric ctr" id="dashboardCtr">--</div></div></div><div class="dashboard-directory-note" id="dashboardKpiError" role="status" hidden></div><div class="layout"><section class="card dashboard-delivery-card"><div class="section dashboard-delivery-section"><span class="dashboard-terminal-label">STORE DELIVERY STATUS</span><span>店舗別 配信状況</span></div><table class="dashboard-data-table"><thead><tr><th>店舗</th><th>広告</th><th>接続</th><th>状態</th><th></th></tr></thead><tbody id="dashboardStoreRows"></tbody></table></section><section class="card dashboard-preview-card"><div class="dashboard-preview-head"><div><span class="dashboard-terminal-label">LIVE PREVIEW</span><div class="section">Webページ プレビュー</div></div><span class="dashboard-connected"><i></i> CONNECTED</span></div><div class="phonewrap dashboard-crt-frame"><div class="phone"><iframe src="/?preview=1" title="preview"></iframe></div></div><div class="dashboard-preview-footer"><span>SCANLINE MODE : ON</span><span class="dashboard-signal"><i></i><i></i><i></i></span></div></section></div></div>`);
   const filter=document.getElementById('dashboardCompanyFilter');if(filter)filter.value=dashboardSelectedCompany;
   renderDashboardStores();
+  await loadDashboardKpis();
 }
 function ads(){
   if(adCreatingNew&&adCreateUncertain&&adCreateStoreId){adTarget='store';adStoreId=adCreateStoreId;adStoreLoading=false;adStoreError='';adSaveError=adSaveError||'前回の保存結果を確認できません。同じ内容で再試行するか、画面を再読み込みして登録状況を確認してください。';renderAds();return;}

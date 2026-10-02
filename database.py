@@ -1,6 +1,7 @@
 """PostgreSQL persistence for the prototype's existing JSON-shaped state API."""
 
 from datetime import date, datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 import hashlib
 import json
 import os
@@ -960,6 +961,76 @@ def analytics():
             for row in store_campaign_ads
         ],
         "daily": shape(periods, "date"), "monthly": shape(months, "month"),
+    }
+
+
+def dashboard_analytics(scope="all", company_id=None, now=None):
+    """Return current Japan-month KPI values for one administrative store scope."""
+    if scope not in {"all", "company", "unassigned"}:
+        raise ValueError("invalid dashboard analytics scope")
+    if scope == "company":
+        if not isinstance(company_id, str) or not company_id.strip():
+            raise ValueError("company_id is required")
+        store_filter = "company_id = %s"
+        store_params = (company_id,)
+    elif scope == "unassigned":
+        if company_id is not None:
+            raise ValueError("company_id is not valid for unassigned scope")
+        store_filter = "(company_id IS NULL OR btrim(company_id) = '')"
+        store_params = ()
+    else:
+        if company_id is not None:
+            raise ValueError("company_id is not valid for all scope")
+        store_filter = "TRUE"
+        store_params = ()
+
+    as_of = now or datetime.now(ZoneInfo("Asia/Tokyo"))
+    if as_of.tzinfo is None:
+        as_of = as_of.replace(tzinfo=ZoneInfo("Asia/Tokyo"))
+    as_of_jst = as_of.astimezone(ZoneInfo("Asia/Tokyo"))
+    month_start_jst = as_of_jst.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    month_start_utc = month_start_jst.astimezone(timezone.utc)
+    as_of_utc = as_of_jst.astimezone(timezone.utc)
+
+    query = (
+        "WITH scoped_stores AS MATERIALIZED ("
+        "SELECT id FROM stores WHERE " + store_filter + ""
+        "), store_total AS ("
+        "SELECT count(*) AS store_count FROM scoped_stores"
+        ") "
+        "SELECT store_total.store_count, "
+        "count(*) FILTER (WHERE e.event_type = 'impression') AS impressions, "
+        "count(*) FILTER (WHERE e.event_type = 'click') AS clicks "
+        "FROM store_total LEFT JOIN ad_events e ON "
+        "e.store_id IN (SELECT id FROM scoped_stores) "
+        "AND e.occurred_at >= %s AND e.occurred_at <= %s "
+        "AND e.campaign_id IS NOT NULL AND e.campaign_id <> 'default' "
+        "AND EXISTS ("
+        "SELECT 1 FROM campaign_stores cs "
+        "JOIN campaigns c ON c.id = cs.campaign_id "
+        "JOIN ads a ON a.id = c.ad_id "
+        "WHERE cs.store_id = e.store_id AND c.id = e.campaign_id "
+        "AND c.id <> 'default' AND a.id = e.ad_id"
+        ") "
+        "GROUP BY store_total.store_count"
+    )
+    with pool().connection() as conn:
+        row = conn.execute(query, (*store_params, month_start_utc, as_of_utc)).fetchone()
+
+    store_count = int(row["store_count"] or 0)
+    impressions = int(row["impressions"] or 0)
+    clicks = int(row["clicks"] or 0)
+    return {
+        "scope": scope,
+        "storeCount": store_count,
+        "impressions": impressions,
+        "clicks": clicks,
+        "ctr": round(clicks / impressions * 100, 2) if impressions else 0,
+        "period": {
+            "from": month_start_jst.isoformat(),
+            "through": as_of_jst.isoformat(),
+            "timeZone": "Asia/Tokyo",
+        },
     }
 
 

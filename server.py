@@ -749,6 +749,36 @@ class Handler(BaseHTTPRequestHandler):
             if not self.require_admin_session(): return
             try: return self.send_json(load_state())
             except Exception: return self.send_json({"ok": False}, 500)
+        if path == "/api/admin/dashboard-analytics":
+            if not self.require_admin_session(): return
+            if not database.database_enabled():
+                return self.send_json({"ok": False, "error": "dashboard_analytics_unavailable"}, 503)
+            query = parse_qs(urlparse(self.path).query, keep_blank_values=True)
+            if any(len(values) != 1 for values in query.values()) or set(query) - {"scope", "companyId"}:
+                return self.send_json({"ok": False, "error": "invalid_scope"}, 400)
+            if "scope" in query:
+                scope = query["scope"][0]
+                if scope not in {"all", "unassigned"} or "companyId" in query:
+                    return self.send_json({"ok": False, "error": "invalid_scope"}, 400)
+                company_id = None
+            else:
+                company_id = query.get("companyId", [""])[0]
+                if (not company_id.strip() or len(company_id) > 256
+                        or any(ord(char) < 32 or ord(char) == 127 for char in company_id)):
+                    return self.send_json({"ok": False, "error": "invalid_company_id"}, 400)
+                try:
+                    company = database.get_company(company_id)
+                except Exception:
+                    return self.send_json({"ok": False}, 503)
+                if not company:
+                    return self.send_json({"ok": False, "error": "company_not_found"}, 404)
+                scope = "company"
+            try:
+                return self.send_json(database.dashboard_analytics(scope, company_id))
+            except ValueError:
+                return self.send_json({"ok": False, "error": "invalid_scope"}, 400)
+            except Exception:
+                return self.send_json({"ok": False}, 503)
         if path == "/api/analytics":
             if not self.require_admin_session(): return
             try:
