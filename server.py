@@ -334,6 +334,12 @@ def record_event(event_type, store, ad_id="main"):
             ad = data.get("ad", {})
             if str(ad.get("id") or "main") == str(ad_id):
                 store = ad.get("store")
+        resolved_store = next(
+            (item for item in data.get("stores", []) if item.get("name") == (store or "未設定")),
+            None,
+        )
+        if resolved_store and resolved_store.get("status") == "停止中":
+            raise database.StoreInactiveError("store_inactive")
         events = data.setdefault("events", [])
         events.append({"type": event_type, "store": store or "未設定", "adId": ad_id, "at": now_jst()})
         # Keep prototype data manageable while retaining recent history.
@@ -458,11 +464,39 @@ def delete_draft_coupon(coupon_id):
 def record_coupon_event(payload):
     if payload.get("type") not in COUPON_EVENT_TYPES:
         raise ValueError("invalid coupon event type")
+    store_code = payload.get("storeCode")
+    if store_code is not None and (
+        not isinstance(store_code, str)
+        or len(store_code) > PUBLIC_CODE_MAX_LENGTH
+        or not PUBLIC_CODE_PATTERN.fullmatch(store_code)
+    ):
+        raise ValueError("invalid store code")
     data = load_state()
     coupon_id = str(payload.get("couponId") or "")
     coupon = next((item for item in data.get("coupons", []) if str(item.get("id")) == coupon_id), None)
     if not coupon:
         raise LookupError("coupon not found")
+    event_store = next(
+        (item for item in data.get("stores", [])
+         if (coupon.get("storeId") and str(item.get("id")) == str(coupon.get("storeId")))
+         or (not coupon.get("storeId") and item.get("name") == (coupon.get("store") or "未設定"))),
+        None,
+    )
+    page_store = None
+    if store_code:
+        page_store = next(
+            (item for item in data.get("stores", []) if item.get("publicCode") == store_code),
+            None,
+        )
+        if not page_store:
+            raise LookupError("store not found")
+        if page_store.get("status") == "停止中":
+            raise database.StoreInactiveError("store_inactive")
+    if event_store and event_store.get("status") == "停止中":
+        raise database.StoreInactiveError("store_inactive")
+    if (coupon.get("storeId") and page_store
+            and str(coupon["storeId"]) != str(page_store.get("id"))):
+        raise database.StoreMismatchError("store_mismatch")
     event = {
         "couponId": coupon_id,
         "couponCode": coupon.get("code", ""),
@@ -473,13 +507,42 @@ def record_coupon_event(payload):
         "adId": coupon.get("adId") or data.get("ad", {}).get("id", "main"),
         "at": now_jst(),
     }
+    if store_code:
+        event["storeCode"] = store_code
     if database.database_enabled():
         database.record_coupon_event(event)
         return
     with LOCK:
         data = load_state()
-        if not any(str(item.get("id")) == coupon_id for item in data.get("coupons", [])):
+        current_coupon = next(
+            (item for item in data.get("coupons", []) if str(item.get("id")) == coupon_id),
+            None,
+        )
+        if not current_coupon:
             raise LookupError("coupon not found")
+        current_store = next(
+            (item for item in data.get("stores", [])
+             if (current_coupon.get("storeId")
+                 and str(item.get("id")) == str(current_coupon.get("storeId")))
+             or (not current_coupon.get("storeId")
+                 and item.get("name") == (current_coupon.get("store") or "未設定"))),
+            None,
+        )
+        if current_store and current_store.get("status") == "停止中":
+            raise database.StoreInactiveError("store_inactive")
+        current_page_store = None
+        if store_code:
+            current_page_store = next(
+                (item for item in data.get("stores", []) if item.get("publicCode") == store_code),
+                None,
+            )
+            if not current_page_store:
+                raise LookupError("store not found")
+            if current_page_store.get("status") == "停止中":
+                raise database.StoreInactiveError("store_inactive")
+        if (current_coupon.get("storeId") and current_page_store
+                and str(current_coupon["storeId"]) != str(current_page_store.get("id"))):
+            raise database.StoreMismatchError("store_mismatch")
         events = data.setdefault("coupon_events", [])
         events.append(event)
         data["coupon_events"] = events[-10000:]
@@ -1022,6 +1085,10 @@ class Handler(BaseHTTPRequestHandler):
                 payload = json.loads(self.read_body().decode("utf-8"))
                 record_coupon_event(payload)
                 return self.send_json({"ok": True})
+            except database.StoreInactiveError:
+                return self.send_json({"ok": False, "error": "store_inactive"}, 409)
+            except database.StoreMismatchError:
+                return self.send_json({"ok": False, "error": "store_mismatch"}, 409)
             except LookupError as e: return self.send_json({"error": str(e)}, 404)
             except Exception as e: return self.send_json({"error": str(e)}, 400)
         if path == "/api/event":
@@ -1047,12 +1114,17 @@ class Handler(BaseHTTPRequestHandler):
                             event_type, store_code, campaign_id, ad_id,
                             delivery_date=datetime.now(ZoneInfo("Asia/Tokyo")).date(),
                         )
+                    except database.StoreInactiveError:
+                        return self.send_json({"ok": False, "error": "store_inactive"}, 409)
                     except Exception:
                         return self.send_json({"error":"event unavailable"}, 503)
                     if not recorded:
                         return self.send_json({"error":"invalid event"}, 400)
                     return self.send_json({"ok": True})
-                record_event(event_type, payload.get("store", ""), payload.get("adId", "main"))
+                try:
+                    record_event(event_type, payload.get("store", ""), payload.get("adId", "main"))
+                except database.StoreInactiveError:
+                    return self.send_json({"ok": False, "error": "store_inactive"}, 409)
                 return self.send_json({"ok": True})
             except Exception as e: return self.send_json({"error": str(e)}, 400)
         if path == "/api/state":

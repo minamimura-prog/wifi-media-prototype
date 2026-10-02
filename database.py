@@ -37,6 +37,14 @@ class CompanyCodeConflictError(Exception):
     """Raised when a company code is already assigned to another company."""
 
 
+class StoreInactiveError(Exception):
+    """Raised when a new public event targets a stopped store."""
+
+
+class StoreMismatchError(Exception):
+    """Raised when a store coupon is used from a different public store page."""
+
+
 _STORE_CAMPAIGN_IDEMPOTENCY_MAX_KEY_LENGTH = 255
 
 
@@ -1050,7 +1058,17 @@ def record_event(event_type, store_name, ad_id="main", occurred_at=None):
                 store_name = ad["name"]
             elif not store_name or store_name == "未設定":
                 store_name = "未設定"
-            store = conn.execute("SELECT id FROM stores WHERE name = %s ORDER BY id LIMIT 1", (store_name,)).fetchone()
+            if ad and ad["id"]:
+                store = conn.execute(
+                    "SELECT id, status FROM stores WHERE id = %s FOR UPDATE", (ad["id"],)
+                ).fetchone()
+            else:
+                store = conn.execute(
+                    "SELECT id, status FROM stores WHERE name = %s ORDER BY id LIMIT 1 FOR UPDATE",
+                    (store_name,),
+                ).fetchone()
+            if store and store.get("status") == "停止中":
+                raise StoreInactiveError("store_inactive")
             campaign = conn.execute("SELECT id FROM campaigns WHERE ad_id = %s ORDER BY id LIMIT 1", (ad_id,)).fetchone()
             conn.execute(
                 "INSERT INTO ad_events (event_type, store_id, store_name, ad_id, campaign_id, occurred_at) "
@@ -1074,6 +1092,12 @@ def record_store_ad_event(event_type, public_code, campaign_id, ad_id, delivery_
     occurred_at = datetime.now(timezone.utc)
     with pool().connection() as conn:
         with conn.transaction():
+            store = conn.execute(
+                "SELECT id, status FROM stores WHERE public_code = %s FOR UPDATE",
+                (public_code,),
+            ).fetchone()
+            if store and store.get("status") == "停止中":
+                raise StoreInactiveError("store_inactive")
             row = conn.execute(
                 "INSERT INTO ad_events "
                 "(event_type, store_id, store_name, ad_id, campaign_id, occurred_at) "
@@ -1103,21 +1127,51 @@ def record_coupon_event(event):
     if occurred_at.tzinfo is None:
         occurred_at = occurred_at.replace(tzinfo=timezone.utc)
     with pool().connection() as conn:
-        coupon = conn.execute(
-            "SELECT store_id FROM coupons WHERE id = %s", (event.get("couponId"),)
-        ).fetchone() if event.get("couponId") else None
-        store_id = event.get("storeId") or (coupon["store_id"] if coupon else None)
-        if not store_id and event.get("store"):
-            store = conn.execute(
-                "SELECT id FROM stores WHERE name = %s ORDER BY id LIMIT 1", (event["store"],)
-            ).fetchone()
-            store_id = store["id"] if store else None
-        conn.execute(
-            "INSERT INTO coupon_events (coupon_id, coupon_code, event_type, store_id, store_name, ad_id, occurred_at) "
-            "VALUES (%s, %s, %s, %s, %s, %s, %s)",
-            (event.get("couponId"), event.get("couponCode", ""), event.get("type", ""), store_id,
-             event.get("store", "未設定"), event.get("adId", "main"), occurred_at),
-        )
+        with conn.transaction():
+            coupon = conn.execute(
+                "SELECT store_id FROM coupons WHERE id = %s FOR SHARE", (event.get("couponId"),)
+            ).fetchone() if event.get("couponId") else None
+            store_ids = set()
+            if coupon and coupon.get("store_id"):
+                store_ids.add(coupon["store_id"])
+            if event.get("storeId"):
+                store_ids.add(event["storeId"])
+            page_store_id = None
+            if event.get("storeCode"):
+                page_store = conn.execute(
+                    "SELECT id FROM stores WHERE public_code = %s",
+                    (event["storeCode"],),
+                ).fetchone()
+                if not page_store:
+                    raise LookupError("store not found")
+                page_store_id = page_store["id"]
+                store_ids.add(page_store_id)
+            if store_ids:
+                rows = conn.execute(
+                    "SELECT id, status FROM stores WHERE id = ANY(%s) ORDER BY id FOR UPDATE",
+                    (sorted(store_ids),),
+                ).fetchall()
+                if page_store_id and not any(row["id"] == page_store_id for row in rows):
+                    raise LookupError("store not found")
+                if any(row.get("status") == "停止中" for row in rows):
+                    raise StoreInactiveError("store_inactive")
+            if (coupon and coupon.get("store_id") and page_store_id
+                    and coupon["store_id"] != page_store_id):
+                raise StoreMismatchError("store_mismatch")
+            store_id = event.get("storeId") or (coupon["store_id"] if coupon else None)
+            if not store_id and event.get("store"):
+                store = conn.execute(
+                    "SELECT id, status FROM stores WHERE name = %s ORDER BY id LIMIT 1 FOR UPDATE", (event["store"],)
+                ).fetchone()
+                if store and store.get("status") == "停止中":
+                    raise StoreInactiveError("store_inactive")
+                store_id = store["id"] if store else None
+            conn.execute(
+                "INSERT INTO coupon_events (coupon_id, coupon_code, event_type, store_id, store_name, ad_id, occurred_at) "
+                "VALUES (%s, %s, %s, %s, %s, %s, %s)",
+                (event.get("couponId"), event.get("couponCode", ""), event.get("type", ""), store_id,
+                 event.get("store", "未設定"), event.get("adId", "main"), occurred_at),
+            )
 
 
 def coupon_analytics():
