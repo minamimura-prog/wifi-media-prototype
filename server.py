@@ -482,8 +482,9 @@ def record_coupon_event(payload):
          or (not coupon.get("storeId") and item.get("name") == (coupon.get("store") or "未設定"))),
         None,
     )
+    postgres_enabled = database.database_enabled()
     page_store = None
-    if store_code:
+    if store_code and not postgres_enabled:
         page_store = next(
             (item for item in data.get("stores", []) if item.get("publicCode") == store_code),
             None,
@@ -494,7 +495,7 @@ def record_coupon_event(payload):
             raise database.StoreInactiveError("store_inactive")
     if event_store and event_store.get("status") == "停止中":
         raise database.StoreInactiveError("store_inactive")
-    if (coupon.get("storeId") and page_store
+    if (not postgres_enabled and coupon.get("storeId") and page_store
             and str(coupon["storeId"]) != str(page_store.get("id"))):
         raise database.StoreMismatchError("store_mismatch")
     event = {
@@ -509,7 +510,7 @@ def record_coupon_event(payload):
     }
     if store_code:
         event["storeCode"] = store_code
-    if database.database_enabled():
+    if postgres_enabled:
         database.record_coupon_event(event)
         return
     with LOCK:
