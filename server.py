@@ -9,6 +9,7 @@ import ipaddress
 import hmac, json, os, secrets, uuid, mimetypes, threading
 import re
 import logging
+import stat
 import database
 import migrate_to_postgres
 
@@ -489,6 +490,38 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers(); self.wfile.write(body)
     def send_json(self, obj, status=200, extra_headers=None):
         return self.send_bytes(json.dumps(obj, ensure_ascii=False).encode("utf-8"), status, "application/json; charset=utf-8", extra_headers)
+    def serve_qr_library(self):
+        """Serve only the pinned QR library, without mapping URL paths to files."""
+        static_dir = os.path.join(BASE, "static")
+        vendor_dir = os.path.join(static_dir, "vendor")
+        asset_path = os.path.join(vendor_dir, "qrcode-generator-2.0.4.js")
+        try:
+            if any(os.path.islink(path) for path in (static_dir, vendor_dir, asset_path)):
+                return self.send_bytes(b"not found", 404, "text/plain; charset=utf-8")
+            static_real = os.path.realpath(static_dir)
+            vendor_real = os.path.realpath(vendor_dir)
+            asset_real = os.path.realpath(asset_path)
+            if (os.path.commonpath((BASE, static_real)) != BASE
+                    or os.path.commonpath((static_real, vendor_real)) != static_real
+                    or os.path.commonpath((vendor_real, asset_real)) != vendor_real):
+                return self.send_bytes(b"not found", 404, "text/plain; charset=utf-8")
+            descriptor = os.open(asset_path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+            try:
+                if not stat.S_ISREG(os.fstat(descriptor).st_mode):
+                    return self.send_bytes(b"not found", 404, "text/plain; charset=utf-8")
+                with os.fdopen(descriptor, "rb") as asset_file:
+                    descriptor = -1
+                    body = asset_file.read()
+            finally:
+                if descriptor >= 0:
+                    os.close(descriptor)
+        except (OSError, ValueError):
+            return self.send_bytes(b"not found", 404, "text/plain; charset=utf-8")
+        return self.send_bytes(
+            body, 200, "application/javascript; charset=utf-8",
+            {"X-Content-Type-Options": "nosniff",
+             "Cache-Control": "public, max-age=31536000, immutable"},
+        )
     def admin_session_token(self):
         cookies = SimpleCookie()
         try: cookies.load(self.headers.get("Cookie", ""))
@@ -660,6 +693,7 @@ class Handler(BaseHTTPRequestHandler):
         return self.send_json({"ok": True}, extra_headers=expired_cookie)
     def do_GET(self):
         path = urlparse(self.path).path
+        if self.path == "/static/qrcode-generator-2.0.4.js": return self.serve_qr_library()
         if path == "/": return self.serve_file("web.html")
         if path == "/admin/login":
             if self.has_valid_admin_session():

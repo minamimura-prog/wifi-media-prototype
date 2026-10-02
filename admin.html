@@ -854,11 +854,23 @@ body.dashboard-layout-active{background-color:#070b0d;background-image:radial-gr
 .dashboard-mobile-preview{pointer-events:none}
 .dashboard-mobile-preview .phone iframe{width:100%;max-width:100%;pointer-events:none}
 
-</style></head><body><div class="app"><aside class="side"><div class="logo">Wi-Fi MEDIA<small>広告・店舗・効果測定</small></div><div class="nav active" data-page="dashboard" onclick="navigateTo('dashboard')">ダッシュボード</div><div class="nav" data-page="ads" onclick="navigateTo('ads')">広告管理</div><div class="nav" data-page="stores" onclick="navigateTo('stores')">店舗管理</div><div class="nav" data-page="companies" onclick="navigateTo('companies')">企業管理</div><div class="nav" data-page="analytics" onclick="navigateTo('analytics')">効果測定</div><div class="nav" data-page="coupons" onclick="navigateTo('coupons')">クーポン管理</div><div class="nav" data-page="design" onclick="navigateTo('design')">Webデザイン</div><div class="side-logout"><button class="logout-button" id="logout-button" type="button" onclick="logout()">LOGOUT</button></div></aside><main class="main" id="main"></main></div><div class="modalbg" id="modal"><div class="modal"><button class="close" onclick="closeModal()">閉じる</button><h2 id="modalTitle">編集</h2><div id="modalBody"></div></div></div><script>let S=null;
+.store-public-url{max-width:190px;margin-top:4px;overflow:hidden;color:#91cbd0;font-size:10px;text-overflow:ellipsis;white-space:nowrap}
+.store-public-actions{display:flex;flex-wrap:wrap;align-items:center;gap:5px;margin-bottom:5px}
+.store-public-actions button{padding:5px 8px;font-size:10px;white-space:nowrap}
+.store-public-actions button:disabled{opacity:.45;cursor:not-allowed}
+.store-public-notice{display:block;margin-top:3px;color:#9bb5b8;font-size:10px}
+.store-qr-content{display:flex;flex-direction:column;align-items:center;gap:12px}
+.store-qr-name{color:#e5f7f7;font-weight:700;text-align:center}
+.store-qr-image{display:block;width:min(240px,70vw);height:auto;padding:8px;background:#fff;border-radius:4px;image-rendering:pixelated}
+.store-qr-url{width:min(420px,100%);overflow-wrap:anywhere;color:#b7dadd;font-size:12px;text-align:center;user-select:all}
+.store-qr-actions{display:flex;justify-content:center;gap:8px}
+
+</style></head><body><div class="app"><aside class="side"><div class="logo">Wi-Fi MEDIA<small>広告・店舗・効果測定</small></div><div class="nav active" data-page="dashboard" onclick="navigateTo('dashboard')">ダッシュボード</div><div class="nav" data-page="ads" onclick="navigateTo('ads')">広告管理</div><div class="nav" data-page="stores" onclick="navigateTo('stores')">店舗管理</div><div class="nav" data-page="companies" onclick="navigateTo('companies')">企業管理</div><div class="nav" data-page="analytics" onclick="navigateTo('analytics')">効果測定</div><div class="nav" data-page="coupons" onclick="navigateTo('coupons')">クーポン管理</div><div class="nav" data-page="design" onclick="navigateTo('design')">Webデザイン</div><div class="side-logout"><button class="logout-button" id="logout-button" type="button" onclick="logout()">LOGOUT</button></div></aside><main class="main" id="main"></main></div><div class="modalbg" id="modal"><div class="modal"><button class="close" onclick="closeModal()">閉じる</button><h2 id="modalTitle">編集</h2><div id="modalBody"></div></div></div><script src="/static/qrcode-generator-2.0.4.js"></script><script>let S=null;
 let adTarget='global', adStores=null, adStoreId=null, adCampaigns=[], selectedCampaignId=null, adCampaign=null, adCreatingNew=false, adCampaignCount=0, adStoreLoading=false, adStoreError='', adStoreRequestSeq=0, adStoresLoading=false, adStoresRequestSeq=0, adSaving=false, adSaveError='';
 let adCreateIdempotencyKey=null, adCreateAttempt=null, adCreateUncertain=false, adCreateBlocked=false, adCreateStoreId=null;
 let companyAdminData={companies:[],stores:[]}, companyDataLoaded=false, companyDirectoryLoaded=false, companyRequestSeq=0, companyCreateSaving=false, companyAssignSaving=new Set(), companyFormNotice='', companyFormNoticeType='', companyLoadError='', companyStoreNotices={}, companyFormValues={name:'',code:'',businessType:'',status:'active'};
 let storeCompanyOptionsData=[], storeCompanyOptionsError='', storeSavePending=false, storeSaveFeedback='', storeSaveFeedbackType='';
+let storePublicCodes=new Map(), storePublicCodeSeq=0, storePublicCodeLoading=false, storePublicCodeError='';
 let dashboardSelectedCompany='all', dashboardStoreSearch='', dashboardSelectedStoreId=null, dashboardDirectoryError='', dashboardKpiRequestSeq=0, dashboardKpiAbortController=null;
 let dashboardPcPreviewObserver=null, dashboardPcPreviewResizeHandler=null;
 async function apiFetch(url, options){
@@ -1520,10 +1532,81 @@ function storeCompanyOptions(currentCompanyId){
 }
 function renderStores(){
   const feedback=storeSaveFeedback?`<div class="company-notice ${storeSaveFeedbackType==='error'?'is-error':''}" role="${storeSaveFeedbackType==='error'?'alert':'status'}">${esc(storeSaveFeedback)}</div>`:'';
-  const rows=S.stores.map((x,i)=>`<tr><td><b>${esc(x.name)}</b></td><td>${esc(x.type)}</td><td>${esc(x.wifi)}</td><td class="store-users">${Number(x.users||0).toLocaleString()}</td><td><span class="store-state ${x.status==='停止中'?'is-off':'is-online'}"><i></i>${esc(x.status)}</span></td><td class="store-row-actions"><button class="secondary store-edit" onclick="editStore(${i})">編集</button> <button class="secondary store-delete" onclick="deleteStore(${i})">削除</button></td></tr>`).join('');
-  shell('<span class="store-title">STORE MANAGEMENT</span><span class="store-title-ja">店舗管理</span>','Wi-Fiを設置している店舗・ホテル・拠点を管理します.',`<div class="store-management-view"><div class="store-system-status"><div><div class="store-console-name">STORE NETWORK CONTROL</div><div class="store-console-message">Managing registered Wi-Fi locations.</div></div><span class="store-online"><i></i> ONLINE</span></div>${feedback}<section class="card store-panel"><div class="store-panel-head"><div><span class="store-terminal-label">REGISTERED LOCATIONS</span><div class="store-panel-title">店舗一覧</div></div><div class="actions store-actions" style="justify-content:flex-end;margin-bottom:12px"><button class="store-primary" onclick="addStore()" ${storeSavePending?'disabled':''}>＋ 店舗を追加</button></div></div><div class="store-table-scroll"><table class="store-data-table"><thead><tr><th>店舗</th><th>業態</th><th>Wi-Fi</th><th>月間接続</th><th>状態</th><th></th></tr></thead><tbody>${rows}</tbody></table></div></section></div>`);
+  const rows=S.stores.map((x,i)=>{
+    const fullUrl=storePublicUrlForId(x.id);
+    const urlLabel=fullUrl|| (storePublicCodeLoading?'確認中…':storePublicCodeError?'取得できません':'公開URL未設定');
+    const unavailableNote=fullUrl?'':`<small class="store-public-notice">${esc(urlLabel)}</small>`;
+    return `<tr><td><b>${esc(x.name)}</b><div class="store-public-url" title="${esc(urlLabel)}">${esc(fullUrl?urlLabel:'')}</div>${unavailableNote}</td><td>${esc(x.type)}</td><td>${esc(x.wifi)}</td><td class="store-users">${Number(x.users||0).toLocaleString()}</td><td><span class="store-state ${x.status==='停止中'?'is-off':'is-online'}"><i></i>${esc(x.status)}</span></td><td class="store-row-actions"><div class="store-public-actions"><button type="button" class="secondary" data-store-copy="${i}" ${fullUrl?'':'disabled'}>URLコピー</button><button type="button" class="secondary" data-store-qr="${i}" ${fullUrl?'':'disabled'}>QR</button></div><button class="secondary store-edit" onclick="editStore(${i})">編集</button> <button class="secondary store-delete" onclick="deleteStore(${i})">削除</button></td></tr>`;
+  }).join('');
+  shell('<span class="store-title">STORE MANAGEMENT</span><span class="store-title-ja">店舗管理</span>','Wi-Fiを設置している店舗・ホテル・拠点を管理します.',`<div class="store-management-view"><div class="store-system-status"><div><div class="store-console-name">STORE NETWORK CONTROL</div><div class="store-console-message">Managing registered Wi-Fi locations.</div></div><span class="store-online"><i></i> ONLINE</span></div>${feedback}<section class="card store-panel"><div class="store-panel-head"><div><span class="store-terminal-label">REGISTERED LOCATIONS</span><div class="store-panel-title">店舗一覧</div></div><div class="actions store-actions" style="justify-content:flex-end;margin-bottom:12px"><button class="store-primary" onclick="addStore()" ${storeSavePending?'disabled':''}>＋ 店舗を追加</button></div></div><div class="store-table-scroll"><table class="store-data-table"><thead><tr><th>店舗 / 公開URL</th><th>業態</th><th>Wi-Fi</th><th>月間接続</th><th>状態</th><th>操作</th></tr></thead><tbody>${rows}</tbody></table></div></section></div>`);
+  document.querySelectorAll('[data-store-copy]').forEach(button=>button.addEventListener('click',async event=>{
+    event.preventDefault();event.stopPropagation();
+    const store=S.stores[Number(button.dataset.storeCopy)];
+    const url=store&&storePublicUrlForId(store.id);
+    if(url&&await copyStorePublicUrl(url))toast('コピーしました');
+  }));
+  document.querySelectorAll('[data-store-qr]').forEach(button=>button.addEventListener('click',event=>{
+    event.preventDefault();event.stopPropagation();
+    const store=S.stores[Number(button.dataset.storeQr)];
+    const url=store&&storePublicUrlForId(store.id);
+    if(url)openStoreQrModal(store.name,url);
+  }));
 }
-function stores(){renderStores()}
+function stores(){renderStores();loadStorePublicCodes()}
+async function loadStorePublicCodes(){
+  const seq=++storePublicCodeSeq;
+  storePublicCodes=new Map();storePublicCodeLoading=true;storePublicCodeError='';
+  renderStores();
+  try{
+    const response=await companyApiFetch('/api/admin/stores');
+    if(!response.ok)throw new Error(String(response.status));
+    const payload=await response.json();
+    if(!Array.isArray(payload.stores))throw new Error('invalid response');
+    if(seq!==storePublicCodeSeq)return;
+    storePublicCodes=new Map(payload.stores.filter(store=>store&&store.id!==undefined&&store.id!==null).map(store=>[String(store.id),store.publicCode]));
+    storePublicCodeLoading=false;
+  }catch(_){
+    if(seq!==storePublicCodeSeq)return;
+    storePublicCodes=new Map();storePublicCodeLoading=false;storePublicCodeError='取得できません';
+  }
+  if(document.querySelector('.store-management-view'))renderStores();
+}
+function storePublicUrl(publicCode){
+  if(typeof publicCode!=='string'||!publicCode||publicCode.length>128||!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(publicCode))return null;
+  try{const url=new URL('/',window.location.origin);url.searchParams.set('store',publicCode);return url.toString();}catch(_){return null;}
+}
+function storePublicUrlForId(storeId){return storePublicUrl(storePublicCodes.get(String(storeId)));}
+async function copyStorePublicUrl(fullUrl){
+  try{
+    if(navigator.clipboard&&typeof navigator.clipboard.writeText==='function'){
+      await navigator.clipboard.writeText(fullUrl);return true;
+    }
+  }catch(_){/* Use the local fallback below. */}
+  const field=document.createElement('textarea');
+  field.value=fullUrl;field.setAttribute('readonly','');field.style.position='fixed';field.style.opacity='0';field.style.pointerEvents='none';
+  document.body.appendChild(field);field.select();field.setSelectionRange(0,field.value.length);
+  let copied=false;try{copied=document.execCommand('copy');}catch(_){copied=false;}field.remove();
+  if(!copied&&typeof window.prompt==='function')window.prompt('コピーできませんでした。URLをコピーしてください。',fullUrl);
+  return copied;
+}
+function openStoreQrModal(storeName,fullUrl){
+  const title=document.getElementById('modalTitle'),body=document.getElementById('modalBody');
+  title.textContent='店舗公開URL / QR';body.replaceChildren();
+  const content=document.createElement('div');content.className='store-qr-content';
+  const name=document.createElement('div');name.className='store-qr-name';name.textContent=String(storeName||'店舗');
+  const urlText=document.createElement('div');urlText.className='store-qr-url';urlText.textContent=fullUrl;
+  content.append(name);
+  try{
+    if(typeof window.qrcode!=='function')throw new Error('QR library unavailable');
+    const qr=window.qrcode(0,'M');qr.addData(fullUrl);qr.make();
+    const image=document.createElement('img');image.className='store-qr-image';image.alt='店舗公開URLのQRコード';image.src=qr.createDataURL(5,4);content.append(image);
+  }catch(_){const error=document.createElement('p');error.className='store-public-notice';error.textContent='QRコードを表示できません。URLをコピーしてご利用ください。';content.append(error);}
+  content.append(urlText);
+  const actions=document.createElement('div');actions.className='store-qr-actions';
+  const copyButton=document.createElement('button');copyButton.type='button';copyButton.className='company-primary';copyButton.textContent='URLをコピー';copyButton.addEventListener('click',async()=>{if(await copyStorePublicUrl(fullUrl))toast('コピーしました');});
+  const closeButton=document.createElement('button');closeButton.type='button';closeButton.className='secondary';closeButton.textContent='閉じる';closeButton.addEventListener('click',closeModal);
+  actions.append(copyButton,closeButton);content.append(actions);body.append(content);document.getElementById('modal').style.display='flex';
+}
 function newStoreId(){
   const cryptoApi=window.crypto;
   let candidate='';
