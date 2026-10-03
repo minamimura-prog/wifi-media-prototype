@@ -141,6 +141,9 @@ CREATE TABLE IF NOT EXISTS ad_events (
     store_name TEXT NOT NULL DEFAULT '未設定',
     ad_id TEXT NOT NULL DEFAULT 'main',
     campaign_id TEXT REFERENCES campaigns(id) ON DELETE SET NULL,
+    company_id TEXT REFERENCES companies(id) ON DELETE RESTRICT,
+    company_attribution_status TEXT NOT NULL DEFAULT 'legacy_unknown'
+        CHECK (company_attribution_status IN ('captured', 'legacy_unknown', 'store_unresolved')),
     occurred_at TIMESTAMPTZ NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -153,9 +156,47 @@ CREATE TABLE IF NOT EXISTS coupon_events (
     store_id TEXT REFERENCES stores(id) ON DELETE SET NULL,
     store_name TEXT NOT NULL DEFAULT '未設定',
     ad_id TEXT NOT NULL DEFAULT 'main',
+    company_id TEXT REFERENCES companies(id) ON DELETE RESTRICT,
+    company_attribution_status TEXT NOT NULL DEFAULT 'legacy_unknown'
+        CHECK (company_attribution_status IN ('captured', 'legacy_unknown', 'store_unresolved')),
     occurred_at TIMESTAMPTZ NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- Additive migration for existing event tables. Existing rows remain unassigned:
+-- their company at event time cannot be recovered reliably.
+ALTER TABLE ad_events
+    ADD COLUMN IF NOT EXISTS company_id TEXT;
+ALTER TABLE ad_events
+    ADD COLUMN IF NOT EXISTS company_attribution_status TEXT NOT NULL DEFAULT 'legacy_unknown';
+ALTER TABLE coupon_events
+    ADD COLUMN IF NOT EXISTS company_id TEXT;
+ALTER TABLE coupon_events
+    ADD COLUMN IF NOT EXISTS company_attribution_status TEXT NOT NULL DEFAULT 'legacy_unknown';
+
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'ad_events_company_id_fkey'
+                   AND conrelid = 'ad_events'::regclass) THEN
+        ALTER TABLE ad_events ADD CONSTRAINT ad_events_company_id_fkey
+            FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE RESTRICT;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'coupon_events_company_id_fkey'
+                   AND conrelid = 'coupon_events'::regclass) THEN
+        ALTER TABLE coupon_events ADD CONSTRAINT coupon_events_company_id_fkey
+            FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE RESTRICT;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'ad_events_company_attribution_status_check'
+                   AND conrelid = 'ad_events'::regclass) THEN
+        ALTER TABLE ad_events ADD CONSTRAINT ad_events_company_attribution_status_check
+            CHECK (company_attribution_status IN ('captured', 'legacy_unknown', 'store_unresolved'));
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'coupon_events_company_attribution_status_check'
+                   AND conrelid = 'coupon_events'::regclass) THEN
+        ALTER TABLE coupon_events ADD CONSTRAINT coupon_events_company_attribution_status_check
+            CHECK (company_attribution_status IN ('captured', 'legacy_unknown', 'store_unresolved'));
+    END IF;
+END $$;
 
 CREATE TABLE IF NOT EXISTS store_settings (
     id TEXT PRIMARY KEY,
@@ -173,10 +214,12 @@ CREATE TABLE IF NOT EXISTS admin_sessions (
 CREATE INDEX IF NOT EXISTS ad_events_occurred_at_idx ON ad_events (occurred_at DESC);
 CREATE INDEX IF NOT EXISTS ad_events_store_time_idx ON ad_events (store_id, occurred_at DESC);
 CREATE INDEX IF NOT EXISTS ad_events_ad_time_idx ON ad_events (ad_id, occurred_at DESC);
+CREATE INDEX IF NOT EXISTS ad_events_company_time_idx ON ad_events (company_id, occurred_at DESC);
 CREATE INDEX IF NOT EXISTS campaigns_status_dates_idx ON campaigns (status, starts_on, ends_on);
 CREATE INDEX IF NOT EXISTS coupons_ad_idx ON coupons (ad_id);
 CREATE INDEX IF NOT EXISTS coupon_events_occurred_at_idx ON coupon_events (occurred_at DESC);
 CREATE INDEX IF NOT EXISTS coupon_events_coupon_time_idx ON coupon_events (coupon_id, occurred_at DESC);
+CREATE INDEX IF NOT EXISTS coupon_events_company_time_idx ON coupon_events (company_id, occurred_at DESC);
 CREATE INDEX IF NOT EXISTS admin_sessions_expires_at_idx ON admin_sessions (expires_at);
 
 CREATE TABLE IF NOT EXISTS admin_login_limits (

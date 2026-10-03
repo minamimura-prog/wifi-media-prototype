@@ -745,7 +745,7 @@ def load_state():
             "SELECT settings FROM store_settings WHERE id = 'global'"
         ).fetchone()
         events = conn.execute(
-            "SELECT event_type, store_name, ad_id, occurred_at "
+            "SELECT event_type, store_id, store_name, ad_id, company_id, company_attribution_status, occurred_at "
             "FROM ad_events ORDER BY occurred_at DESC, id DESC LIMIT 10000"
         ).fetchall()
         coupons = conn.execute(
@@ -754,7 +754,8 @@ def load_state():
             "ORDER BY created_at, id"
         ).fetchall()
         coupon_events = conn.execute(
-            "SELECT coupon_id, coupon_code, event_type, store_name, ad_id, occurred_at "
+            "SELECT coupon_id, coupon_code, event_type, store_id, store_name, ad_id, company_id, "
+            "company_attribution_status, occurred_at "
             "FROM coupon_events ORDER BY occurred_at DESC, id DESC LIMIT 10000"
         ).fetchall()
 
@@ -778,7 +779,8 @@ def load_state():
         } for row in stores],
         "history": config.get("legacy_history", []),
         "events": [{
-            "type": row["event_type"], "store": row["store_name"],
+            "type": row["event_type"], "store": row["store_name"], "storeId": row["store_id"],
+            "companyId": row["company_id"], "companyAttributionStatus": row["company_attribution_status"],
             "adId": row["ad_id"], "at": row["occurred_at"].astimezone(timezone.utc).isoformat(),
         } for row in reversed(events)],
         "coupons": [{
@@ -789,7 +791,8 @@ def load_state():
             "end": _date(row["ends_on"]), "status": row["status"],
         } for row in coupons],
         "coupon_events": [{
-            "couponId": row["coupon_id"], "couponCode": row["coupon_code"],
+            "couponId": row["coupon_id"], "couponCode": row["coupon_code"], "storeId": row["store_id"],
+            "companyId": row["company_id"], "companyAttributionStatus": row["company_attribution_status"],
             "type": row["event_type"], "store": row["store_name"], "adId": row["ad_id"],
             "at": row["occurred_at"].astimezone(timezone.utc).isoformat(),
         } for row in reversed(coupon_events)],
@@ -1086,7 +1089,7 @@ def dashboard_analytics(scope="all", company_id=None, now=None):
     }
 
 
-def record_event(event_type, store_name, ad_id="main", occurred_at=None):
+def record_event(event_type, store_name, ad_id="main", occurred_at=None, *, legacy_import=False):
     occurred_at = occurred_at or datetime.now(timezone.utc)
     with pool().connection() as conn:
         with conn.transaction():
@@ -1104,21 +1107,28 @@ def record_event(event_type, store_name, ad_id="main", occurred_at=None):
                 store_name = "未設定"
             if ad and ad["id"]:
                 store = conn.execute(
-                    "SELECT id, status FROM stores WHERE id = %s FOR UPDATE", (ad["id"],)
+                    "SELECT id, name, status, company_id FROM stores WHERE id = %s FOR UPDATE", (ad["id"],)
                 ).fetchone()
             else:
                 store = conn.execute(
-                    "SELECT id, status FROM stores WHERE name = %s ORDER BY id LIMIT 1 FOR UPDATE",
+                    "SELECT id, name, status, company_id FROM stores WHERE name = %s ORDER BY id LIMIT 1 FOR UPDATE",
                     (store_name,),
                 ).fetchone()
-            if store and store.get("status") == "停止中":
+            if not legacy_import and store and store.get("status") == "停止中":
                 raise StoreInactiveError("store_inactive")
+            if store and store.get("name"):
+                store_name = store["name"]
             campaign = conn.execute("SELECT id FROM campaigns WHERE ad_id = %s ORDER BY id LIMIT 1", (ad_id,)).fetchone()
             conn.execute(
-                "INSERT INTO ad_events (event_type, store_id, store_name, ad_id, campaign_id, occurred_at) "
-                "VALUES (%s, %s, %s, %s, %s, %s)",
+                "INSERT INTO ad_events "
+                "(event_type, store_id, store_name, ad_id, campaign_id, company_id, "
+                "company_attribution_status, occurred_at) "
+                "VALUES (%s, %s, %s, %s, %s, %s, %s, %s)",
                 (event_type, store["id"] if store else None, store_name or "未設定", ad_id,
-                 campaign["id"] if campaign else None, occurred_at),
+                 campaign["id"] if campaign else None,
+                 None if legacy_import or not store else store.get("company_id"),
+                 "legacy_unknown" if legacy_import else ("captured" if store else "store_unresolved"),
+                 occurred_at),
             )
 
 
@@ -1137,15 +1147,16 @@ def record_store_ad_event(event_type, public_code, campaign_id, ad_id, delivery_
     with pool().connection() as conn:
         with conn.transaction():
             store = conn.execute(
-                "SELECT id, status FROM stores WHERE public_code = %s FOR UPDATE",
+                "SELECT id, status, company_id FROM stores WHERE public_code = %s FOR UPDATE",
                 (public_code,),
             ).fetchone()
             if store and store.get("status") == "停止中":
                 raise StoreInactiveError("store_inactive")
             row = conn.execute(
                 "INSERT INTO ad_events "
-                "(event_type, store_id, store_name, ad_id, campaign_id, occurred_at) "
-                "SELECT %s, s.id, s.name, a.id, c.id, %s "
+                "(event_type, store_id, store_name, ad_id, campaign_id, company_id, "
+                "company_attribution_status, occurred_at) "
+                "SELECT %s, s.id, s.name, a.id, c.id, s.company_id, 'captured', %s "
                 "FROM stores s "
                 "JOIN campaign_stores cs ON cs.store_id = s.id "
                 "JOIN campaigns c ON c.id = cs.campaign_id "
@@ -1162,7 +1173,7 @@ def record_store_ad_event(event_type, public_code, campaign_id, ad_id, delivery_
     return row is not None
 
 
-def record_coupon_event(event):
+def record_coupon_event(event, *, legacy_import=False):
     """Persist coupon history separately from impression/click analytics."""
     occurred_at = event.get("at")
     if isinstance(occurred_at, str):
@@ -1186,35 +1197,58 @@ def record_coupon_event(event):
                     "SELECT id FROM stores WHERE public_code = %s",
                     (event["storeCode"],),
                 ).fetchone()
-                if not page_store:
+                if not page_store and not legacy_import:
                     raise LookupError("store not found")
-                page_store_id = page_store["id"]
-                store_ids.add(page_store_id)
+                if page_store:
+                    page_store_id = page_store["id"]
+                    store_ids.add(page_store_id)
+            rows = []
             if store_ids:
                 rows = conn.execute(
-                    "SELECT id, status FROM stores WHERE id = ANY(%s) ORDER BY id FOR UPDATE",
+                    "SELECT id, name, status, company_id FROM stores WHERE id = ANY(%s) ORDER BY id FOR UPDATE",
                     (sorted(store_ids),),
                 ).fetchall()
                 if page_store_id and not any(row["id"] == page_store_id for row in rows):
                     raise LookupError("store not found")
-                if any(row.get("status") == "停止中" for row in rows):
+                if not legacy_import and any(row.get("status") == "停止中" for row in rows):
                     raise StoreInactiveError("store_inactive")
-            if (coupon and coupon.get("store_id") and page_store_id
+            if (not legacy_import and coupon and coupon.get("store_id") and page_store_id
                     and coupon["store_id"] != page_store_id):
                 raise StoreMismatchError("store_mismatch")
-            store_id = event.get("storeId") or (coupon["store_id"] if coupon else None)
-            if not store_id and event.get("store"):
+            store_id = (coupon.get("store_id") if coupon and coupon.get("store_id")
+                        else page_store_id or event.get("storeId"))
+            if not store_id and legacy_import and event.get("store"):
                 store = conn.execute(
-                    "SELECT id, status FROM stores WHERE name = %s ORDER BY id LIMIT 1 FOR UPDATE", (event["store"],)
+                    "SELECT id, name, status, company_id FROM stores WHERE name = %s ORDER BY id LIMIT 1 FOR UPDATE",
+                    (event["store"],),
                 ).fetchone()
-                if store and store.get("status") == "停止中":
+                if not legacy_import and store and store.get("status") == "停止中":
                     raise StoreInactiveError("store_inactive")
                 store_id = store["id"] if store else None
+                if store:
+                    rows.append(store)
+            store_by_id = {row["id"]: row for row in rows}
+            event_store = store_by_id.get(store_id)
+            if event_store and event_store.get("name"):
+                store_name = event_store["name"]
+            else:
+                store_name = event.get("store", "未設定")
+            if legacy_import:
+                company_id = None
+                attribution_status = "legacy_unknown"
+            elif event_store:
+                company_id = event_store.get("company_id")
+                attribution_status = "captured"
+            else:
+                company_id = None
+                attribution_status = "store_unresolved"
             conn.execute(
-                "INSERT INTO coupon_events (coupon_id, coupon_code, event_type, store_id, store_name, ad_id, occurred_at) "
-                "VALUES (%s, %s, %s, %s, %s, %s, %s)",
+                "INSERT INTO coupon_events "
+                "(coupon_id, coupon_code, event_type, store_id, store_name, ad_id, company_id, "
+                "company_attribution_status, occurred_at) "
+                "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)",
                 (event.get("couponId"), event.get("couponCode", ""), event.get("type", ""), store_id,
-                 event.get("store", "未設定"), event.get("adId", "main"), occurred_at),
+                 store_name, event.get("adId", "main"), company_id, attribution_status, occurred_at),
             )
 
 
@@ -1278,10 +1312,11 @@ def import_legacy_state(data):
                 event.get("store", "未設定"),
                 event.get("adId", "main"),
                 occurred_at=occurred_at,
+                legacy_import=True,
             )
     for event in data.get("coupon_events", []):
         try:
-            record_coupon_event(event)
+            record_coupon_event(event, legacy_import=True)
         except (TypeError, ValueError):
             continue
     return True

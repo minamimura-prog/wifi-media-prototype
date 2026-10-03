@@ -365,7 +365,15 @@ def record_event(event_type, store, ad_id="main"):
         if resolved_store and resolved_store.get("status") == "停止中":
             raise database.StoreInactiveError("store_inactive")
         events = data.setdefault("events", [])
-        events.append({"type": event_type, "store": store or "未設定", "adId": ad_id, "at": now_jst()})
+        events.append({
+            "type": event_type,
+            "store": (resolved_store.get("name") if resolved_store else store) or "未設定",
+            "storeId": str(resolved_store.get("id")) if resolved_store else None,
+            "companyId": resolved_store.get("companyId") if resolved_store else None,
+            "companyAttributionStatus": "captured" if resolved_store else "store_unresolved",
+            "adId": ad_id,
+            "at": now_jst(),
+        })
         # Keep prototype data manageable while retaining recent history.
         data["events"] = events[-10000:]
         save_state(data, preserve_latest_events=False)
@@ -568,6 +576,30 @@ def record_coupon_event(payload):
         if (current_coupon.get("storeId") and current_page_store
                 and str(current_coupon["storeId"]) != str(current_page_store.get("id"))):
             raise database.StoreMismatchError("store_mismatch")
+        event_store = None
+        if current_coupon.get("storeId"):
+            event_store = next(
+                (item for item in data.get("stores", [])
+                 if str(item.get("id")) == str(current_coupon.get("storeId"))),
+                None,
+            )
+        elif current_page_store:
+            # A global coupon viewed on a store page belongs to that access store.
+            event_store = current_page_store
+        attribution_store = event_store if event_store else None
+        event = {
+            "couponId": coupon_id,
+            "couponCode": current_coupon.get("code", ""),
+            "type": payload["type"],
+            "store": (attribution_store.get("name") if attribution_store else "未設定"),
+            "storeId": str(attribution_store.get("id")) if attribution_store else None,
+            "companyId": attribution_store.get("companyId") if attribution_store else None,
+            "companyAttributionStatus": "captured" if attribution_store else "store_unresolved",
+            "adId": current_coupon.get("adId") or data.get("ad", {}).get("id", "main"),
+            "at": now_jst(),
+        }
+        if store_code:
+            event["storeCode"] = store_code
         events = data.setdefault("coupon_events", [])
         events.append(event)
         data["coupon_events"] = events[-10000:]
