@@ -1023,7 +1023,7 @@ function renderDashboardStores(){
   if(dashboardSelectedStoreId&&(!selectedStore||!dashboardStorePreviewUrl(selectedStore))){dashboardSelectedStoreId=null;selectedStore=null;}
   syncDashboardPreview(selectedStore);
   if(!stores.length){body.innerHTML='<tr><td colspan="5" class="dashboard-empty-row">条件に一致する店舗がありません</td></tr>';return;}
-  body.innerHTML=stores.map((store,index)=>`<tr data-dashboard-store-id="${esc(String(store.id))}" class="${String(store.id)===dashboardSelectedStoreId?'is-preview-selected':''}" tabindex="0" aria-selected="${String(store.id)===dashboardSelectedStoreId?'true':'false'}"><td><span class="dashboard-store-number">${String(index+1).padStart(2,'0')}</span><span class="dashboard-store-identity"><b>${esc(store.name||'')}</b><small>${esc(store.companyName||(store.companyId?'所属企業情報なし':'未所属'))}</small></span></td><td>${esc(S.ad.title||'')}</td><td>${Number(store.users||0).toLocaleString()}</td><td><span class="badge ${store.status==='停止中'?'off':''}">${esc(store.status||'')}</span></td><td><button class="secondary" onclick="editStore(${S.stores.findIndex(item=>String(item.id)===String(store.id))})">編集</button></td></tr>`).join('');
+  body.innerHTML=stores.map((store,index)=>`<tr data-dashboard-store-id="${esc(String(store.id))}" class="${String(store.id)===dashboardSelectedStoreId?'is-preview-selected':''}" tabindex="0" aria-selected="${String(store.id)===dashboardSelectedStoreId?'true':'false'}"><td><span class="dashboard-store-number">${String(index+1).padStart(2,'0')}</span><span class="dashboard-store-identity"><b>${esc(store.name||'')}</b><small>${esc(store.companyName||(store.companyId?'所属企業情報なし':'未所属'))}</small></span></td><td>${esc(S.ad.title||'')}</td><td>${Number(store.users||0).toLocaleString()}</td><td><span class="badge ${store.status==='停止中'?'off':''}">${esc(store.status||'')}</span></td><td><button type="button" class="secondary" data-dashboard-store-edit="${esc(String(store.id))}">編集</button></td></tr>`).join('');
   body.querySelectorAll('tr[data-dashboard-store-id]').forEach(row=>{
     row.addEventListener('click',event=>{
       if(event.target.closest('button'))return;
@@ -1033,7 +1033,10 @@ function renderDashboardStores(){
       if(event.target.closest('button'))return;
       if(event.key==='Enter'||event.key===' '){event.preventDefault();selectDashboardStore(row.dataset.dashboardStoreId);}
     });
-    row.querySelectorAll('button').forEach(button=>button.addEventListener('click',event=>event.stopPropagation()));
+    row.querySelectorAll('button').forEach(button=>button.addEventListener('click',event=>{
+      event.stopPropagation();
+      if(button.hasAttribute('data-dashboard-store-edit'))editStore(button.dataset.dashboardStoreEdit);
+    }));
   });
 }
 function dashboardKpiScopeLabel(){
@@ -1488,7 +1491,7 @@ async function publishStoreAd(){
   }
 }
 function couponManager(){S.coupons=S.coupons||[];shell('<span class="coupon-management-title">COUPON MANAGEMENT</span><span class="coupon-management-title-ja">クーポン管理</span>','クーポンを登録して一覧を確認できます。',`<div class="coupon-management-view"><div class="coupon-system-status"><div><div class="coupon-console-name">COUPON DISTRIBUTION CONTROL</div><div class="coupon-console-message">Managing registered coupon offers and availability.</div></div><span class="coupon-ready"><i></i> READY</span></div><div class="layout coupon-management-layout"><section class="card coupon-panel coupon-registration-panel"><div class="coupon-panel-heading"><span class="coupon-terminal-label">COUPON REGISTRATION TERMINAL</span><div class="section">クーポンを登録</div></div><div class="field"><label>クーポン名</label><input id="cTitle" placeholder="例：ドリンク1杯無料"></div><div class="field"><label>クーポンコード</label><input id="cCode" placeholder="例：WELCOME10"></div><div class="field"><label>説明</label><textarea id="cDescription" placeholder="特典の内容"></textarea></div><div class="twocol"><div class="field"><label>割引種別</label><select id="cDiscountType"><option value="text">特典内容</option><option value="percent">割引率</option><option value="amount">割引額</option></select></div><div class="field"><label>割引値 / 特典表記</label><input id="cDiscountValue" placeholder="例：10 または ドリンク1杯"></div></div><div class="field"><label>利用店舗</label><select id="cStore"><option value="">指定なし</option>${S.stores.map(x=>`<option value="${esc(x.id)}">${esc(x.name)}</option>`).join('')}</select></div><div class="twocol"><div class="field"><label>開始日</label><input id="cStart" type="date"></div><div class="field"><label>終了日</label><input id="cEnd" type="date"></div></div><div class="field"><label>利用条件</label><textarea id="cTerms" placeholder="例：1会計につき1回"></textarea></div><div class="field"><label>状態</label><select id="cStatus"><option value="draft">下書き</option><option value="active">公開中</option></select></div><button class="coupon-primary" onclick="addCoupon()">クーポンを登録</button></section><section class="card coupon-panel coupon-list-panel"><div class="coupon-panel-heading"><span class="coupon-terminal-label">REGISTERED COUPONS</span><div class="section">登録済みクーポン</div></div><div class="coupon-table-scroll">${S.coupons.length?`<table class="coupon-data-table"><thead><tr><th>クーポン</th><th>コード</th><th>特典内容</th><th>店舗</th><th>期間</th><th>状態</th><th>操作</th></tr></thead><tbody>${S.coupons.map(c=>{const store=S.stores.find(x=>String(x.id)===String(c.storeId))||S.stores.find(x=>x.name===c.store);return `<tr><td><b>${esc(c.title||'クーポン')}</b>${c.description?`<br><small>${esc(c.description)}</small>`:''}</td><td>${esc(c.code||'')}</td><td>${esc(c.discountValue||c.description||'')}</td><td>${esc(store?.name||'指定なし')}</td><td>${esc(c.start||'—')} 〜 ${esc(c.end||'—')}</td><td><span class="badge coupon-status ${c.status==='active'?'':'off'}">${c.status==='active'?'公開中':'下書き'}</span></td><td>${c.status==='draft'?`<button class="secondary coupon-delete" onclick="deleteCoupon('${esc(c.id)}')">削除</button>`:'公開中のため削除不可'}</td></tr>`}).join('')}</tbody></table>`:'<p class="sub coupon-empty">クーポンはまだ登録されていません。</p>'}</div></section></div></div>`)}async function deleteCoupon(id){const coupon=S.coupons.find(c=>String(c.id)===String(id));if(!coupon||coupon.status!=='draft')return;if(!confirm(`下書きクーポン「${coupon.title||'クーポン'}」を削除しますか？\n利用履歴は保持されます。`))return;const r=await apiFetch(`/api/coupons/${encodeURIComponent(id)}`,{method:'DELETE'});const result=await r.json();if(!r.ok){alert(result.error||'削除できませんでした。');return}S=await apiFetch('/api/state').then(r=>r.json());couponManager();toast('下書きクーポンを削除しました')}
-async function addCoupon(){const title=document.getElementById('cTitle').value.trim(),code=document.getElementById('cCode').value.trim();if(!title||!code){alert('クーポン名とクーポンコードを入力してください。');return}S.coupons=S.coupons||[];const storeId=document.getElementById('cStore').value;S.coupons.push({id:Date.now().toString(),adId:S.ad.id||'main',storeId:storeId||null,title,code,description:document.getElementById('cDescription').value.trim(),discountType:document.getElementById('cDiscountType').value,discountValue:document.getElementById('cDiscountValue').value.trim(),terms:document.getElementById('cTerms').value.trim(),start:document.getElementById('cStart').value,end:document.getElementById('cEnd').value,status:document.getElementById('cStatus').value});await save();couponManager()}function stores(){shell('<span class="store-title">STORE MANAGEMENT</span><span class="store-title-ja">店舗管理</span>','Wi-Fiを設置している店舗・ホテル・拠点を管理します.',`<div class="store-management-view"><div class="store-system-status"><div><div class="store-console-name">STORE NETWORK CONTROL</div><div class="store-console-message">Managing registered Wi-Fi locations.</div></div><span class="store-online"><i></i> ONLINE</span></div><section class="card store-panel"><div class="store-panel-head"><div><span class="store-terminal-label">REGISTERED LOCATIONS</span><div class="store-panel-title">店舗一覧</div></div><div class="actions store-actions" style="justify-content:flex-end;margin-bottom:12px"><button class="store-primary" onclick="addStore()">＋ 店舗を追加</button></div></div><div class="store-table-scroll"><table class="store-data-table"><thead><tr><th>店舗</th><th>業態</th><th>Wi-Fi</th><th>月間接続</th><th>状態</th><th></th></tr></thead><tbody>${S.stores.map((x,i)=>`<tr><td><b>${x.name}</b></td><td>${x.type}</td><td>${x.wifi}</td><td class="store-users">${x.users.toLocaleString()}</td><td><span class="store-state ${x.status==='停止中'?'is-off':'is-online'}"><i></i>${x.status}</span></td><td class="store-row-actions"><button class="secondary store-edit" onclick="editStore(${i})">編集</button> <button class="secondary store-delete" onclick="deleteStore(${i})">削除</button></td></tr>`).join('')}</tbody></table></div></section></div>`)}async function companyManagement(){
+async function addCoupon(){const title=document.getElementById('cTitle').value.trim(),code=document.getElementById('cCode').value.trim();if(!title||!code){alert('クーポン名とクーポンコードを入力してください。');return}S.coupons=S.coupons||[];const storeId=document.getElementById('cStore').value;S.coupons.push({id:Date.now().toString(),adId:S.ad.id||'main',storeId:storeId||null,title,code,description:document.getElementById('cDescription').value.trim(),discountType:document.getElementById('cDiscountType').value,discountValue:document.getElementById('cDiscountValue').value.trim(),terms:document.getElementById('cTerms').value.trim(),start:document.getElementById('cStart').value,end:document.getElementById('cEnd').value,status:document.getElementById('cStatus').value});await save();couponManager()}async function companyManagement(){
   const seq=++companyRequestSeq;
   companyLoadError='';
   renderCompanyManagement();
@@ -1629,24 +1632,32 @@ function storeCompanyOptions(currentCompanyId){
 }
 function renderStores(){
   const feedback=storeSaveFeedback?`<div class="company-notice ${storeSaveFeedbackType==='error'?'is-error':''}" role="${storeSaveFeedbackType==='error'?'alert':'status'}">${esc(storeSaveFeedback)}</div>`:'';
-  const rows=S.stores.map((x,i)=>{
+  const rows=S.stores.map(x=>{
+    const storeId=String(x.id??'');
     const fullUrl=storePublicUrlForId(x.id);
     const urlLabel=fullUrl|| (storePublicCodeLoading?'確認中…':storePublicCodeError?'取得できません':'公開URL未設定');
     const unavailableNote=fullUrl?'':`<small class="store-public-notice">${esc(urlLabel)}</small>`;
-    return `<tr><td><b>${esc(x.name)}</b><div class="store-public-url" title="${esc(urlLabel)}">${esc(fullUrl?urlLabel:'')}</div>${unavailableNote}</td><td>${esc(x.type)}</td><td>${esc(x.wifi)}</td><td class="store-users">${Number(x.users||0).toLocaleString()}</td><td><span class="store-state ${x.status==='停止中'?'is-off':'is-online'}"><i></i>${esc(x.status)}</span></td><td class="store-row-actions"><div class="store-public-actions"><button type="button" class="secondary" data-store-copy="${i}" ${fullUrl?'':'disabled'}>URLコピー</button><button type="button" class="secondary" data-store-qr="${i}" ${fullUrl?'':'disabled'}>QR</button></div><button class="secondary store-edit" onclick="editStore(${i})">編集</button> <button class="secondary store-delete" onclick="deleteStore(${i})">削除</button></td></tr>`;
+    const disabled=storeId?'':'disabled';
+    return `<tr><td><b>${esc(x.name)}</b><div class="store-public-url" title="${esc(urlLabel)}">${esc(fullUrl?urlLabel:'')}</div>${unavailableNote}</td><td>${esc(x.type)}</td><td>${esc(x.wifi)}</td><td class="store-users">${Number(x.users||0).toLocaleString()}</td><td><span class="store-state ${x.status==='停止中'?'is-off':'is-online'}"><i></i>${esc(x.status)}</span></td><td class="store-row-actions"><div class="store-public-actions"><button type="button" class="secondary" data-store-copy="${esc(storeId)}" ${fullUrl&&storeId?'':'disabled'}>URLコピー</button><button type="button" class="secondary" data-store-qr="${esc(storeId)}" ${fullUrl&&storeId?'':'disabled'}>QR</button></div><button type="button" class="secondary store-edit" data-store-edit="${esc(storeId)}" ${disabled}>編集</button> <button type="button" class="secondary store-delete" data-store-delete="${esc(storeId)}" ${disabled}>削除</button></td></tr>`;
   }).join('');
   shell('<span class="store-title">STORE MANAGEMENT</span><span class="store-title-ja">店舗管理</span>','Wi-Fiを設置している店舗・ホテル・拠点を管理します.',`<div class="store-management-view"><div class="store-system-status"><div><div class="store-console-name">STORE NETWORK CONTROL</div><div class="store-console-message">Managing registered Wi-Fi locations.</div></div><span class="store-online"><i></i> ONLINE</span></div>${feedback}<section class="card store-panel"><div class="store-panel-head"><div><span class="store-terminal-label">REGISTERED LOCATIONS</span><div class="store-panel-title">店舗一覧</div></div><div class="actions store-actions" style="justify-content:flex-end;margin-bottom:12px"><button class="store-primary" onclick="addStore()" ${storeSavePending?'disabled':''}>＋ 店舗を追加</button></div></div><div class="store-table-scroll"><table class="store-data-table"><thead><tr><th>店舗 / 公開URL</th><th>業態</th><th>Wi-Fi</th><th>月間接続</th><th>状態</th><th>操作</th></tr></thead><tbody>${rows}</tbody></table></div></section></div>`);
   document.querySelectorAll('[data-store-copy]').forEach(button=>button.addEventListener('click',async event=>{
     event.preventDefault();event.stopPropagation();
-    const store=S.stores[Number(button.dataset.storeCopy)];
+    const store=findStoreById(button.dataset.storeCopy);
     const url=store&&storePublicUrlForId(store.id);
     if(url&&await copyStorePublicUrl(url))toast('コピーしました');
   }));
   document.querySelectorAll('[data-store-qr]').forEach(button=>button.addEventListener('click',event=>{
     event.preventDefault();event.stopPropagation();
-    const store=S.stores[Number(button.dataset.storeQr)];
+    const store=findStoreById(button.dataset.storeQr);
     const url=store&&storePublicUrlForId(store.id);
     if(url)openStoreQrModal(store.name,url);
+  }));
+  document.querySelectorAll('[data-store-edit]').forEach(button=>button.addEventListener('click',event=>{
+    event.preventDefault();event.stopPropagation();editStore(button.dataset.storeEdit);
+  }));
+  document.querySelectorAll('[data-store-delete]').forEach(button=>button.addEventListener('click',event=>{
+    event.preventDefault();event.stopPropagation();deleteStore(button.dataset.storeDelete);
   }));
 }
 function stores(){renderStores();loadStorePublicCodes()}
@@ -1673,6 +1684,7 @@ function storePublicUrl(publicCode){
   try{const url=new URL('/',window.location.origin);url.searchParams.set('store',publicCode);return url.toString();}catch(_){return null;}
 }
 function storePublicUrlForId(storeId){return storePublicUrl(storePublicCodes.get(String(storeId)));}
+function findStoreById(storeId){if(storeId===undefined||storeId===null)return null;const key=String(storeId);return S?.stores?.find(store=>String(store?.id??'')===key)||null;}
 async function copyStorePublicUrl(fullUrl){
   try{
     if(navigator.clipboard&&typeof navigator.clipboard.writeText==='function'){
@@ -1725,11 +1737,13 @@ async function addStore(){
   storeSaveFeedback='';storeSaveFeedbackType='';
   openStoreForm({id:newStoreId(),name:'',type:'店舗',wifi:'Guest Wi-Fi',users:0,clicks:0,status:'稼働中',companyId:null},true);
 }
-async function editStore(i){
+async function editStore(storeId){
   if(storeSavePending)return;
-  const store=S.stores[i];if(!store)return;
+  const key=String(storeId??'');if(!key)return;
+  let store=findStoreById(key);if(!store)return;
   const ready=await loadStoreCompanyOptions();
   if(!ready){storeSaveFeedback=storeCompanyOptionsError;storeSaveFeedbackType='error';renderStores();return;}
+  store=findStoreById(key);if(!store)return;
   openStoreForm(store,false);
 }
 async function refreshStoreState(){
@@ -1803,7 +1817,7 @@ async function saveStore(event){
     renderStores();
   }finally{storeSavePending=false;}
 }
-async function deleteStore(i){if(!confirm(`「${S.stores[i].name}」を削除しますか？`))return;S.stores.splice(i,1);await save();stores()}
+async function deleteStore(storeId){const key=String(storeId??'');if(!key)return;const target=findStoreById(key);if(!target||!confirm(`「${target.name}」を削除しますか？`))return;const index=S.stores.findIndex(store=>String(store?.id??'')===key);if(index<0)return;S.stores.splice(index,1);await save();stores()}
 async function reports(){
   const a=await apiFetch('/api/analytics').then(r=>r.json());
   const couponAnalytics=await apiFetch('/api/coupon_analytics').then(r=>r.ok?r.json():Promise.reject(new Error('coupon analytics unavailable'))).catch(()=>({total:0,byType:{},byCoupon:[],unavailable:true}));
