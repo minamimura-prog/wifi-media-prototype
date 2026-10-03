@@ -931,8 +931,107 @@ def delete_draft_coupon(coupon_id):
             return result is not None
 
 
-def analytics(company_id=None):
-    """Aggregate ad events, optionally scoped to event-time company attribution."""
+def performance_period_spec(period, now=None):
+    """Return JST bounds and zero-fill buckets for the supported chart periods."""
+    if period not in {"yesterday", "7d", "30d", "12m"}:
+        raise ValueError("invalid analytics period")
+    jst = ZoneInfo("Asia/Tokyo")
+    current = now or datetime.now(jst)
+    if current.tzinfo is None:
+        current = current.replace(tzinfo=jst)
+    current = current.astimezone(jst)
+    today = current.date()
+
+    if period == "yesterday":
+        start_day = today - timedelta(days=1)
+        start = datetime.combine(start_day, datetime.min.time(), tzinfo=jst)
+        end = datetime.combine(today, datetime.min.time(), tzinfo=jst)
+        granularity = "hour"
+        buckets = [
+            {"key": datetime.combine(start_day, datetime.min.time(), tzinfo=jst).replace(hour=hour).strftime("%Y-%m-%dT%H"),
+             "label": f"{hour:02d}:00"}
+            for hour in range(24)
+        ]
+    elif period in {"7d", "30d"}:
+        days = 7 if period == "7d" else 30
+        start_day = today - timedelta(days=days - 1)
+        start = datetime.combine(start_day, datetime.min.time(), tzinfo=jst)
+        end = current
+        granularity = "day"
+        buckets = [
+            {"key": (start_day + timedelta(days=offset)).strftime("%Y-%m-%d"),
+             "label": (start_day + timedelta(days=offset)).strftime("%Y-%m-%d")}
+            for offset in range(days)
+        ]
+    else:
+        month_index = today.year * 12 + today.month - 1 - 11
+        start_year, start_month_index = divmod(month_index, 12)
+        start = datetime(start_year, start_month_index + 1, 1, tzinfo=jst)
+        end = current
+        granularity = "month"
+        buckets = []
+        for offset in range(12):
+            bucket_index = month_index + offset
+            year, month_index_in_year = divmod(bucket_index, 12)
+            month = month_index_in_year + 1
+            key = f"{year:04d}/{month:02d}"
+            buckets.append({"key": key, "label": key})
+    return {
+        "period": period,
+        "granularity": granularity,
+        "start": start,
+        "end": end,
+        "buckets": buckets,
+    }
+
+
+def shape_performance_trend(spec, rows):
+    """Merge sparse grouped rows into the complete, zero-filled chart series."""
+    grouped = {row["bucket"]: row for row in rows}
+    points = []
+    for bucket in spec["buckets"]:
+        row = grouped.get(bucket["key"], {})
+        impressions = int(row.get("impressions") or 0)
+        clicks = int(row.get("clicks") or 0)
+        points.append({
+            "key": bucket["key"],
+            "label": bucket["label"],
+            "impressions": impressions,
+            "clicks": clicks,
+            "ctr": round(clicks / impressions * 100, 2) if impressions else 0,
+        })
+    return {
+        "period": spec["period"],
+        "granularity": spec["granularity"],
+        "start": spec["start"].isoformat(),
+        "end": spec["end"].isoformat(),
+        "points": points,
+    }
+
+
+def _performance_trend_rows(conn, spec, company_id=None):
+    bucket_format = {
+        "hour": 'YYYY-MM-DD"T"HH24',
+        "day": "YYYY-MM-DD",
+        "month": "YYYY/MM",
+    }[spec["granularity"]]
+    query = (
+        "SELECT to_char(occurred_at AT TIME ZONE 'Asia/Tokyo', %s) AS bucket, "
+        "count(*) FILTER (WHERE event_type = 'impression') AS impressions, "
+        "count(*) FILTER (WHERE event_type = 'click') AS clicks "
+        "FROM ad_events WHERE occurred_at >= %s AND occurred_at < %s"
+    )
+    params = [bucket_format, spec["start"], spec["end"]]
+    if company_id is not None:
+        query += " AND company_id = %s AND company_attribution_status = 'captured'"
+        params.append(str(company_id))
+    query += " GROUP BY bucket ORDER BY bucket"
+    return conn.execute(query, tuple(params)).fetchall()
+
+
+def analytics(company_id=None, period=None):
+    """Aggregate all ad events and optionally add a bounded performance trend."""
+    trend_spec = performance_period_spec(period) if period is not None else None
     event_filter = ""
     filter_params = ()
     if company_id is not None:
@@ -987,6 +1086,7 @@ def analytics(company_id=None):
             + event_filter + " GROUP BY month ORDER BY month",
             filter_params,
         ).fetchall()
+        trend_rows = _performance_trend_rows(conn, trend_spec, company_id) if trend_spec else None
     impressions, clicks = totals["impressions"], totals["clicks"]
     by_store = {}
     by_store_details_map = {}
@@ -1012,7 +1112,7 @@ def analytics(company_id=None):
         return [{key: row[key], "impressions": row["impressions"], "clicks": row["clicks"],
                  "ctr": round(row["clicks"] / row["impressions"] * 100, 2) if row["impressions"] else 0}
                 for row in rows]
-    return {
+    result = {
         "impressions": impressions, "clicks": clicks,
         "ctr": round(clicks / impressions * 100, 2) if impressions else 0,
         "byStore": by_store,
@@ -1044,6 +1144,9 @@ def analytics(company_id=None):
         ],
         "daily": shape(periods, "date"), "monthly": shape(months, "month"),
     }
+    if trend_spec:
+        result["performanceTrend"] = shape_performance_trend(trend_spec, trend_rows)
+    return result
 
 
 def dashboard_analytics(scope="all", company_id=None, now=None):

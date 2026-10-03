@@ -637,7 +637,8 @@ input:focus, textarea:focus, select:focus {
 .analytics-view .analytics-panel table{border-collapse:collapse;color:#d8e4e7}.analytics-view .analytics-panel th,.analytics-view .analytics-panel td{border-bottom:1px solid rgba(76,229,255,.12);color:#d8e4e7}.analytics-view .analytics-panel th{color:#8dbac0;background:rgba(3,11,16,.66)}.analytics-view .analytics-panel tbody tr:hover{background:rgba(76,229,255,.04);box-shadow:inset 2px 0 0 rgba(76,229,255,.28)}.analytics-view .analytics-panel p{color:#9aafb2!important}
 .analytics-view .analytics-monthly [style*="min-height:170px"]{background-image:repeating-linear-gradient(to bottom,transparent 0,transparent 30px,rgba(76,229,255,.055) 31px,transparent 32px)}.analytics-view .analytics-comparisons{gap:16px}.analytics-view .comparison-meter{background:#10181b;border-color:#29434b}.analytics-view .analytics-coupon-chart{background:rgba(5,13,16,.82);border-color:#365862;box-shadow:0 0 0 1px rgba(76,229,255,.035),0 8px 20px rgba(0,0,0,.22)}.analytics-view .pie{box-shadow:0 0 10px rgba(76,229,255,.1),0 0 16px rgba(183,255,86,.045)}.analytics-view .pie.is-empty{box-shadow:none}.analytics-view .pie:after{background:#101619}.analytics-view .pie-total{color:#e4f3f4;text-shadow:0 0 7px rgba(76,229,255,.15)}.analytics-view .coupon-legend li{color:#a9c4c7}.analytics-view .coupon-legend strong{color:#e4f3f4}.analytics-view .analytics-coupon-chart+.analytics-panel table{border-color:#365862}
 .analytics-view .analytics-monthly>div[style*="font-size:12px;color:#777"]{color:#9bbec2!important}
-@media(max-width:900px){.analytics-view .analytics-comparisons{grid-template-columns:minmax(0,1fr)}}@media(max-width:700px){.analytics-system-status{align-items:flex-start;padding:9px 10px}.analytics-console-message{max-width:36ch;line-height:1.5}.analytics-view .analytics-panel{padding:14px}.analytics-view .analytics-summary,.analytics-view .analytics-coupons>.grid{grid-template-columns:repeat(2,minmax(0,1fr))}.analytics-view .analytics-panel table{min-width:560px}.analytics-view .analytics-panel{overflow-x:auto}}
+.analytics-trend-toolbar{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;margin:0 0 12px}.analytics-period-tabs{display:flex;gap:6px;flex-wrap:wrap}.analytics-period-tab{min-height:34px;padding:6px 12px;color:#a9c4c7;background:rgba(5,12,15,.72);border:1px solid #34505a;border-radius:5px;font:600 12px "IBM Plex Sans JP",sans-serif;cursor:pointer;transition:background-color .12s,border-color .12s,color .12s}.analytics-period-tab:hover{color:#e4ffff;border-color:rgba(76,229,255,.55)}.analytics-period-tab.is-active{color:#07110e;background:var(--neon-green);border-color:rgba(183,255,86,.72);box-shadow:0 0 8px rgba(183,255,86,.12)}.analytics-trend-legend{display:flex;align-items:center;gap:14px;color:#b7cacc;font-size:11px}.analytics-trend-legend span{display:inline-flex;align-items:center;gap:6px}.analytics-trend-legend i{width:8px;height:8px;border-radius:50%;background:var(--neon-green);box-shadow:0 0 6px rgba(183,255,86,.4)}.analytics-trend-legend .trend-click i{background:var(--signal-cyan);box-shadow:0 0 6px rgba(76,229,255,.4)}.analytics-trend-chart-wrap{position:relative;min-width:0;width:100%;overflow:hidden;border:1px solid rgba(76,229,255,.12);border-radius:6px;background:rgba(2,9,12,.46)}.analytics-trend-chart{display:block;width:100%;height:auto;min-height:210px}.analytics-trend-chart .trend-grid{stroke:rgba(76,229,255,.14);stroke-width:1}.analytics-trend-chart .trend-axis{stroke:rgba(153,193,199,.3);stroke-width:1}.analytics-trend-chart .trend-impressions{fill:none;stroke:#b7ff56;stroke-width:2.5;filter:drop-shadow(0 0 3px rgba(183,255,86,.32))}.analytics-trend-chart .trend-clicks{fill:none;stroke:#4ce5ff;stroke-width:2.5;filter:drop-shadow(0 0 3px rgba(76,229,255,.34))}.analytics-trend-chart .trend-point-impressions{fill:#b7ff56;stroke:#0b1414;stroke-width:1.5}.analytics-trend-chart .trend-point-clicks{fill:#4ce5ff;stroke:#0b1414;stroke-width:1.5}.analytics-trend-chart text{fill:#9bb8bc;font:12px "IBM Plex Sans JP",sans-serif}.analytics-trend-chart .trend-axis-title{fill:#c1d9dc;font-size:11px;font-weight:600}.analytics-trend-empty{padding:14px 10px;color:#9bb8bc;text-align:center;font-size:12px}.analytics-trend-zero{fill:#789195;font:13px "IBM Plex Sans JP",sans-serif}
+@media(max-width:900px){.analytics-view .analytics-comparisons{grid-template-columns:minmax(0,1fr)}}@media(max-width:700px){.analytics-system-status{align-items:flex-start;padding:9px 10px}.analytics-console-message{max-width:36ch;line-height:1.5}.analytics-view .analytics-panel{padding:14px}.analytics-view .analytics-summary,.analytics-view .analytics-coupons>.grid{grid-template-columns:repeat(2,minmax(0,1fr))}.analytics-view .analytics-panel table{min-width:560px}.analytics-view .analytics-panel{overflow-x:auto}.analytics-trend-toolbar{align-items:flex-start;flex-direction:column}.analytics-period-tabs{width:100%;display:grid;grid-template-columns:repeat(4,minmax(0,1fr))}.analytics-period-tab{padding:6px 4px;font-size:11px}.analytics-trend-legend{gap:10px}.analytics-trend-chart{min-height:190px}.analytics-trend-chart text{font-size:15px}.analytics-trend-chart .trend-axis-title{font-size:13px}}
 
 /* STEP D-4B: stronger, sharp CRT phosphor glow for analytics data only */
 .analytics-view .analytics-summary .metric.impression,
@@ -937,7 +938,7 @@ let companyAdminData={companies:[],stores:[]}, companyDataLoaded=false, companyD
 let storeCompanyOptionsData=[], storeCompanyOptionsError='', storeSavePending=false, storeSaveFeedback='', storeSaveFeedbackType='';
 let storePublicCodes=new Map(), storePublicCodeSeq=0, storePublicCodeLoading=false, storePublicCodeError='', storeSearchQuery='';
 let dashboardSelectedCompany='all', dashboardStoreSearch='', dashboardSelectedStoreId=null, dashboardDirectoryError='', dashboardKpiRequestSeq=0, dashboardKpiAbortController=null;
-let analyticsCompanies=null, analyticsCompaniesPromise=null, analyticsSelectedCompanyId=null, analyticsRequestSeq=0;
+let analyticsCompanies=null, analyticsCompaniesPromise=null, analyticsSelectedCompanyId=null, analyticsSelectedPeriod='30d', analyticsRequestSeq=0;
 let dashboardPcPreviewObserver=null, dashboardPcPreviewResizeHandler=null;
 async function apiFetch(url, options){
   const response=await window.fetch(url, options);
@@ -1853,9 +1854,44 @@ function analyticsScopeMarkup(companies,selectedId,companyError=''){
   const options=(companies||[]).map(company=>`<option value="${esc(company.id)}" ${selected===String(company.id)?'selected':''}>${esc(company.name||company.id)}${company.status==='inactive'?'（停止中）':''}</option>`).join('');
   return `<div class="analytics-scope-toolbar"><label for="analyticsCompanyScope">表示対象</label><select id="analyticsCompanyScope" onchange="selectAnalyticsCompany(this.value)"><option value="" ${selected===''?'selected':''}>全体</option>${options}</select>${companyError?`<span class="analytics-scope-error" role="status">${esc(companyError)}</span>`:''}</div>`;
 }
-function renderAnalyticsLoadError(companies,selectedId,message,companyError=''){
+function analyticsPeriodControlsMarkup(selectedPeriod){
+  const periods=[['yesterday','昨日'],['7d','1週間'],['30d','1ヶ月'],['12m','1年']];
+  return `<div class="analytics-trend-toolbar"><div class="analytics-period-tabs" role="group" aria-label="推移の期間">${periods.map(([value,label])=>`<button type="button" class="analytics-period-tab${selectedPeriod===value?' is-active':''}" aria-pressed="${selectedPeriod===value?'true':'false'}" onclick="selectAnalyticsPeriod('${value}')">${label}</button>`).join('')}</div><div class="analytics-trend-legend" aria-label="グラフの凡例"><span><i></i>表示回数（左軸）</span><span class="trend-click"><i></i>クリック（右軸）</span></div></div>`;
+}
+function analyticsTrendChartMarkup(trend){
+  const points=Array.isArray(trend?.points)?trend.points.map(point=>{const safeCount=value=>{const count=Number(value);return Number.isFinite(count)?Math.max(0,count):0;};return {label:String(point?.label??''),impressions:safeCount(point?.impressions),clicks:safeCount(point?.clicks)};}):[];
+  if(!points.length)return '<div class="analytics-trend-empty" role="status">この期間の推移データを読み込めませんでした。</div>';
+  const width=960,height=330,left=66,right=62,top=28,bottom=54,plotWidth=width-left-right,plotHeight=height-top-bottom;
+  const maxImpressions=Math.max(1,...points.map(point=>point.impressions));
+  const maxClicks=Math.max(1,...points.map(point=>point.clicks));
+  const xAt=index=>points.length===1?left+plotWidth/2:left+(plotWidth*index/(points.length-1));
+  const yAt=(value,max)=>top+plotHeight-(value/max)*plotHeight;
+  const impressionPath=points.map((point,index)=>`${index?'L':'M'}${xAt(index).toFixed(1)},${yAt(point.impressions,maxImpressions).toFixed(1)}`).join(' ');
+  const clickPath=points.map((point,index)=>`${index?'L':'M'}${xAt(index).toFixed(1)},${yAt(point.clicks,maxClicks).toFixed(1)}`).join(' ');
+  const grid=Array.from({length:5},(_,index)=>{
+    const ratio=index/4,y=top+plotHeight*(1-ratio);
+    const impressionValue=Math.round(maxImpressions*ratio),clickValue=Math.round(maxClicks*ratio);
+    return `<g><line class="trend-grid" x1="${left}" y1="${y}" x2="${width-right}" y2="${y}"/><text x="${left-9}" y="${y+4}" text-anchor="end">${impressionValue.toLocaleString()}</text><text x="${width-right+9}" y="${y+4}" text-anchor="start">${clickValue.toLocaleString()}</text></g>`;
+  }).join('');
+  const period=String(trend?.period||'');
+  const labelIndexes=points.map((_,index)=>index).filter(index=>{
+    if(period==='30d')return index%5===0||index===points.length-1;
+    return true;
+  });
+  const labels=labelIndexes.map(index=>`<text x="${xAt(index)}" y="${height-20}" text-anchor="middle">${esc(points[index].label)}</text>`).join('');
+  const impressionDots=points.map((point,index)=>`<circle class="trend-point-impressions" cx="${xAt(index)}" cy="${yAt(point.impressions,maxImpressions)}" r="3"><title>${esc(point.label)}：表示回数 ${point.impressions.toLocaleString()}</title></circle>`).join('');
+  const clickDots=points.map((point,index)=>`<circle class="trend-point-clicks" cx="${xAt(index)}" cy="${yAt(point.clicks,maxClicks)}" r="3"><title>${esc(point.label)}：クリック ${point.clicks.toLocaleString()}</title></circle>`).join('');
+  const allZero=points.every(point=>point.impressions===0&&point.clicks===0);
+  return `<div class="analytics-trend-chart-wrap"><svg class="analytics-trend-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="表示回数とクリックの推移。左軸は表示回数、右軸はクリックです。">${grid}<line class="trend-axis" x1="${left}" y1="${top}" x2="${left}" y2="${top+plotHeight}"/><line class="trend-axis" x1="${width-right}" y1="${top}" x2="${width-right}" y2="${top+plotHeight}"/><text class="trend-axis-title" transform="translate(18 ${top+plotHeight/2}) rotate(-90)" text-anchor="middle">表示回数</text><text class="trend-axis-title" transform="translate(${width-14} ${top+plotHeight/2}) rotate(-90)" text-anchor="middle">クリック</text><path class="trend-impressions" d="${impressionPath}"/><path class="trend-clicks" d="${clickPath}"/>${impressionDots}${clickDots}${labels}${allZero?`<text class="trend-zero" x="${left+plotWidth/2}" y="${top+plotHeight/2}" text-anchor="middle">この期間の実測データはまだありません</text>`:''}</svg></div>`;
+}
+function selectAnalyticsPeriod(period){
+  if(!['yesterday','7d','30d','12m'].includes(period))return;
+  analyticsSelectedPeriod=period;
+  return reports();
+}
+function renderAnalyticsLoadError(companies,selectedId,selectedPeriod,message,companyError=''){
   shell('<span class="analytics-title">ANALYTICS</span><span class="analytics-title-ja">効果測定</span>','PostgreSQLに記録された実測値です。月の区切りは日本時間です.',
-    `<div class="analytics-view">${analyticsScopeMarkup(companies,selectedId,companyError)}<div class="analytics-load-error" role="alert">${esc(message)}</div></div>`);
+    `<div class="analytics-view">${analyticsScopeMarkup(companies,selectedId,companyError)}<section class="card analytics-panel analytics-trend-panel">${analyticsPeriodControlsMarkup(selectedPeriod)}<div class="analytics-load-error" role="alert">${esc(message)}</div></section></div>`);
 }
 function selectAnalyticsCompany(companyId){
   const selected=String(companyId||'');
@@ -1863,11 +1899,17 @@ function selectAnalyticsCompany(companyId){
   analyticsSelectedCompanyId=selected||null;
   return reports();
 }
-async function fetchAnalyticsScope(companyId){
-  const query=companyId===null?'':`?companyId=${encodeURIComponent(String(companyId))}`;
+async function fetchAnalyticsScope(companyId,period){
+  const analyticsParams=new URLSearchParams();
+  if(companyId!==null)analyticsParams.set('companyId',String(companyId));
+  analyticsParams.set('period',period);
+  const couponParams=new URLSearchParams();
+  if(companyId!==null)couponParams.set('companyId',String(companyId));
+  const analyticsQuery=`?${analyticsParams.toString()}`;
+  const couponQuery=couponParams.toString()?`?${couponParams.toString()}`:'';
   const [analyticsResponse,couponResponse]=await Promise.all([
-    apiFetch(`/api/analytics${query}`),
-    apiFetch(`/api/coupon_analytics${query}`),
+    apiFetch(`/api/analytics${analyticsQuery}`),
+    apiFetch(`/api/coupon_analytics${couponQuery}`),
   ]);
   if(!analyticsResponse.ok)throw new Error(analyticsResponse.status===404?'選択した企業が見つかりません。企業一覧を更新してから再度お試しください。':'効果測定データを読み込めませんでした。時間をおいて再度お試しください。');
   const a=await analyticsResponse.json();
@@ -1877,15 +1919,16 @@ async function fetchAnalyticsScope(companyId){
 async function reports(){
   const requestSeq=++analyticsRequestSeq;
   const selectedId=analyticsSelectedCompanyId;
+  const selectedPeriod=analyticsSelectedPeriod;
   const [companiesResult,analyticsResult]=await Promise.allSettled([
     loadAnalyticsCompanies(),
-    fetchAnalyticsScope(selectedId),
+    fetchAnalyticsScope(selectedId,selectedPeriod),
   ]);
   if(requestSeq!==analyticsRequestSeq||location.hash!=='#analytics')return;
   const companies=companiesResult.status==='fulfilled'?companiesResult.value:[];
   const companyError=companiesResult.status==='rejected'?'企業一覧を読み込めませんでした。': '';
   if(analyticsResult.status==='rejected'){
-    renderAnalyticsLoadError(companies,selectedId,analyticsResult.reason?.message||'効果測定データを読み込めませんでした。',companyError);
+    renderAnalyticsLoadError(companies,selectedId,selectedPeriod,analyticsResult.reason?.message||'効果測定データを読み込めませんでした。',companyError);
     return;
   }
   const {a,couponAnalytics}=analyticsResult.value;
@@ -1893,9 +1936,6 @@ async function reports(){
   const couponEventTotal=couponEventCounts.view+couponEventCounts.copy+couponEventCounts.redeem;
   const couponViewEnd=couponEventTotal?couponEventCounts.view/couponEventTotal*100:0;
   const couponCopyEnd=couponEventTotal?(couponEventCounts.view+couponEventCounts.copy)/couponEventTotal*100:0;
-  const monthly=a.monthly||[];
-  const maxMonthly=Math.max(1,...monthly.map(x=>x.impressions||0));
-
   const storeRows=Object.entries(a.byStore||{});
   const adRows=a.byAd||[];
   const storeCampaignRows=a.storeCampaignAds||[];
@@ -1914,31 +1954,10 @@ async function reports(){
     <div class="card analytics-metric-records"><div class="label">記録件数</div><div class="metric record">${(a.impressions+a.clicks).toLocaleString()}</div></div>
   </div>
 
-  <section class="card analytics-panel analytics-monthly" style="margin-bottom:18px">
-    <div class="analytics-section-heading"><span class="analytics-terminal-label">MONTHLY PERFORMANCE</span><div class="section">月別推移（実測・日本時間）</div></div>
-    ${monthly.length?`
-      <div style="display:flex;align-items:flex-end;gap:12px;min-height:170px;padding:12px 4px 0;overflow-x:auto">
-        ${monthly.map(x=>`
-          <div style="min-width:76px;text-align:center;font-size:11px">
-            <div style="height:125px;display:flex;align-items:flex-end;justify-content:center;gap:5px">
-              <i title="表示 ${x.impressions}" style="display:block;width:22px;height:${Math.max(3,(x.impressions||0)/maxMonthly*115)}px;background:#222;border-radius:4px 4px 0 0"></i>
-              <i title="クリック ${x.clicks}" style="display:block;width:22px;height:${Math.max(3,(x.clicks||0)/maxMonthly*115)}px;background:#8a9bb0;border-radius:4px 4px 0 0"></i>
-            </div>
-            <b>${x.month}</b>
-            <div>CTR ${x.ctr}%</div>
-          </div>`).join('')}
-      </div>
-      <div style="font-size:12px;color:#777">■ 表示　■ クリック</div>`
-      :'<p style="color:#777">まだ月別の実測データがありません。</p>'}
-
-    <table style="margin-top:16px">
-      <thead><tr><th>月（日本時間）</th><th>表示</th><th>クリック</th><th>CTR</th></tr></thead>
-      <tbody>
-        ${monthly.length?monthly.slice().reverse().map(x=>`
-          <tr><td>${x.month}</td><td>${x.impressions.toLocaleString()}</td><td>${x.clicks.toLocaleString()}</td><td>${x.ctr}%</td></tr>
-        `).join(''):'<tr><td colspan="4">まだ月別の実測データがありません。</td></tr>'}
-      </tbody>
-    </table>
+  <section class="card analytics-panel analytics-trend-panel" style="margin-bottom:18px">
+    <div class="analytics-section-heading"><span class="analytics-terminal-label">PERFORMANCE TREND</span><div class="section">パフォーマンス推移</div></div>
+    ${analyticsPeriodControlsMarkup(selectedPeriod)}
+    ${analyticsTrendChartMarkup(a.performanceTrend)}
   </section>
 
   <div class="layout analytics-comparisons">

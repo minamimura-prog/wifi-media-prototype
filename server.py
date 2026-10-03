@@ -1011,19 +1011,25 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/analytics":
             if not self.require_admin_session(): return
             query = parse_qs(urlparse(self.path).query, keep_blank_values=True)
-            company_id, error = _analytics_company_filter(query)
+            if set(query) - {"companyId", "period"} or any(len(values) != 1 for values in query.values()):
+                return self.send_json({"ok": False, "error": "invalid_scope"}, 400)
+            company_query = {"companyId": query["companyId"]} if "companyId" in query else {}
+            company_id, error = _analytics_company_filter(company_query)
             if error:
                 return self.send_json({"ok": False, "error": error[0]}, error[1])
+            period = query["period"][0] if "period" in query else None
+            if period is not None and period not in {"yesterday", "7d", "30d", "12m"}:
+                return self.send_json({"ok": False, "error": "invalid_period"}, 400)
             try:
                 if database.database_enabled():
                     if company_id is not None and not database.get_company(company_id):
                         return self.send_json({"ok": False, "error": "company_not_found"}, 404)
-                    return self.send_json(database.analytics(company_id))
+                    return self.send_json(database.analytics(company_id, period))
                 data = load_state()
                 if company_id is not None and not _company_exists_in_state(data, company_id):
                     return self.send_json({"ok": False, "error": "company_not_found"}, 404)
                 events = _events_for_company(data.get("events", []), company_id)
-                return self.send_json(build_analytics(events))
+                return self.send_json(build_analytics(events, period))
             except Exception: return self.send_json({"ok": False}, 500)
         if path == "/health": return self.send_bytes(b"ok", 200, "text/plain; charset=utf-8")
         if path.startswith("/uploads/"):
@@ -1289,7 +1295,37 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send_json({"ok": False, "error": "image_storage_unavailable"}, 503)
         return self.send_json({"error":"not found"}, 404)
 
-def build_analytics(events):
+def _json_performance_trend(events, period):
+    spec = database.performance_period_spec(period)
+    jst = ZoneInfo("Asia/Tokyo")
+    counts = {}
+    for event in events:
+        if event.get("type") not in {"impression", "click"}:
+            continue
+        event_at = event.get("at", "")
+        if not event_at:
+            continue
+        try:
+            parsed = datetime.fromisoformat(event_at.replace("Z", "+00:00"))
+        except (TypeError, ValueError):
+            continue
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=jst)
+        local = parsed.astimezone(jst)
+        if not (spec["start"] <= local < spec["end"]):
+            continue
+        if spec["granularity"] == "hour":
+            bucket = local.strftime("%Y-%m-%dT%H")
+        elif spec["granularity"] == "day":
+            bucket = local.strftime("%Y-%m-%d")
+        else:
+            bucket = local.strftime("%Y/%m")
+        row = counts.setdefault(bucket, {"bucket": bucket, "impressions": 0, "clicks": 0})
+        row["impressions" if event["type"] == "impression" else "clicks"] += 1
+    return database.shape_performance_trend(spec, list(counts.values()))
+
+
+def build_analytics(events, period=None):
     impressions = [e for e in events if e.get("type") == "impression"]
     clicks = [e for e in events if e.get("type") == "click"]
     def by_store(items):
@@ -1343,7 +1379,7 @@ def build_analytics(events):
         by_store_details.append(item)
     by_store_details.sort(key=lambda item: (item["storeName"], item["storeId"] or ""))
 
-    return {
+    result = {
         "impressions": len(impressions), "clicks": len(clicks),
         "ctr": round((len(clicks)/len(impressions)*100), 2) if impressions else 0,
         "byStore": {
@@ -1361,6 +1397,9 @@ def build_analytics(events):
         "daily": [{"date":k, **days[k], "ctr":round(days[k]["clicks"]/days[k]["impressions"]*100,2) if days[k]["impressions"] else 0} for k in sorted(days)],
         "monthly": [{"month":k, **months[k], "ctr":round(months[k]["clicks"]/months[k]["impressions"]*100,2) if months[k]["impressions"] else 0} for k in sorted(months)]
     }
+    if period is not None:
+        result["performanceTrend"] = _json_performance_trend(events, period)
+    return result
 
 if __name__ == "__main__":
     if database.database_enabled():
