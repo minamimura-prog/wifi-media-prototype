@@ -615,6 +615,37 @@ def build_coupon_analytics(events):
             for (coupon_id, coupon_code, event_type), total in grouped.items()]
     return database.build_coupon_analytics(rows)
 
+
+def _analytics_company_filter(query):
+    """Validate the optional companyId query parameter's shape."""
+    if set(query) - {"companyId"} or any(len(values) != 1 for values in query.values()):
+        return None, ("invalid_scope", 400)
+    if "companyId" not in query:
+        return None, None
+    company_id = query["companyId"][0]
+    if (not company_id.strip() or len(company_id) > 256
+            or any(ord(char) < 32 or ord(char) == 127 for char in company_id)):
+        return None, ("invalid_company_id", 400)
+    return company_id, None
+
+
+def _company_exists_in_state(data, company_id):
+    return any(
+        isinstance(company, dict) and str(company.get("id", "")) == company_id
+        for company in data.get("companies", [])
+    )
+
+
+def _events_for_company(events, company_id):
+    """Filter by event-time attribution only; never infer from current stores."""
+    if company_id is None:
+        return events
+    return [
+        event for event in events
+        if str(event.get("companyId")) == company_id
+        and event.get("companyAttributionStatus") == "captured"
+    ]
+
 class Handler(BaseHTTPRequestHandler):
     server_version = "WiFiMedia/2.0"
     def log_message(self, fmt, *args):
@@ -928,10 +959,20 @@ class Handler(BaseHTTPRequestHandler):
             except Exception as e: return self.send_json({"error": str(e)}, 500)
         if path == "/api/coupon_analytics":
             if not self.require_admin_session(): return
+            query = parse_qs(urlparse(self.path).query, keep_blank_values=True)
+            company_id, error = _analytics_company_filter(query)
+            if error:
+                return self.send_json({"ok": False, "error": error[0]}, error[1])
             try:
                 if database.database_enabled():
-                    return self.send_json(database.coupon_analytics())
-                return self.send_json(build_coupon_analytics(load_state().get("coupon_events", [])))
+                    if company_id is not None and not database.get_company(company_id):
+                        return self.send_json({"ok": False, "error": "company_not_found"}, 404)
+                    return self.send_json(database.coupon_analytics(company_id))
+                data = load_state()
+                if company_id is not None and not _company_exists_in_state(data, company_id):
+                    return self.send_json({"ok": False, "error": "company_not_found"}, 404)
+                events = _events_for_company(data.get("coupon_events", []), company_id)
+                return self.send_json(build_coupon_analytics(events))
             except Exception: return self.send_json({"ok": False}, 500)
         if path == "/api/state":
             if not self.require_admin_session(): return
@@ -969,10 +1010,19 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send_json({"ok": False}, 503)
         if path == "/api/analytics":
             if not self.require_admin_session(): return
+            query = parse_qs(urlparse(self.path).query, keep_blank_values=True)
+            company_id, error = _analytics_company_filter(query)
+            if error:
+                return self.send_json({"ok": False, "error": error[0]}, error[1])
             try:
                 if database.database_enabled():
-                    return self.send_json(database.analytics())
-                data = load_state(); events = data.get("events", [])
+                    if company_id is not None and not database.get_company(company_id):
+                        return self.send_json({"ok": False, "error": "company_not_found"}, 404)
+                    return self.send_json(database.analytics(company_id))
+                data = load_state()
+                if company_id is not None and not _company_exists_in_state(data, company_id):
+                    return self.send_json({"ok": False, "error": "company_not_found"}, 404)
+                events = _events_for_company(data.get("events", []), company_id)
                 return self.send_json(build_analytics(events))
             except Exception: return self.send_json({"ok": False}, 500)
         if path == "/health": return self.send_bytes(b"ok", 200, "text/plain; charset=utf-8")
@@ -1267,15 +1317,31 @@ def build_analytics(events):
         months[month][field] += 1
     store_names = sorted(set(by_store(impressions)) | set(by_store(clicks)))
     by_ad_data = {}
+    by_store_id_data = {}
     for e in events:
         if e.get("type") not in {"impression", "click"}:
             continue
+        store_id = e.get("storeId", e.get("store_id"))
+        store_name = e.get("store", e.get("storeName", "未設定")) or "未設定"
+        store_id_value = str(store_id) if store_id is not None else None
+        store_key = ("id", store_id_value) if store_id_value is not None else ("unresolved", store_name)
+        store_item = by_store_id_data.setdefault(store_key, {
+            "storeId": store_id_value, "storeName": store_name,
+            "impressions": 0, "clicks": 0,
+        })
+        store_item["impressions" if e["type"] == "impression" else "clicks"] += 1
         ad_id = e.get("adId", "main")
         item = by_ad_data.setdefault(ad_id, {"id": ad_id, "name": ad_id, "impressions": 0, "clicks": 0})
         item["impressions" if e["type"] == "impression" else "clicks"] += 1
 
     for item in by_ad_data.values():
         item["ctr"] = round(item["clicks"] / item["impressions"] * 100, 2) if item["impressions"] else 0
+
+    by_store_details = []
+    for item in by_store_id_data.values():
+        item["ctr"] = round(item["clicks"] / item["impressions"] * 100, 2) if item["impressions"] else 0
+        by_store_details.append(item)
+    by_store_details.sort(key=lambda item: (item["storeName"], item["storeId"] or ""))
 
     return {
         "impressions": len(impressions), "clicks": len(clicks),
@@ -1290,6 +1356,7 @@ def build_analytics(events):
             }
             for k in store_names
         },
+        "byStoreDetails": by_store_details,
         "byAd": list(by_ad_data.values()),
         "daily": [{"date":k, **days[k], "ctr":round(days[k]["clicks"]/days[k]["impressions"]*100,2) if days[k]["impressions"] else 0} for k in sorted(days)],
         "monthly": [{"month":k, **months[k], "ctr":round(months[k]["clicks"]/months[k]["impressions"]*100,2) if months[k]["impressions"] else 0} for k in sorted(months)]

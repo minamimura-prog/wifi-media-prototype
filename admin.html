@@ -626,6 +626,7 @@ input:focus, textarea:focus, select:focus {
 .pagehead .analytics-title{display:block;color:transparent;background-image:linear-gradient(90deg,#b7ff56 0%,#4ce5ff 68%,#65aaff 100%);background-clip:text;-webkit-background-clip:text;-webkit-text-fill-color:transparent;font-family:"Orbitron","IBM Plex Sans JP",sans-serif;font-size:clamp(28px,3.5vw,42px);font-weight:700;letter-spacing:.025em;line-height:1.08;text-shadow:0 0 2px rgba(183,255,86,.82),0 0 9px rgba(76,229,255,.58),0 0 22px rgba(76,229,255,.32),0 0 38px rgba(76,229,255,.14)}
 .pagehead .analytics-title-ja{display:block;margin-top:5px;color:var(--night-muted);font-family:"IBM Plex Sans JP",sans-serif;font-size:12px;font-weight:500;letter-spacing:.08em;line-height:1.5}
 .analytics-view{color:var(--night-text)}
+.analytics-scope-toolbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:0 0 14px;padding:10px 12px;border:1px solid #34505a;border-radius:7px;background:rgba(4,12,15,.72)}.analytics-scope-toolbar label{color:#a9c4c7;font-size:12px;font-weight:600;letter-spacing:.04em}.analytics-scope-toolbar select{min-width:210px;max-width:100%;padding:8px 34px 8px 10px;color:#e0f3f4;background:#071014;border:1px solid rgba(76,229,255,.35);border-radius:5px;font:500 13px "IBM Plex Sans JP",sans-serif}.analytics-scope-toolbar select:focus{outline:2px solid rgba(76,229,255,.2);outline-offset:1px;border-color:var(--signal-cyan)}.analytics-scope-error{color:#ffc1cf;font-size:11px}.analytics-load-error{padding:14px;border:1px solid rgba(255,120,150,.38);border-radius:7px;color:#ffd6df;background:rgba(50,12,24,.42);font-size:13px;line-height:1.6}
 .analytics-system-status{display:flex;align-items:center;justify-content:space-between;gap:14px;margin:0 0 16px;padding:10px 13px;border:1px solid #34505a;border-left:2px solid var(--signal-cyan);background:rgba(4,12,15,.78);box-shadow:0 0 12px rgba(76,229,255,.06),inset 0 1px 0 rgba(255,255,255,.025)}
 .analytics-console-name,.analytics-console-message{color:#a8dda4;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px;letter-spacing:.045em}.analytics-console-name::before,.analytics-console-message::before{content:"> ";color:var(--neon-green)}.analytics-console-message{margin-top:3px;color:#92bcb7;font-size:10px}.analytics-live{display:inline-flex;align-items:center;gap:7px;flex:none;color:var(--neon-green);font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:10px;letter-spacing:.1em}.analytics-live i{width:7px;height:7px;border-radius:50%;background:var(--neon-green);box-shadow:0 0 6px rgba(183,255,86,.35)}
 .analytics-view .analytics-summary>.card,.analytics-view .analytics-coupons>.grid>.card{position:relative;overflow:hidden;padding:17px;background-color:rgba(4,12,15,.88);background-image:repeating-linear-gradient(0deg,transparent 0 3px,rgba(205,245,255,.018) 3px 4px),linear-gradient(rgba(76,229,255,.018) 1px,transparent 1px),linear-gradient(90deg,rgba(76,229,255,.018) 1px,transparent 1px);background-size:auto,22px 22px,22px 22px;border:1px solid #36515a;border-radius:8px;box-shadow:0 0 0 1px rgba(76,229,255,.035),0 7px 20px rgba(0,0,0,.28),inset 0 1px 0 rgba(255,255,255,.025)}
@@ -936,6 +937,7 @@ let companyAdminData={companies:[],stores:[]}, companyDataLoaded=false, companyD
 let storeCompanyOptionsData=[], storeCompanyOptionsError='', storeSavePending=false, storeSaveFeedback='', storeSaveFeedbackType='';
 let storePublicCodes=new Map(), storePublicCodeSeq=0, storePublicCodeLoading=false, storePublicCodeError='', storeSearchQuery='';
 let dashboardSelectedCompany='all', dashboardStoreSearch='', dashboardSelectedStoreId=null, dashboardDirectoryError='', dashboardKpiRequestSeq=0, dashboardKpiAbortController=null;
+let analyticsCompanies=null, analyticsCompaniesPromise=null, analyticsSelectedCompanyId=null, analyticsRequestSeq=0;
 let dashboardPcPreviewObserver=null, dashboardPcPreviewResizeHandler=null;
 async function apiFetch(url, options){
   const response=await window.fetch(url, options);
@@ -1834,11 +1836,59 @@ async function saveStore(event){
   }finally{storeSavePending=false;}
 }
 async function deleteStore(storeId){const key=String(storeId??'');if(!key)return;const target=findStoreById(key);if(!target||!confirm(`「${target.name}」を削除しますか？`))return;const index=S.stores.findIndex(store=>String(store?.id??'')===key);if(index<0)return;S.stores.splice(index,1);await save();stores()}
+async function loadAnalyticsCompanies(){
+  if(analyticsCompanies)return analyticsCompanies;
+  if(!analyticsCompaniesPromise){
+    analyticsCompaniesPromise=companyApiFetch('/api/admin/companies').then(async response=>{
+      if(!response.ok)throw new Error('company list unavailable');
+      const payload=await response.json();
+      analyticsCompanies=Array.isArray(payload.companies)?payload.companies:[];
+      return analyticsCompanies;
+    }).catch(error=>{analyticsCompaniesPromise=null;throw error;});
+  }
+  return analyticsCompaniesPromise;
+}
+function analyticsScopeMarkup(companies,selectedId,companyError=''){
+  const selected=selectedId===null?'':String(selectedId);
+  const options=(companies||[]).map(company=>`<option value="${esc(company.id)}" ${selected===String(company.id)?'selected':''}>${esc(company.name||company.id)}${company.status==='inactive'?'（停止中）':''}</option>`).join('');
+  return `<div class="analytics-scope-toolbar"><label for="analyticsCompanyScope">表示対象</label><select id="analyticsCompanyScope" onchange="selectAnalyticsCompany(this.value)"><option value="" ${selected===''?'selected':''}>全体</option>${options}</select>${companyError?`<span class="analytics-scope-error" role="status">${esc(companyError)}</span>`:''}</div>`;
+}
+function renderAnalyticsLoadError(companies,selectedId,message,companyError=''){
+  shell('<span class="analytics-title">ANALYTICS</span><span class="analytics-title-ja">効果測定</span>','PostgreSQLに記録された実測値です。月の区切りは日本時間です.',
+    `<div class="analytics-view">${analyticsScopeMarkup(companies,selectedId,companyError)}<div class="analytics-load-error" role="alert">${esc(message)}</div></div>`);
+}
+function selectAnalyticsCompany(companyId){
+  const selected=String(companyId||'');
+  if(selected&&Array.isArray(analyticsCompanies)&&!analyticsCompanies.some(company=>String(company.id)===selected))return;
+  analyticsSelectedCompanyId=selected||null;
+  return reports();
+}
+async function fetchAnalyticsScope(companyId){
+  const query=companyId===null?'':`?companyId=${encodeURIComponent(String(companyId))}`;
+  const [analyticsResponse,couponResponse]=await Promise.all([
+    apiFetch(`/api/analytics${query}`),
+    apiFetch(`/api/coupon_analytics${query}`),
+  ]);
+  if(!analyticsResponse.ok)throw new Error(analyticsResponse.status===404?'選択した企業が見つかりません。企業一覧を更新してから再度お試しください。':'効果測定データを読み込めませんでした。時間をおいて再度お試しください。');
+  const a=await analyticsResponse.json();
+  const couponAnalytics=couponResponse.ok?await couponResponse.json():{total:0,byType:{},byCoupon:[],unavailable:true};
+  return {a,couponAnalytics};
+}
 async function reports(){
-  const a=await apiFetch('/api/analytics').then(r=>r.json());
-  const couponAnalytics=await apiFetch('/api/coupon_analytics').then(r=>r.ok?r.json():Promise.reject(new Error('coupon analytics unavailable'))).catch(()=>({total:0,byType:{},byCoupon:[],unavailable:true}));
-  // apiFetch leaves the chain pending after a 401 redirect, so this fallback handles other failures only.
-  if(location.hash!=='#analytics')return;
+  const requestSeq=++analyticsRequestSeq;
+  const selectedId=analyticsSelectedCompanyId;
+  const [companiesResult,analyticsResult]=await Promise.allSettled([
+    loadAnalyticsCompanies(),
+    fetchAnalyticsScope(selectedId),
+  ]);
+  if(requestSeq!==analyticsRequestSeq||location.hash!=='#analytics')return;
+  const companies=companiesResult.status==='fulfilled'?companiesResult.value:[];
+  const companyError=companiesResult.status==='rejected'?'企業一覧を読み込めませんでした。': '';
+  if(analyticsResult.status==='rejected'){
+    renderAnalyticsLoadError(companies,selectedId,analyticsResult.reason?.message||'効果測定データを読み込めませんでした。',companyError);
+    return;
+  }
+  const {a,couponAnalytics}=analyticsResult.value;
   const couponEventCounts={view:Math.max(0,Number(couponAnalytics.byType?.view)||0),copy:Math.max(0,Number(couponAnalytics.byType?.copy)||0),redeem:Math.max(0,Number(couponAnalytics.byType?.redeem)||0)};
   const couponEventTotal=couponEventCounts.view+couponEventCounts.copy+couponEventCounts.redeem;
   const couponViewEnd=couponEventTotal?couponEventCounts.view/couponEventTotal*100:0;
@@ -1857,7 +1907,7 @@ async function reports(){
   const adMaxClicks=maxValue(adRows,'clicks');
 
   shell('<span class="analytics-title">ANALYTICS</span><span class="analytics-title-ja">効果測定</span>','PostgreSQLに記録された実測値です。月の区切りは日本時間です.',
-  `<div class="analytics-view"><div class="analytics-system-status"><div><div class="analytics-console-name">ANALYTICS MONITOR</div><div class="analytics-console-message">Reading measured delivery and interaction data.</div></div><span class="analytics-live"><i></i> LIVE DATA</span></div><div class="grid analytics-summary">
+  `<div class="analytics-view">${analyticsScopeMarkup(companies,selectedId,companyError)}<div class="analytics-system-status"><div><div class="analytics-console-name">ANALYTICS MONITOR</div><div class="analytics-console-message">Reading measured delivery and interaction data.</div></div><span class="analytics-live"><i></i> LIVE DATA</span></div><div class="grid analytics-summary">
     <div class="card analytics-metric-impressions"><div class="label">累計表示回数</div><div class="metric impression">${a.impressions.toLocaleString()}</div></div>
     <div class="card analytics-metric-clicks"><div class="label">累計クリック</div><div class="metric click">${a.clicks.toLocaleString()}</div></div>
     <div class="card analytics-metric-ctr"><div class="label">実測CTR</div><div class="metric ctr">${a.ctr}%</div></div>

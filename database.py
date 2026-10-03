@@ -931,24 +931,33 @@ def delete_draft_coupon(coupon_id):
             return result is not None
 
 
-def analytics():
-    """Aggregate all ad events using Japan's calendar days and months."""
+def analytics(company_id=None):
+    """Aggregate ad events, optionally scoped to event-time company attribution."""
+    event_filter = ""
+    filter_params = ()
+    if company_id is not None:
+        event_filter = " WHERE company_id = %s AND company_attribution_status = 'captured'"
+        filter_params = (str(company_id),)
     with pool().connection() as conn:
         totals = conn.execute(
             "SELECT count(*) FILTER (WHERE event_type = 'impression') AS impressions, "
-            "count(*) FILTER (WHERE event_type = 'click') AS clicks FROM ad_events"
+            "count(*) FILTER (WHERE event_type = 'click') AS clicks FROM ad_events" + event_filter,
+            filter_params,
         ).fetchone()
         stores = conn.execute(
-            "SELECT store_name, count(*) FILTER (WHERE event_type = 'impression') AS impressions, "
+            "SELECT store_id, store_name, count(*) FILTER (WHERE event_type = 'impression') AS impressions, "
             "count(*) FILTER (WHERE event_type = 'click') AS clicks FROM ad_events "
-            "GROUP BY store_name ORDER BY store_name"
+            + event_filter + " GROUP BY store_id, store_name ORDER BY store_name, store_id",
+            filter_params,
         ).fetchall()
         ads = conn.execute(
             "SELECT e.ad_id, COALESCE(NULLIF(a.title, ''), e.ad_id) AS ad_name, "
             "count(*) FILTER (WHERE e.event_type = 'impression') AS impressions, "
             "count(*) FILTER (WHERE e.event_type = 'click') AS clicks "
             "FROM ad_events e LEFT JOIN ads a ON a.id = e.ad_id "
-            "GROUP BY e.ad_id, a.title ORDER BY ad_name, e.ad_id"
+            + ("WHERE e.company_id = %s AND e.company_attribution_status = 'captured' " if company_id is not None else "")
+            + "GROUP BY e.ad_id, a.title ORDER BY ad_name, e.ad_id",
+            filter_params,
         ).fetchall()
         store_campaign_ads = conn.execute(
             "SELECT e.store_id, e.store_name, e.campaign_id, c.name AS campaign_name, "
@@ -959,22 +968,46 @@ def analytics():
             "JOIN campaigns c ON c.id = e.campaign_id "
             "JOIN ads a ON a.id = e.ad_id "
             "WHERE e.campaign_id IS NOT NULL AND e.campaign_id <> 'default' "
-            "GROUP BY e.store_id, e.store_name, e.campaign_id, c.name, e.ad_id, a.title "
-            "ORDER BY e.store_name, a.title, e.campaign_id, e.ad_id"
+            + ("AND e.company_id = %s AND e.company_attribution_status = 'captured' " if company_id is not None else "")
+            + "GROUP BY e.store_id, e.store_name, e.campaign_id, c.name, e.ad_id, a.title "
+            "ORDER BY e.store_name, a.title, e.campaign_id, e.ad_id",
+            filter_params,
         ).fetchall()
         periods = conn.execute(
             "SELECT to_char(occurred_at AT TIME ZONE 'Asia/Tokyo', 'YYYY-MM-DD') AS date, "
             "count(*) FILTER (WHERE event_type = 'impression') AS impressions, "
             "count(*) FILTER (WHERE event_type = 'click') AS clicks FROM ad_events "
-            "GROUP BY date ORDER BY date"
+            + event_filter + " GROUP BY date ORDER BY date",
+            filter_params,
         ).fetchall()
         months = conn.execute(
             "SELECT to_char(occurred_at AT TIME ZONE 'Asia/Tokyo', 'YYYY/MM') AS month, "
             "count(*) FILTER (WHERE event_type = 'impression') AS impressions, "
             "count(*) FILTER (WHERE event_type = 'click') AS clicks FROM ad_events "
-            "GROUP BY month ORDER BY month"
+            + event_filter + " GROUP BY month ORDER BY month",
+            filter_params,
         ).fetchall()
     impressions, clicks = totals["impressions"], totals["clicks"]
+    by_store = {}
+    by_store_details_map = {}
+    for row in stores:
+        legacy_store_name = row["store_name"]
+        store_name = legacy_store_name or "未設定"
+        previous = by_store.setdefault(legacy_store_name, {"impressions": 0, "clicks": 0})
+        previous["impressions"] += row["impressions"]
+        previous["clicks"] += row["clicks"]
+        store_id = str(row["store_id"]) if row["store_id"] is not None else None
+        detail_key = ("id", store_id) if store_id is not None else ("unresolved", store_name)
+        detail = by_store_details_map.setdefault(detail_key, {
+            "storeId": store_id, "storeName": store_name, "impressions": 0, "clicks": 0,
+        })
+        detail["impressions"] += row["impressions"]
+        detail["clicks"] += row["clicks"]
+    for metrics in by_store.values():
+        metrics["ctr"] = round(metrics["clicks"] / metrics["impressions"] * 100, 2) if metrics["impressions"] else 0
+    by_store_details = list(by_store_details_map.values())
+    for metrics in by_store_details:
+        metrics["ctr"] = round(metrics["clicks"] / metrics["impressions"] * 100, 2) if metrics["impressions"] else 0
     def shape(rows, key):
         return [{key: row[key], "impressions": row["impressions"], "clicks": row["clicks"],
                  "ctr": round(row["clicks"] / row["impressions"] * 100, 2) if row["impressions"] else 0}
@@ -982,14 +1015,8 @@ def analytics():
     return {
         "impressions": impressions, "clicks": clicks,
         "ctr": round(clicks / impressions * 100, 2) if impressions else 0,
-        "byStore": {
-            row["store_name"]: {
-                "impressions": row["impressions"],
-                "clicks": row["clicks"],
-                "ctr": round(row["clicks"] / row["impressions"] * 100, 2) if row["impressions"] else 0,
-            }
-            for row in stores
-        },
+        "byStore": by_store,
+        "byStoreDetails": by_store_details,
         "byAd": [
             {
                 "id": row["ad_id"],
@@ -1252,13 +1279,19 @@ def record_coupon_event(event, *, legacy_import=False):
             )
 
 
-def coupon_analytics():
-    """Return coupon-only event totals; ad_events and its CTR stay untouched."""
+def coupon_analytics(company_id=None):
+    """Return coupon event totals, optionally scoped to captured company attribution."""
+    event_filter = ""
+    filter_params = ()
+    if company_id is not None:
+        event_filter = " WHERE company_id = %s AND company_attribution_status = 'captured'"
+        filter_params = (str(company_id),)
     with pool().connection() as conn:
         rows = conn.execute(
             "SELECT coupon_id, coupon_code, event_type, count(*) AS total "
-            "FROM coupon_events GROUP BY coupon_id, coupon_code, event_type "
-            "ORDER BY coupon_code, coupon_id, event_type"
+            "FROM coupon_events" + event_filter + " GROUP BY coupon_id, coupon_code, event_type "
+            "ORDER BY coupon_code, coupon_id, event_type",
+            filter_params,
         ).fetchall()
     return build_coupon_analytics(rows)
 
