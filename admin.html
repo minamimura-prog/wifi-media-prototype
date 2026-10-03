@@ -616,6 +616,7 @@ input:focus, textarea:focus, select:focus {
 .store-online{display:inline-flex;align-items:center;gap:7px;flex:none;color:var(--neon-green);font:10px "IBM Plex Sans JP",sans-serif;letter-spacing:.1em}.store-online i{width:7px;height:7px;border-radius:50%;background:var(--neon-green);box-shadow:0 0 7px rgba(183,255,86,.42)}
 .store-panel{min-width:0;padding:17px;color:var(--night-text);border:1px solid rgba(76,229,255,.32);border-radius:7px;background:linear-gradient(145deg,rgba(15,24,28,.97),rgba(9,15,18,.98));box-shadow:0 6px 20px rgba(0,0,0,.3)}
 .store-panel-head{display:flex;align-items:flex-end;justify-content:space-between;gap:14px;margin-bottom:7px;padding-bottom:11px;border-bottom:1px solid rgba(76,229,255,.2)}.store-terminal-label{display:block;color:var(--signal-cyan);font:600 10px "Orbitron","IBM Plex Sans JP",sans-serif;letter-spacing:.1em;text-shadow:none}.store-panel-title{margin-top:5px;color:#e0eeee;font:700 16px "IBM Plex Sans JP",sans-serif}.store-actions{flex:none;margin-bottom:0!important}
+.store-search-field{display:flex;flex-direction:column;gap:6px;margin:0 0 12px;color:#9edee0;font-size:11px;font-weight:600;letter-spacing:.04em}.store-search-field input{width:100%;min-height:40px;padding:9px 11px;color:#e7f0f2;background:rgba(5,12,15,.92);border:1px solid #38515a;border-radius:5px;color-scheme:dark;font:inherit}.store-search-field input::placeholder{color:#7f9a9e}.store-search-field input:focus{outline:1px solid var(--signal-cyan);border-color:var(--signal-cyan);box-shadow:0 0 8px rgba(76,229,255,.16)}.store-data-table .store-empty-row{text-align:center;padding:24px 10px;color:#a8c6c5}
 .store-table-scroll{width:100%;overflow-x:auto;overscroll-behavior-x:contain}.store-data-table{width:100%;min-width:640px;border-collapse:collapse}.store-data-table th,.store-data-table td{padding:12px 9px;border-bottom:1px solid rgba(76,229,255,.16);color:#d8e4e7;font-size:13px}.store-data-table th{color:#8fdde3;background:transparent;border-top:1px solid rgba(76,229,255,.18);font:600 10px "IBM Plex Sans JP",sans-serif;letter-spacing:.06em}.store-data-table tbody tr{transition:background-color .12s ease}.store-data-table tbody tr:hover{background:rgba(76,229,255,.035);box-shadow:inset 2px 0 0 rgba(76,229,255,.24)}.store-data-table td:first-child b{color:#ecf6f5}.store-users{color:#c5edf0!important;font-variant-numeric:tabular-nums;letter-spacing:.025em}.store-state{display:inline-flex;align-items:center;gap:6px;white-space:nowrap;padding:4px 7px;border:1px solid rgba(183,255,86,.3);border-radius:0;background:transparent;box-shadow:none;color:var(--neon-green);font:500 10px "IBM Plex Sans JP",sans-serif}.store-state i{width:7px;height:7px;flex:none;border-radius:50%;background:var(--neon-green);box-shadow:0 0 5px rgba(183,255,86,.28)}.store-state.is-online{color:var(--neon-green);text-shadow:none}.store-state.is-online i{background:var(--neon-green);box-shadow:0 0 5px rgba(183,255,86,.28)}.store-state.is-off{color:#a6adb7;border-color:#53606b}.store-state.is-off i{background:#8397a5;box-shadow:none}
 .store-management-view .store-primary{color:#07110e;background:var(--neon-green);border:1px solid rgba(183,255,86,.72);border-radius:6px;box-shadow:none}.store-management-view .store-primary:hover{color:#07110e;background:#c5ff77;border-color:#c5ff77;box-shadow:0 0 7px rgba(183,255,86,.12)}.store-management-view .store-public-actions button,.store-management-view .store-edit{color:#c8f8f4;background:rgba(5,12,15,.58);border:1px solid rgba(76,229,255,.28);border-radius:5px;box-shadow:none}.store-management-view .store-public-actions button:hover,.store-management-view .store-edit:hover{color:#e7ffff;background:rgba(76,229,255,.045);border-color:rgba(76,229,255,.58);box-shadow:0 0 5px rgba(76,229,255,.08)}.store-management-view .store-delete{color:#c9c2cd;background:rgba(5,12,15,.58);border:1px solid rgba(202,105,155,.28);border-radius:5px;box-shadow:none}.store-management-view .store-delete:hover{color:#ffd7e5;background:rgba(74,24,42,.3);border-color:rgba(255,100,157,.48);box-shadow:0 0 5px rgba(255,100,157,.08)}
 .store-management-view .store-public-url{max-width:190px}.store-management-view .store-public-actions button{padding:7px 9px;font-size:11px}.store-management-view .store-row-actions>.store-edit,.store-management-view .store-row-actions>.store-delete{padding:7px 9px;font-size:11px}
@@ -933,7 +934,7 @@ let adPcPreviewObserver=null;
 let adCreateIdempotencyKey=null, adCreateAttempt=null, adCreateUncertain=false, adCreateBlocked=false, adCreateStoreId=null;
 let companyAdminData={companies:[],stores:[]}, companyDataLoaded=false, companyDirectoryLoaded=false, companyRequestSeq=0, companyCreateSaving=false, companyAssignSaving=new Set(), companyFormNotice='', companyFormNoticeType='', companyLoadError='', companyStoreNotices={}, companyFormValues={name:'',code:'',businessType:'',status:'active'};
 let storeCompanyOptionsData=[], storeCompanyOptionsError='', storeSavePending=false, storeSaveFeedback='', storeSaveFeedbackType='';
-let storePublicCodes=new Map(), storePublicCodeSeq=0, storePublicCodeLoading=false, storePublicCodeError='';
+let storePublicCodes=new Map(), storePublicCodeSeq=0, storePublicCodeLoading=false, storePublicCodeError='', storeSearchQuery='';
 let dashboardSelectedCompany='all', dashboardStoreSearch='', dashboardSelectedStoreId=null, dashboardDirectoryError='', dashboardKpiRequestSeq=0, dashboardKpiAbortController=null;
 let dashboardPcPreviewObserver=null, dashboardPcPreviewResizeHandler=null;
 async function apiFetch(url, options){
@@ -1632,7 +1633,13 @@ function storeCompanyOptions(currentCompanyId){
 }
 function renderStores(){
   const feedback=storeSaveFeedback?`<div class="company-notice ${storeSaveFeedbackType==='error'?'is-error':''}" role="${storeSaveFeedbackType==='error'?'alert':'status'}">${esc(storeSaveFeedback)}</div>`:'';
-  const rows=S.stores.map(x=>{
+  const query=String(storeSearchQuery||'').trim().toLocaleLowerCase();
+  const visibleStores=S.stores.filter(store=>{
+    if(!query)return true;
+    const publicCode=storePublicCodes instanceof Map?storePublicCodes.get(String(store.id))||'':'';
+    return [store.name,publicCode].some(value=>String(value||'').toLocaleLowerCase().includes(query));
+  });
+  const rows=visibleStores.map(x=>{
     const storeId=String(x.id??'');
     const fullUrl=storePublicUrlForId(x.id);
     const urlLabel=fullUrl|| (storePublicCodeLoading?'確認中…':storePublicCodeError?'取得できません':'公開URL未設定');
@@ -1640,7 +1647,8 @@ function renderStores(){
     const disabled=storeId?'':'disabled';
     return `<tr><td><b>${esc(x.name)}</b><div class="store-public-url" title="${esc(urlLabel)}">${esc(fullUrl?urlLabel:'')}</div>${unavailableNote}</td><td>${esc(x.type)}</td><td>${esc(x.wifi)}</td><td class="store-users">${Number(x.users||0).toLocaleString()}</td><td><span class="store-state ${x.status==='停止中'?'is-off':'is-online'}"><i></i>${esc(x.status)}</span></td><td class="store-row-actions"><div class="store-public-actions"><button type="button" class="secondary" data-store-copy="${esc(storeId)}" ${fullUrl&&storeId?'':'disabled'}>URLコピー</button><button type="button" class="secondary" data-store-qr="${esc(storeId)}" ${fullUrl&&storeId?'':'disabled'}>QR</button></div><button type="button" class="secondary store-edit" data-store-edit="${esc(storeId)}" ${disabled}>編集</button> <button type="button" class="secondary store-delete" data-store-delete="${esc(storeId)}" ${disabled}>削除</button></td></tr>`;
   }).join('');
-  shell('<span class="store-title">STORE MANAGEMENT</span><span class="store-title-ja">店舗管理</span>','Wi-Fiを設置している店舗・ホテル・拠点を管理します.',`<div class="store-management-view"><div class="store-system-status"><div><div class="store-console-name">STORE NETWORK CONTROL</div><div class="store-console-message">Managing registered Wi-Fi locations.</div></div><span class="store-online"><i></i> ONLINE</span></div>${feedback}<section class="card store-panel"><div class="store-panel-head"><div><span class="store-terminal-label">REGISTERED LOCATIONS</span><div class="store-panel-title">店舗一覧</div></div><div class="actions store-actions" style="justify-content:flex-end;margin-bottom:12px"><button class="store-primary" onclick="addStore()" ${storeSavePending?'disabled':''}>＋ 店舗を追加</button></div></div><div class="store-table-scroll"><table class="store-data-table"><thead><tr><th>店舗 / 公開URL</th><th>業態</th><th>Wi-Fi</th><th>月間接続</th><th>状態</th><th>操作</th></tr></thead><tbody>${rows}</tbody></table></div></section></div>`);
+  const emptyRow=rows?'':`<tr><td colspan="6" class="store-empty-row">条件に一致する店舗がありません</td></tr>`;
+  shell('<span class="store-title">STORE MANAGEMENT</span><span class="store-title-ja">店舗管理</span>','Wi-Fiを設置している店舗・ホテル・拠点を管理します.',`<div class="store-management-view"><div class="store-system-status"><div><div class="store-console-name">STORE NETWORK CONTROL</div><div class="store-console-message">Managing registered Wi-Fi locations.</div></div><span class="store-online"><i></i> ONLINE</span></div>${feedback}<section class="card store-panel"><div class="store-panel-head"><div><span class="store-terminal-label">REGISTERED LOCATIONS</span><div class="store-panel-title">店舗一覧</div></div><div class="actions store-actions" style="justify-content:flex-end;margin-bottom:12px"><button class="store-primary" onclick="addStore()" ${storeSavePending?'disabled':''}>＋ 店舗を追加</button></div></div><div class="store-search-field"><label for="storeSearch">店舗検索</label><input id="storeSearch" type="search" value="${esc(storeSearchQuery)}" placeholder="店舗名・公開コードで検索" autocomplete="off" oninput="setStoreSearch(this.value)"></div><div class="store-table-scroll"><table class="store-data-table"><thead><tr><th>店舗 / 公開URL</th><th>業態</th><th>Wi-Fi</th><th>月間接続</th><th>状態</th><th>操作</th></tr></thead><tbody>${rows||emptyRow}</tbody></table></div></section></div>`);
   document.querySelectorAll('[data-store-copy]').forEach(button=>button.addEventListener('click',async event=>{
     event.preventDefault();event.stopPropagation();
     const store=findStoreById(button.dataset.storeCopy);
@@ -1661,6 +1669,14 @@ function renderStores(){
   }));
 }
 function stores(){renderStores();loadStorePublicCodes()}
+function setStoreSearch(value){
+  const input=document.getElementById('storeSearch');
+  const selectionStart=input?.selectionStart,selectionEnd=input?.selectionEnd;
+  storeSearchQuery=String(value??'');
+  renderStores();
+  const refreshedInput=document.getElementById('storeSearch');
+  if(refreshedInput){refreshedInput.focus();if(typeof selectionStart==='number'&&typeof selectionEnd==='number')refreshedInput.setSelectionRange(selectionStart,selectionEnd);}
+}
 async function loadStorePublicCodes(){
   const seq=++storePublicCodeSeq;
   storePublicCodes=new Map();storePublicCodeLoading=true;storePublicCodeError='';
