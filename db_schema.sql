@@ -18,11 +18,13 @@ CREATE TABLE IF NOT EXISTS stores (
     monthly_users BIGINT NOT NULL DEFAULT 0 CHECK (monthly_users >= 0),
     legacy_clicks BIGINT NOT NULL DEFAULT 0 CHECK (legacy_clicks >= 0),
     status TEXT NOT NULL DEFAULT '稼働中',
+    archived_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 ALTER TABLE stores ADD COLUMN IF NOT EXISTS company_id TEXT REFERENCES companies(id);
+ALTER TABLE stores ADD COLUMN IF NOT EXISTS archived_at TIMESTAMPTZ;
 CREATE INDEX IF NOT EXISTS stores_company_id_idx ON stores (company_id);
 
 ALTER TABLE stores ADD COLUMN IF NOT EXISTS public_code TEXT;

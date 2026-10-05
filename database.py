@@ -345,6 +345,22 @@ def _date(value):
     return value[:10]
 
 
+def _timestamp(value):
+    """Parse the API's ISO timestamp for PostgreSQL TIMESTAMPTZ persistence."""
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        parsed = value
+    elif isinstance(value, str):
+        try:
+            parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        except ValueError as exc:
+            raise ValueError("archivedAt must be an ISO timestamp or null") from exc
+    else:
+        raise ValueError("archivedAt must be an ISO timestamp or null")
+    return parsed.replace(tzinfo=timezone.utc) if parsed.tzinfo is None else parsed
+
+
 def _store_ids(conn):
     rows = conn.execute("SELECT id, name FROM stores").fetchall()
     return {row["name"]: row["id"] for row in rows}
@@ -367,7 +383,7 @@ def get_store_by_public_code(public_code):
         return None
     with pool().connection() as conn:
         row = conn.execute(
-            "SELECT id, company_id, public_code, name, store_type, wifi, monthly_users, legacy_clicks, status "
+            "SELECT id, company_id, public_code, name, store_type, wifi, monthly_users, legacy_clicks, status, archived_at "
             "FROM stores WHERE public_code = %s",
             (public_code,),
         ).fetchone()
@@ -380,7 +396,7 @@ def get_store_by_id(store_id):
         return None
     with pool().connection() as conn:
         row = conn.execute(
-            "SELECT id, company_id, public_code, name, store_type, wifi, monthly_users, legacy_clicks, status "
+            "SELECT id, company_id, public_code, name, store_type, wifi, monthly_users, legacy_clicks, status, archived_at "
             "FROM stores WHERE id = %s",
             (str(store_id),),
         ).fetchone()
@@ -411,7 +427,7 @@ def list_admin_stores():
     """Return the minimal store fields used by authenticated admin tools."""
     with pool().connection() as conn:
         rows = conn.execute(
-            "SELECT id, company_id, name, public_code, status FROM stores ORDER BY created_at, id"
+            "SELECT id, company_id, name, public_code, status, archived_at FROM stores ORDER BY created_at, id"
         ).fetchall()
     return [dict(row) for row in rows]
 
@@ -728,7 +744,7 @@ def _admin_campaign_result(campaign_id, ad_id, campaign):
 def load_state():
     with pool().connection() as conn:
         stores = conn.execute(
-            "SELECT id, company_id, name, store_type, wifi, monthly_users, legacy_clicks, status "
+            "SELECT id, company_id, name, store_type, wifi, monthly_users, legacy_clicks, status, archived_at "
             "FROM stores ORDER BY created_at, id"
         ).fetchall()
         ad = conn.execute(
@@ -776,6 +792,7 @@ def load_state():
             "id": row["id"], "companyId": row["company_id"], "name": row["name"], "type": row["store_type"],
             "wifi": row["wifi"], "users": row["monthly_users"],
             "clicks": row["legacy_clicks"], "status": row["status"],
+            "archivedAt": row["archived_at"].isoformat() if row["archived_at"] else None,
         } for row in stores],
         "history": config.get("legacy_history", []),
         "events": [{
@@ -833,14 +850,15 @@ def save_state(data):
                 store_id = str(store.get("id") or store.get("name") or "store")
                 public_code = _unique_public_code(conn, store_id)
                 conn.execute(
-                    "INSERT INTO stores (id, public_code, name, store_type, wifi, monthly_users, legacy_clicks, status) "
-                    "VALUES (%s, %s, %s, %s, %s, %s, %s, %s) "
+                    "INSERT INTO stores (id, public_code, name, store_type, wifi, monthly_users, legacy_clicks, status, archived_at) "
+                    "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s) "
                     "ON CONFLICT (id) DO UPDATE SET name=EXCLUDED.name, store_type=EXCLUDED.store_type, "
                     "wifi=EXCLUDED.wifi, monthly_users=EXCLUDED.monthly_users, "
-                    "legacy_clicks=EXCLUDED.legacy_clicks, status=EXCLUDED.status, "
+                    "legacy_clicks=EXCLUDED.legacy_clicks, status=EXCLUDED.status, archived_at=EXCLUDED.archived_at, "
                     "public_code=COALESCE(stores.public_code, EXCLUDED.public_code), updated_at=now()",
                     (store_id, public_code, store.get("name", ""), store.get("type", ""), store.get("wifi", ""),
-                     int(store.get("users") or 0), int(store.get("clicks") or 0), store.get("status", "稼働中")),
+                     int(store.get("users") or 0), int(store.get("clicks") or 0), store.get("status", "稼働中"),
+                     _timestamp(store.get("archivedAt"))),
                 )
 
             store_ids = _store_ids(conn)

@@ -946,7 +946,8 @@ class Handler(BaseHTTPRequestHandler):
                 stores = database.list_admin_stores()
                 return self.send_json({"stores": [
                     {"id": row["id"], "name": row["name"], "publicCode": row["public_code"],
-                     "companyId": row.get("company_id"), "status": row.get("status")}
+                     "companyId": row.get("company_id"), "status": row.get("status"),
+                     "archivedAt": row["archived_at"].isoformat() if row.get("archived_at") else None}
                     for row in stores
                 ]})
             except Exception:
@@ -976,7 +977,8 @@ class Handler(BaseHTTPRequestHandler):
                     return self.send_json({"ok": False, "error": "not_found"}, 404)
                 campaigns = database.get_admin_campaigns_for_store(store_id)
                 return self.send_json({
-                    "store": {"id": store["id"], "name": store["name"], "publicCode": store["public_code"]},
+                    "store": {"id": store["id"], "name": store["name"], "publicCode": store["public_code"],
+                              "archivedAt": store["archived_at"].isoformat() if store.get("archived_at") else None},
                     "campaigns": [_admin_campaign_json(row) for row in campaigns],
                 })
             except Exception:
