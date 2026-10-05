@@ -1029,7 +1029,14 @@ class Handler(BaseHTTPRequestHandler):
                 if company_id is not None and not _company_exists_in_state(data, company_id):
                     return self.send_json({"ok": False, "error": "company_not_found"}, 404)
                 events = _events_for_company(data.get("events", []), company_id)
-                return self.send_json(build_analytics(events, period))
+                ad_names = {}
+                current_ad = data.get("ad") or {}
+                if isinstance(current_ad, dict):
+                    current_ad_id = str(current_ad.get("id") or "main").strip()
+                    current_ad_name = current_ad.get("title")
+                    if current_ad_id and isinstance(current_ad_name, str) and current_ad_name.strip():
+                        ad_names[current_ad_id] = current_ad_name.strip()
+                return self.send_json(build_analytics(events, period, ad_names))
             except Exception: return self.send_json({"ok": False}, 500)
         if path == "/health": return self.send_bytes(b"ok", 200, "text/plain; charset=utf-8")
         if path.startswith("/uploads/"):
@@ -1374,7 +1381,59 @@ def _json_period_store_details(events, spec):
     return details
 
 
-def build_analytics(events, period=None):
+def _json_period_ad_details(events, spec, ad_names=None):
+    """Aggregate selected-period JSON events by explicit ad ID."""
+    jst = ZoneInfo("Asia/Tokyo")
+    names = ad_names if isinstance(ad_names, dict) else {}
+    grouped = {}
+    for event in events:
+        event_type = event.get("type")
+        if event_type not in {"impression", "click"}:
+            continue
+        raw_ad_id = event.get("adId", event.get("ad_id"))
+        if raw_ad_id is None:
+            continue
+        ad_id = str(raw_ad_id).strip()
+        if not ad_id:
+            continue
+        event_at = event.get("at", "")
+        if not event_at:
+            continue
+        try:
+            parsed = datetime.fromisoformat(event_at.replace("Z", "+00:00"))
+        except (TypeError, ValueError):
+            continue
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=jst)
+        local = parsed.astimezone(jst)
+        if not (spec["start"] <= local < spec["end"]):
+            continue
+
+        raw_name = names.get(ad_id)
+        ad_name = str(raw_name).strip() if raw_name is not None else ""
+        if not ad_name:
+            ad_name = ad_id
+        item = grouped.setdefault(ad_id, {
+            "adId": ad_id,
+            "adName": ad_name,
+            "impressions": 0,
+            "clicks": 0,
+        })
+        item["impressions" if event_type == "impression" else "clicks"] += 1
+
+    details = list(grouped.values())
+    for item in details:
+        impressions = item["impressions"]
+        clicks = item["clicks"]
+        item["ctr"] = round(clicks / impressions * 100, 2) if impressions else 0
+    details.sort(key=lambda item: (
+        -item["clicks"], -item["impressions"], -item["ctr"],
+        item["adName"], item["adId"],
+    ))
+    return details
+
+
+def build_analytics(events, period=None, ad_names=None):
     trend_spec = database.performance_period_spec(period) if period is not None else None
     previous_trend_spec = database.previous_performance_period_spec(trend_spec) if trend_spec else None
     impressions = [e for e in events if e.get("type") == "impression"]
@@ -1452,6 +1511,7 @@ def build_analytics(events, period=None):
         result["performanceTrend"] = _json_performance_trend(events, trend_spec)
         result["previousPerformanceTrend"] = _json_performance_trend(events, previous_trend_spec)
         result["periodStoreDetails"] = _json_period_store_details(events, trend_spec)
+        result["periodAdDetails"] = _json_period_ad_details(events, trend_spec, ad_names)
     return result
 
 if __name__ == "__main__":
