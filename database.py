@@ -985,6 +985,48 @@ def performance_period_spec(period, now=None):
     }
 
 
+def previous_performance_period_spec(current_spec):
+    """Return the immediately preceding equal-count JST bucket window."""
+    if not current_spec:
+        raise ValueError("current performance period is required")
+    period = current_spec["period"]
+    current_start = current_spec["start"]
+    if period == "yesterday":
+        return performance_period_spec(period, now=current_start)
+
+    if period in {"7d", "30d"}:
+        days = 7 if period == "7d" else 30
+        start = current_start - timedelta(days=days)
+        start_day = start.date()
+        buckets = [
+            {"key": (start_day + timedelta(days=offset)).strftime("%Y-%m-%d"),
+             "label": (start_day + timedelta(days=offset)).strftime("%Y-%m-%d")}
+            for offset in range(days)
+        ]
+        granularity = "day"
+    elif period == "12m":
+        month_index = current_start.year * 12 + current_start.month - 1 - 12
+        start_year, start_month_index = divmod(month_index, 12)
+        start = datetime(start_year, start_month_index + 1, 1, tzinfo=current_start.tzinfo)
+        buckets = []
+        for offset in range(12):
+            bucket_index = month_index + offset
+            year, month_index_in_year = divmod(bucket_index, 12)
+            key = f"{year:04d}/{month_index_in_year + 1:02d}"
+            buckets.append({"key": key, "label": key})
+        granularity = "month"
+    else:
+        raise ValueError("invalid analytics period")
+
+    return {
+        "period": period,
+        "granularity": granularity,
+        "start": start,
+        "end": current_start,
+        "buckets": buckets,
+    }
+
+
 def shape_performance_trend(spec, rows):
     """Merge sparse grouped rows into the complete, zero-filled chart series."""
     grouped = {row["bucket"]: row for row in rows}
@@ -1032,6 +1074,7 @@ def _performance_trend_rows(conn, spec, company_id=None):
 def analytics(company_id=None, period=None):
     """Aggregate all ad events and optionally add a bounded performance trend."""
     trend_spec = performance_period_spec(period) if period is not None else None
+    previous_trend_spec = previous_performance_period_spec(trend_spec) if trend_spec else None
     event_filter = ""
     filter_params = ()
     if company_id is not None:
@@ -1087,6 +1130,10 @@ def analytics(company_id=None, period=None):
             filter_params,
         ).fetchall()
         trend_rows = _performance_trend_rows(conn, trend_spec, company_id) if trend_spec else None
+        previous_trend_rows = (
+            _performance_trend_rows(conn, previous_trend_spec, company_id)
+            if previous_trend_spec else None
+        )
     impressions, clicks = totals["impressions"], totals["clicks"]
     by_store = {}
     by_store_details_map = {}
@@ -1146,6 +1193,9 @@ def analytics(company_id=None, period=None):
     }
     if trend_spec:
         result["performanceTrend"] = shape_performance_trend(trend_spec, trend_rows)
+        result["previousPerformanceTrend"] = shape_performance_trend(
+            previous_trend_spec, previous_trend_rows
+        )
     return result
 
 

@@ -1295,8 +1295,7 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send_json({"ok": False, "error": "image_storage_unavailable"}, 503)
         return self.send_json({"error":"not found"}, 404)
 
-def _json_performance_trend(events, period):
-    spec = database.performance_period_spec(period)
+def _json_performance_trend(events, spec):
     jst = ZoneInfo("Asia/Tokyo")
     counts = {}
     for event in events:
@@ -1326,6 +1325,8 @@ def _json_performance_trend(events, period):
 
 
 def build_analytics(events, period=None):
+    trend_spec = database.performance_period_spec(period) if period is not None else None
+    previous_trend_spec = database.previous_performance_period_spec(trend_spec) if trend_spec else None
     impressions = [e for e in events if e.get("type") == "impression"]
     clicks = [e for e in events if e.get("type") == "click"]
     def by_store(items):
@@ -1397,8 +1398,9 @@ def build_analytics(events, period=None):
         "daily": [{"date":k, **days[k], "ctr":round(days[k]["clicks"]/days[k]["impressions"]*100,2) if days[k]["impressions"] else 0} for k in sorted(days)],
         "monthly": [{"month":k, **months[k], "ctr":round(months[k]["clicks"]/months[k]["impressions"]*100,2) if months[k]["impressions"] else 0} for k in sorted(months)]
     }
-    if period is not None:
-        result["performanceTrend"] = _json_performance_trend(events, period)
+    if trend_spec:
+        result["performanceTrend"] = _json_performance_trend(events, trend_spec)
+        result["previousPerformanceTrend"] = _json_performance_trend(events, previous_trend_spec)
     return result
 
 if __name__ == "__main__":
