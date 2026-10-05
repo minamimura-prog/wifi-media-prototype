@@ -508,10 +508,13 @@ def assign_store_company(store_id, company_id):
     with pool().connection() as conn:
         with conn.transaction():
             store = conn.execute(
-                "SELECT id FROM stores WHERE id = %s FOR UPDATE", (str(store_id),)
+                "SELECT id, archived_at FROM stores WHERE id = %s FOR UPDATE",
+                (str(store_id),),
             ).fetchone()
             if not store:
                 return "store_not_found"
+            if store.get("archived_at") is not None:
+                raise StoreInactiveError("store_inactive")
             if company_id is not None:
                 company = conn.execute(
                     "SELECT id FROM companies WHERE id = %s", (str(company_id),)
@@ -554,12 +557,12 @@ def create_store_campaign(store_id, campaign_id, ad_id, campaign):
     with pool().connection() as conn:
         with conn.transaction():
             store = conn.execute(
-                "SELECT id, status FROM stores WHERE id = %s FOR UPDATE",
+                "SELECT id, status, archived_at FROM stores WHERE id = %s FOR UPDATE",
                 (str(store_id),),
             ).fetchone()
             if not store:
                 return None
-            if store.get("status") != "稼働中":
+            if store.get("status") != "稼働中" or store.get("archived_at") is not None:
                 raise StoreInactiveError("store_inactive")
             _ensure_store_campaign_period_available(conn, store_id, campaign)
             # campaign_stores is the sole delivery assignment. Keep the legacy
@@ -615,17 +618,23 @@ def create_store_campaign_idempotent(
                     raise StoreCampaignIdempotencyMismatchError(
                         "idempotency key was already used for a different request"
                     )
+                store = conn.execute(
+                    "SELECT id, archived_at FROM stores WHERE id = %s FOR UPDATE",
+                    (store_id,),
+                ).fetchone()
+                if store and store.get("archived_at") is not None:
+                    raise StoreInactiveError("store_inactive")
                 return _admin_campaign_result(
                     existing["campaign_id"], existing["ad_id"], campaign
                 )
 
             store = conn.execute(
-                "SELECT id, status FROM stores WHERE id = %s FOR UPDATE",
+                "SELECT id, status, archived_at FROM stores WHERE id = %s FOR UPDATE",
                 (store_id,),
             ).fetchone()
             if not store:
                 return None
-            if store.get("status") != "稼働中":
+            if store.get("status") != "稼働中" or store.get("archived_at") is not None:
                 raise StoreInactiveError("store_inactive")
 
             claimed = conn.execute(
@@ -682,11 +691,13 @@ def update_store_campaign(store_id, campaign_id, campaign):
     with pool().connection() as conn:
         with conn.transaction():
             store = conn.execute(
-                "SELECT id FROM stores WHERE id = %s FOR UPDATE",
+                "SELECT id, archived_at FROM stores WHERE id = %s FOR UPDATE",
                 (str(store_id),),
             ).fetchone()
             if not store:
                 return None
+            if store.get("archived_at") is not None:
+                raise StoreInactiveError("store_inactive")
             current = conn.execute(
                 "SELECT c.id AS campaign_id, c.ad_id, "
                 "COALESCE(a.media_url_mobile, '') AS media_url_mobile "

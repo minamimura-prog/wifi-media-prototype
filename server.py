@@ -1183,6 +1183,8 @@ class Handler(BaseHTTPRequestHandler):
                     return self.send_json({"ok": False, "error": "invalid_request"}, 400)
             try:
                 result = database.assign_store_company(company_store_id, requested_company_id)
+            except database.StoreInactiveError:
+                return self.send_json({"ok": False, "error": "store_inactive"}, 409)
             except Exception:
                 return self.send_json({"ok": False}, 503)
             if result == "store_not_found":
@@ -1208,6 +1210,8 @@ class Handler(BaseHTTPRequestHandler):
             updated = database.update_store_campaign(store_id, campaign_id, campaign)
         except database.StoreCampaignConflictError:
             return self.send_json({"ok": False, "error": "store_campaign_conflict"}, 409)
+        except database.StoreInactiveError:
+            return self.send_json({"ok": False, "error": "store_inactive"}, 409)
         except Exception:
             return self.send_json({"ok": False}, 503)
         if updated is None:
