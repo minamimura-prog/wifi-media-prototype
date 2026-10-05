@@ -807,7 +807,6 @@ body.dashboard-layout-active{background-color:#070b0d;background-image:radial-gr
 .app.dashboard-layout-active{display:grid;grid-template-columns:220px minmax(0,1fr);background:transparent}
 .app.dashboard-layout-active .main{width:auto;max-width:none;padding:30px}
 .app.dashboard-layout-active .pagehead{display:block;margin:0 0 18px;padding:0;border:0}
-.app.dashboard-layout-active .pagehead h1{margin:0;color:var(--neon-green);font:600 27px "Orbitron","IBM Plex Sans JP",sans-serif;letter-spacing:.06em;line-height:1.25;text-shadow:0 0 10px rgba(183,255,86,.16)}
 .app.dashboard-layout-active .pagehead .sub{margin-top:5px;color:#9aabad;font-size:12px}
 .dashboard-view{background-image:none}
 .dashboard-view .dashboard-system-status{align-items:center;gap:12px;margin:0 0 14px;padding:12px 15px;background:rgba(8,15,18,.86);border:1px solid rgba(76,229,255,.2);box-shadow:none;font-family:"IBM Plex Sans JP",sans-serif}
@@ -992,6 +991,44 @@ body:has(.ad-management-view){background-color:#070b0d;background-image:radial-g
 .analytics-view .analytics-detail-log .analytics-scope-tag{opacity:.88}
 .analytics-view .analytics-detail-log p{color:#84999d!important;font-size:11px!important}
 @media(max-width:700px){.analytics-view .analytics-coupon-performance-group{gap:11px;margin-top:16px;padding:12px}.analytics-view .analytics-coupon-performance-heading{align-items:flex-start;flex-direction:column;gap:5px}.analytics-view .analytics-detail-context{margin-left:0}}
+
+/* STEP TITLE-1: unify pagehead title typography with the Dashboard */
+.app.dashboard-layout-active .pagehead h1,
+.pagehead .store-title,
+.pagehead .analytics-title,
+.pagehead .ad-title,
+.pagehead .company-management-title,
+.pagehead .coupon-management-title,
+.pagehead .web-design-title {
+  display: block;
+  margin: 0;
+  color: var(--neon-green);
+  background: none;
+  background-image: none;
+  background-clip: initial;
+  -webkit-background-clip: initial;
+  -webkit-text-fill-color: currentColor;
+  font: 600 27px/1.25 "Orbitron", "IBM Plex Sans JP", sans-serif;
+  letter-spacing: .06em;
+  text-shadow: 0 0 10px rgba(183,255,86,.16);
+}
+.pagehead .store-title-ja,
+.pagehead .analytics-title-ja,
+.pagehead .ad-title-ja,
+.pagehead .company-management-title-ja,
+.pagehead .coupon-management-title-ja,
+.pagehead .web-design-title-ja {
+  display: block;
+  margin-top: 5px;
+  color: #9aabad;
+  font: 500 12px/1.5 "IBM Plex Sans JP", sans-serif;
+  letter-spacing: .04em;
+}
+.app:not(.dashboard-layout-active) .pagehead .sub {
+  margin-top: 5px;
+  color: #9aabad;
+  font-size: 12px;
+}
 </style></head><body><div class="app"><aside class="side"><div class="logo">Wi-Fi MEDIA<small>広告・店舗・効果測定</small></div><div class="nav active" data-page="dashboard" onclick="navigateTo('dashboard')">ダッシュボード</div><div class="nav" data-page="ads" onclick="navigateTo('ads')">広告管理</div><div class="nav" data-page="stores" onclick="navigateTo('stores')">店舗管理</div><div class="nav" data-page="companies" onclick="navigateTo('companies')">企業管理</div><div class="nav" data-page="analytics" onclick="navigateTo('analytics')">効果測定</div><div class="nav" data-page="coupons" onclick="navigateTo('coupons')">クーポン管理</div><div class="nav" data-page="design" onclick="navigateTo('design')">Webデザイン</div><div class="side-logout"><button class="logout-button" id="logout-button" type="button" onclick="logout()">LOGOUT</button></div></aside><main class="main" id="main"></main></div><div class="modalbg" id="modal"><div class="modal"><button class="close" onclick="closeModal()">閉じる</button><h2 id="modalTitle">編集</h2><div id="modalBody"></div></div></div><script src="/static/qrcode-generator-2.0.4.js"></script><script>let S=null;
 let adTarget='global', adStores=null, adStoreId=null, adCampaigns=[], selectedCampaignId=null, adCampaign=null, adCreatingNew=false, adCampaignCount=0, adStoreLoading=false, adStoreError='', adStoreRequestSeq=0, adStoresLoading=false, adStoresRequestSeq=0, adSaving=false, adSaveError='';
 let adPcPreviewObserver=null;
