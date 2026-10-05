@@ -605,7 +605,55 @@ def record_coupon_event(payload):
         data["coupon_events"] = events[-10000:]
         save_state(data, preserve_latest_events=False)
 
-def build_coupon_analytics(events):
+def _json_period_coupon_details(events, spec, coupon_names=None):
+    jst = ZoneInfo("Asia/Tokyo")
+    names = coupon_names if isinstance(coupon_names, dict) else {}
+    grouped = {}
+    for event in events:
+        event_type = event.get("type", event.get("event_type"))
+        if event_type not in {"view", "copy", "redeem"}:
+            continue
+        raw_coupon_id = event.get("couponId", event.get("coupon_id"))
+        if raw_coupon_id is None:
+            continue
+        coupon_id = str(raw_coupon_id).strip()
+        if not coupon_id:
+            continue
+        raw_at = event.get("at", event.get("occurred_at"))
+        if not raw_at:
+            continue
+        try:
+            event_at = raw_at if isinstance(raw_at, datetime) else datetime.fromisoformat(str(raw_at).replace("Z", "+00:00"))
+        except (TypeError, ValueError):
+            continue
+        if event_at.tzinfo is None:
+            event_at = event_at.replace(tzinfo=jst)
+        event_at = event_at.astimezone(jst)
+        if not (spec["start"] <= event_at < spec["end"]):
+            continue
+        raw_name = names.get(coupon_id)
+        coupon_name = str(raw_name).strip() if raw_name is not None else ""
+        item = grouped.setdefault(coupon_id, {
+            "couponId": coupon_id,
+            "couponName": coupon_name or coupon_id,
+            "views": 0,
+            "copies": 0,
+            "redeems": 0,
+        })
+        item[{"view": "views", "copy": "copies", "redeem": "redeems"}[event_type]] += 1
+    details = list(grouped.values())
+    for item in details:
+        views = item["views"]
+        item["copyRate"] = round(item["copies"] / views * 100, 2) if views else 0
+        item["redeemRate"] = round(item["redeems"] / views * 100, 2) if views else 0
+    details.sort(key=lambda item: (
+        -item["redeems"], -item["copies"], -item["views"],
+        -item["redeemRate"], item["couponName"], item["couponId"],
+    ))
+    return details
+
+
+def build_coupon_analytics(events, period=None, coupon_names=None):
     grouped = {}
     for event in events:
         key = (event.get("couponId"), event.get("couponCode", ""), event.get("type", "unknown"))
@@ -613,7 +661,11 @@ def build_coupon_analytics(events):
     rows = [{"coupon_id": coupon_id, "coupon_code": coupon_code,
              "event_type": event_type, "total": total}
             for (coupon_id, coupon_code, event_type), total in grouped.items()]
-    return database.build_coupon_analytics(rows)
+    result = database.build_coupon_analytics(rows)
+    if period is not None:
+        spec = database.performance_period_spec(period)
+        result["periodCouponDetails"] = _json_period_coupon_details(events, spec, coupon_names)
+    return result
 
 
 def _analytics_company_filter(query):
@@ -960,19 +1012,30 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/coupon_analytics":
             if not self.require_admin_session(): return
             query = parse_qs(urlparse(self.path).query, keep_blank_values=True)
-            company_id, error = _analytics_company_filter(query)
+            if set(query) - {"companyId", "period"} or any(len(values) != 1 for values in query.values()):
+                return self.send_json({"ok": False, "error": "invalid_scope"}, 400)
+            company_query = {"companyId": query["companyId"]} if "companyId" in query else {}
+            company_id, error = _analytics_company_filter(company_query)
             if error:
                 return self.send_json({"ok": False, "error": error[0]}, error[1])
+            period = query["period"][0] if "period" in query else None
+            if period is not None and period not in {"yesterday", "7d", "30d", "12m"}:
+                return self.send_json({"ok": False, "error": "invalid_period"}, 400)
             try:
                 if database.database_enabled():
                     if company_id is not None and not database.get_company(company_id):
                         return self.send_json({"ok": False, "error": "company_not_found"}, 404)
-                    return self.send_json(database.coupon_analytics(company_id))
+                    return self.send_json(database.coupon_analytics(company_id, period))
                 data = load_state()
                 if company_id is not None and not _company_exists_in_state(data, company_id):
                     return self.send_json({"ok": False, "error": "company_not_found"}, 404)
                 events = _events_for_company(data.get("coupon_events", []), company_id)
-                return self.send_json(build_coupon_analytics(events))
+                coupon_names = {
+                    str(coupon.get("id")): coupon.get("title", "")
+                    for coupon in data.get("coupons", [])
+                    if isinstance(coupon, dict) and coupon.get("id") is not None
+                }
+                return self.send_json(build_coupon_analytics(events, period, coupon_names))
             except Exception: return self.send_json({"ok": False}, 500)
         if path == "/api/state":
             if not self.require_admin_session(): return

@@ -1519,8 +1519,55 @@ def record_coupon_event(event, *, legacy_import=False):
             )
 
 
-def coupon_analytics(company_id=None):
-    """Return coupon event totals, optionally scoped to captured company attribution."""
+def _shape_period_coupon_details(rows):
+    details = []
+    for row in rows:
+        coupon_id = str(row["coupon_id"] or "").strip()
+        if not coupon_id:
+            continue
+        views = int(row["views"] or 0)
+        copies = int(row["copies"] or 0)
+        redeems = int(row["redeems"] or 0)
+        details.append({
+            "couponId": coupon_id,
+            "couponName": row["coupon_name"] or coupon_id,
+            "views": views,
+            "copies": copies,
+            "redeems": redeems,
+            "copyRate": round(copies / views * 100, 2) if views else 0,
+            "redeemRate": round(redeems / views * 100, 2) if views else 0,
+        })
+    details.sort(key=lambda item: (
+        -item["redeems"], -item["copies"], -item["views"],
+        -item["redeemRate"], item["couponName"], item["couponId"],
+    ))
+    return details
+
+
+def _period_coupon_detail_rows(conn, spec, company_id=None):
+    query = (
+        "SELECT e.coupon_id, "
+        "COALESCE(NULLIF(c.title, ''), e.coupon_id) AS coupon_name, "
+        "count(*) FILTER (WHERE e.event_type = 'view') AS views, "
+        "count(*) FILTER (WHERE e.event_type = 'copy') AS copies, "
+        "count(*) FILTER (WHERE e.event_type = 'redeem') AS redeems "
+        "FROM coupon_events e LEFT JOIN coupons c "
+        "ON c.id = e.coupon_id AND c.deleted_at IS NULL "
+        "WHERE e.occurred_at >= %s AND e.occurred_at < %s "
+        "AND e.coupon_id IS NOT NULL AND btrim(e.coupon_id) <> '' "
+        "AND e.event_type IN ('view', 'copy', 'redeem')"
+    )
+    params = [spec["start"], spec["end"]]
+    if company_id is not None:
+        query += " AND e.company_id = %s AND e.company_attribution_status = 'captured'"
+        params.append(str(company_id))
+    query += " GROUP BY e.coupon_id, c.title"
+    return conn.execute(query, tuple(params)).fetchall()
+
+
+def coupon_analytics(company_id=None, period=None):
+    """Return coupon event totals and optional selected-period ranking details."""
+    trend_spec = performance_period_spec(period) if period is not None else None
     event_filter = ""
     filter_params = ()
     if company_id is not None:
@@ -1533,7 +1580,14 @@ def coupon_analytics(company_id=None):
             "ORDER BY coupon_code, coupon_id, event_type",
             filter_params,
         ).fetchall()
-    return build_coupon_analytics(rows)
+        period_rows = (
+            _period_coupon_detail_rows(conn, trend_spec, company_id)
+            if trend_spec else None
+        )
+    result = build_coupon_analytics(rows)
+    if trend_spec:
+        result["periodCouponDetails"] = _shape_period_coupon_details(period_rows)
+    return result
 
 
 def build_coupon_analytics(rows):
