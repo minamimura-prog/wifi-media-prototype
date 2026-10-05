@@ -1071,6 +1071,42 @@ def _performance_trend_rows(conn, spec, company_id=None):
     return conn.execute(query, tuple(params)).fetchall()
 
 
+def _period_store_detail_rows(conn, spec, company_id=None):
+    """Aggregate the selected period by known store ID inside PostgreSQL."""
+    query = (
+        "SELECT store_id, COALESCE(MIN(NULLIF(store_name, '')), '未設定') AS store_name, "
+        "count(*) FILTER (WHERE event_type = 'impression') AS impressions, "
+        "count(*) FILTER (WHERE event_type = 'click') AS clicks "
+        "FROM ad_events WHERE occurred_at >= %s AND occurred_at < %s "
+        "AND store_id IS NOT NULL AND event_type IN ('impression', 'click')"
+    )
+    params = [spec["start"], spec["end"]]
+    if company_id is not None:
+        query += " AND company_id = %s AND company_attribution_status = 'captured'"
+        params.append(str(company_id))
+    # CTR cannot break a tie once both clicks and impressions are tied.
+    query += " GROUP BY store_id ORDER BY clicks DESC, impressions DESC, store_name ASC, store_id ASC"
+    return conn.execute(query, tuple(params)).fetchall()
+
+
+def _shape_period_store_details(rows):
+    details = []
+    for row in rows:
+        impressions = int(row["impressions"] or 0)
+        clicks = int(row["clicks"] or 0)
+        details.append({
+            "storeId": str(row["store_id"]),
+            "storeName": row["store_name"] or "未設定",
+            "impressions": impressions,
+            "clicks": clicks,
+            "ctr": round(clicks / impressions * 100, 2) if impressions else 0,
+        })
+    details.sort(key=lambda item: (
+        -item["clicks"], -item["impressions"], item["storeName"], item["storeId"]
+    ))
+    return details
+
+
 def analytics(company_id=None, period=None):
     """Aggregate all ad events and optionally add a bounded performance trend."""
     trend_spec = performance_period_spec(period) if period is not None else None
@@ -1134,6 +1170,10 @@ def analytics(company_id=None, period=None):
             _performance_trend_rows(conn, previous_trend_spec, company_id)
             if previous_trend_spec else None
         )
+        period_store_rows = (
+            _period_store_detail_rows(conn, trend_spec, company_id)
+            if trend_spec else None
+        )
     impressions, clicks = totals["impressions"], totals["clicks"]
     by_store = {}
     by_store_details_map = {}
@@ -1196,6 +1236,7 @@ def analytics(company_id=None, period=None):
         result["previousPerformanceTrend"] = shape_performance_trend(
             previous_trend_spec, previous_trend_rows
         )
+        result["periodStoreDetails"] = _shape_period_store_details(period_store_rows)
     return result
 
 

@@ -1324,6 +1324,56 @@ def _json_performance_trend(events, spec):
     return database.shape_performance_trend(spec, list(counts.values()))
 
 
+def _json_period_store_details(events, spec):
+    """Aggregate recent JSON events by known store ID for period rankings."""
+    jst = ZoneInfo("Asia/Tokyo")
+    grouped = {}
+    for event in events:
+        event_type = event.get("type")
+        if event_type not in {"impression", "click"}:
+            continue
+        raw_store_id = event.get("storeId", event.get("store_id"))
+        if raw_store_id is None:
+            continue
+        store_id = str(raw_store_id).strip()
+        if not store_id:
+            continue
+        event_at = event.get("at", "")
+        if not event_at:
+            continue
+        try:
+            parsed = datetime.fromisoformat(event_at.replace("Z", "+00:00"))
+        except (TypeError, ValueError):
+            continue
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=jst)
+        local = parsed.astimezone(jst)
+        if not (spec["start"] <= local < spec["end"]):
+            continue
+
+        store_name = str(event.get("store") or event.get("storeName") or "未設定")
+        item = grouped.setdefault(store_id, {
+            "storeId": store_id,
+            "storeName": store_name,
+            "impressions": 0,
+            "clicks": 0,
+        })
+        # Match the PostgreSQL path's deterministic choice if a store was renamed.
+        if store_name < item["storeName"]:
+            item["storeName"] = store_name
+        item["impressions" if event_type == "impression" else "clicks"] += 1
+
+    details = list(grouped.values())
+    for item in details:
+        impressions = item["impressions"]
+        clicks = item["clicks"]
+        item["ctr"] = round(clicks / impressions * 100, 2) if impressions else 0
+    details.sort(key=lambda item: (
+        -item["clicks"], -item["impressions"], item["storeName"], item["storeId"]
+    ))
+    return details
+
+
 def build_analytics(events, period=None):
     trend_spec = database.performance_period_spec(period) if period is not None else None
     previous_trend_spec = database.previous_performance_period_spec(trend_spec) if trend_spec else None
@@ -1401,6 +1451,7 @@ def build_analytics(events, period=None):
     if trend_spec:
         result["performanceTrend"] = _json_performance_trend(events, trend_spec)
         result["previousPerformanceTrend"] = _json_performance_trend(events, previous_trend_spec)
+        result["periodStoreDetails"] = _json_period_store_details(events, trend_spec)
     return result
 
 if __name__ == "__main__":
