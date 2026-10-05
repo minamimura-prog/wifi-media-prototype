@@ -466,17 +466,31 @@ def public_config_for_store(public_code):
     return result
 
 def public_coupons_for_store(public_code):
-    """Return public coupons only when the addressed store is active.
-
-    None means the public code does not identify a store; an empty list means
-    the store exists but is temporarily stopped.
-    """
-    store = database.get_store_by_public_code(public_code)
+    """Return active coupons available to one active public store."""
+    state = None
+    if database.database_enabled():
+        store = database.get_store_by_public_code(public_code)
+    else:
+        state = load_state()
+        store = next(
+            (item for item in state.get("stores", [])
+             if item.get("publicCode") == public_code),
+            None,
+        )
     if not store:
         return None
     if store.get("status") == "停止中":
         return []
-    return list_available_coupons()
+
+    store_id = store.get("id")
+    if store_id is None:
+        return None
+    available = list_available_coupons(state)
+    return [
+        coupon for coupon in available
+        if not coupon.get("storeId")
+        or str(coupon.get("storeId")) == str(store_id)
+    ]
 
 def delete_draft_coupon(coupon_id):
     """Delete only a draft coupon; coupon_events remain available as history."""
@@ -998,8 +1012,6 @@ class Handler(BaseHTTPRequestHandler):
                         or len(store_values[0]) > PUBLIC_CODE_MAX_LENGTH
                         or not PUBLIC_CODE_PATTERN.fullmatch(store_values[0])):
                     return self.send_json({"ok": False, "error": "invalid_store"}, 400)
-                if not database.database_enabled():
-                    return self.send_json({"ok": False, "error": "store_delivery_unavailable"}, 503)
                 try:
                     coupons = public_coupons_for_store(store_values[0])
                 except Exception:
