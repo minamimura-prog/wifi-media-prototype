@@ -347,6 +347,37 @@ def save_state(data, preserve_latest_events=True):
 def now_jst():
     return datetime.now(ZoneInfo("Asia/Tokyo")).isoformat(timespec="seconds")
 
+def _store_is_unavailable(store):
+    if not store:
+        return False
+    archived_at = store.get("archivedAt", store.get("archived_at"))
+    return store.get("status") == "停止中" or archived_at is not None
+
+def _json_default_ad_target_is_available(data, ad):
+    stores = data.get("stores", [])
+    target_store_id = ad.get("storeId")
+    if target_store_id is None:
+        target_store_id = ad.get("store_id")
+    if target_store_id is not None:
+        if not str(target_store_id).strip():
+            return False
+        matches = [store for store in stores
+                   if str(store.get("id") or "") == str(target_store_id)]
+        return len(matches) == 1 and not _store_is_unavailable(matches[0])
+
+    target_name = ad.get("store")
+    # "未設定" is the existing JSON/API representation of an unassigned,
+    # shared default ad. A missing or unresolvable store name is ambiguous.
+    if target_name == "未設定":
+        matches = [store for store in stores if store.get("name") == target_name]
+        if not matches:
+            return True
+        return len(matches) == 1 and not _store_is_unavailable(matches[0])
+    if not isinstance(target_name, str) or not target_name:
+        return False
+    matches = [store for store in stores if store.get("name") == target_name]
+    return len(matches) == 1 and not _store_is_unavailable(matches[0])
+
 def record_event(event_type, store, ad_id="main"):
     if database.database_enabled():
         return database.record_event(event_type, store, ad_id)
@@ -362,7 +393,7 @@ def record_event(event_type, store, ad_id="main"):
             (item for item in data.get("stores", []) if item.get("name") == (store or "未設定")),
             None,
         )
-        if resolved_store and resolved_store.get("status") == "停止中":
+        if _store_is_unavailable(resolved_store):
             raise database.StoreInactiveError("store_inactive")
         events = data.setdefault("events", [])
         events.append({
@@ -378,18 +409,26 @@ def record_event(event_type, store, ad_id="main"):
         data["events"] = events[-10000:]
         save_state(data, preserve_latest_events=False)
 
-def list_available_coupons(data=None):
+def list_available_coupons(data=None, *, global_only=False):
     data = data or load_state()
     today = (datetime.now(timezone.utc) + timedelta(hours=9)).date().isoformat()
     return [coupon for coupon in data.get("coupons", [])
             if coupon.get("status") == "active"
             and (not coupon.get("start") or coupon["start"] <= today)
-            and (not coupon.get("end") or coupon["end"] >= today)]
+            and (not coupon.get("end") or coupon["end"] >= today)
+            and (not global_only or not (coupon.get("storeId") or coupon.get("store_id")))]
 
 def public_config():
     data = load_state()
     design = data.get("design") or {}
     ad = data.get("ad") or {}
+    if database.database_enabled():
+        target_store = database.get_default_ad_target_store()
+        target_is_available = not _store_is_unavailable(target_store)
+    else:
+        target_is_available = _json_default_ad_target_is_available(data, ad)
+    if not target_is_available:
+        ad = {}
     return {
         "design": {key: design.get(key) for key in (
             "background", "textColor", "radius", "heroHeight", "pageTitle",
@@ -438,7 +477,7 @@ def public_config_for_store(public_code):
     # campaign assigned through campaign_stores for this exact store.
     result = public_config()
     result["storeStatus"] = store.get("status")
-    if store.get("status") == "停止中":
+    if _store_is_unavailable(store):
         result["ad"] = None
         return result
 
@@ -479,7 +518,7 @@ def public_coupons_for_store(public_code):
         )
     if not store:
         return None
-    if store.get("status") == "停止中":
+    if _store_is_unavailable(store):
         return []
 
     store_id = store.get("id")
@@ -537,9 +576,9 @@ def record_coupon_event(payload):
         )
         if not page_store:
             raise LookupError("store not found")
-        if page_store.get("status") == "停止中":
+        if _store_is_unavailable(page_store):
             raise database.StoreInactiveError("store_inactive")
-    if event_store and event_store.get("status") == "停止中":
+    if _store_is_unavailable(event_store):
         raise database.StoreInactiveError("store_inactive")
     if (not postgres_enabled and coupon.get("storeId") and page_store
             and str(coupon["storeId"]) != str(page_store.get("id"))):
@@ -575,7 +614,7 @@ def record_coupon_event(payload):
                  and item.get("name") == (current_coupon.get("store") or "未設定"))),
             None,
         )
-        if current_store and current_store.get("status") == "停止中":
+        if _store_is_unavailable(current_store):
             raise database.StoreInactiveError("store_inactive")
         current_page_store = None
         if store_code:
@@ -585,7 +624,7 @@ def record_coupon_event(payload):
             )
             if not current_page_store:
                 raise LookupError("store not found")
-            if current_page_store.get("status") == "停止中":
+            if _store_is_unavailable(current_page_store):
                 raise database.StoreInactiveError("store_inactive")
         if (current_coupon.get("storeId") and current_page_store
                 and str(current_coupon["storeId"]) != str(current_page_store.get("id"))):
@@ -1021,7 +1060,7 @@ class Handler(BaseHTTPRequestHandler):
                 if coupons is None:
                     return self.send_json({"ok": False, "error": "store_not_found"}, 404)
                 return self.send_json({"coupons": coupons})
-            try: return self.send_json({"coupons": list_available_coupons()})
+            try: return self.send_json({"coupons": list_available_coupons(global_only=True)})
             except Exception as e: return self.send_json({"error": str(e)}, 500)
         if path == "/api/coupon_analytics":
             if not self.require_admin_session(): return

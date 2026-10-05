@@ -41,6 +41,12 @@ class StoreInactiveError(Exception):
     """Raised when a new public event targets a stopped store."""
 
 
+def _store_is_unavailable(store):
+    return bool(store) and (
+        store.get("status") == "停止中" or store.get("archived_at") is not None
+    )
+
+
 class StoreMismatchError(Exception):
     """Raised when a store coupon is used from a different public store page."""
 
@@ -816,6 +822,20 @@ def load_state():
     }
 
 
+def get_default_ad_target_store():
+    """Return the store assigned to the default ad, if it has one."""
+    with pool().connection() as conn:
+        row = conn.execute(
+            "SELECT s.id, s.status, s.archived_at "
+            "FROM campaigns c JOIN ads a ON a.id = c.ad_id "
+            "LEFT JOIN stores s ON s.id = a.store_id WHERE c.id = %s",
+            ("default",),
+        ).fetchone()
+    if not row or not row.get("id"):
+        return None
+    return row
+
+
 def save_state(data):
     """Persist the current admin UI state without changing its API contract."""
     design = data.get("design") or {}
@@ -1392,14 +1412,14 @@ def record_event(event_type, store_name, ad_id="main", occurred_at=None, *, lega
                 store_name = "未設定"
             if ad and ad["id"]:
                 store = conn.execute(
-                    "SELECT id, name, status, company_id FROM stores WHERE id = %s FOR UPDATE", (ad["id"],)
+                    "SELECT id, name, status, company_id, archived_at FROM stores WHERE id = %s FOR UPDATE", (ad["id"],)
                 ).fetchone()
             else:
                 store = conn.execute(
-                    "SELECT id, name, status, company_id FROM stores WHERE name = %s ORDER BY id LIMIT 1 FOR UPDATE",
+                    "SELECT id, name, status, company_id, archived_at FROM stores WHERE name = %s ORDER BY id LIMIT 1 FOR UPDATE",
                     (store_name,),
                 ).fetchone()
-            if not legacy_import and store and store.get("status") == "停止中":
+            if not legacy_import and _store_is_unavailable(store):
                 raise StoreInactiveError("store_inactive")
             if store and store.get("name"):
                 store_name = store["name"]
@@ -1432,10 +1452,10 @@ def record_store_ad_event(event_type, public_code, campaign_id, ad_id, delivery_
     with pool().connection() as conn:
         with conn.transaction():
             store = conn.execute(
-                "SELECT id, status, company_id FROM stores WHERE public_code = %s FOR UPDATE",
+                "SELECT id, status, company_id, archived_at FROM stores WHERE public_code = %s FOR UPDATE",
                 (public_code,),
             ).fetchone()
-            if store and store.get("status") == "停止中":
+            if _store_is_unavailable(store):
                 raise StoreInactiveError("store_inactive")
             row = conn.execute(
                 "INSERT INTO ad_events "
@@ -1449,6 +1469,7 @@ def record_store_ad_event(event_type, public_code, campaign_id, ad_id, delivery_
                 "WHERE s.public_code = %s AND c.id = %s AND a.id = %s "
                 "AND c.id <> %s "
                 "AND c.status = 'active' AND a.published IS TRUE "
+                "AND s.status <> '停止中' AND s.archived_at IS NULL "
                 "AND (c.starts_on IS NULL OR c.starts_on <= %s) "
                 "AND (c.ends_on IS NULL OR c.ends_on >= %s) "
                 "RETURNING id",
@@ -1490,12 +1511,12 @@ def record_coupon_event(event, *, legacy_import=False):
             rows = []
             if store_ids:
                 rows = conn.execute(
-                    "SELECT id, name, status, company_id FROM stores WHERE id = ANY(%s) ORDER BY id FOR UPDATE",
+                    "SELECT id, name, status, company_id, archived_at FROM stores WHERE id = ANY(%s) ORDER BY id FOR UPDATE",
                     (sorted(store_ids),),
                 ).fetchall()
                 if page_store_id and not any(row["id"] == page_store_id for row in rows):
                     raise LookupError("store not found")
-                if not legacy_import and any(row.get("status") == "停止中" for row in rows):
+                if not legacy_import and any(_store_is_unavailable(row) for row in rows):
                     raise StoreInactiveError("store_inactive")
             if (not legacy_import and coupon and coupon.get("store_id") and page_store_id
                     and coupon["store_id"] != page_store_id):
@@ -1504,10 +1525,10 @@ def record_coupon_event(event, *, legacy_import=False):
                         else page_store_id or event.get("storeId"))
             if not store_id and legacy_import and event.get("store"):
                 store = conn.execute(
-                    "SELECT id, name, status, company_id FROM stores WHERE name = %s ORDER BY id LIMIT 1 FOR UPDATE",
+                    "SELECT id, name, status, company_id, archived_at FROM stores WHERE name = %s ORDER BY id LIMIT 1 FOR UPDATE",
                     (event["store"],),
                 ).fetchone()
-                if not legacy_import and store and store.get("status") == "停止中":
+                if not legacy_import and _store_is_unavailable(store):
                     raise StoreInactiveError("store_inactive")
                 store_id = store["id"] if store else None
                 if store:
