@@ -936,6 +936,22 @@ body:has(.ad-management-view){background-color:#070b0d;background-image:radial-g
 .ad-preview-mobile-viewport .phonewrap{width:100%;max-width:100%}
 .ad-preview-mobile-viewport .phone{max-width:285px}
 @media(max-width:700px){.ad-preview-devices{gap:10px}.ad-preview-mobile-device{padding-top:8px}}
+
+/* STEP 4G-2B: emphasize three lifetime KPIs and demote event-count context */
+.analytics-view .analytics-summary-primary{grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-bottom:6px}
+.analytics-view .analytics-summary-primary>.card{display:flex;min-width:0;min-height:96px;flex-direction:column;justify-content:center;padding:14px 16px;background:linear-gradient(145deg,rgba(15,24,28,.97),rgba(9,15,18,.98));border:1px solid rgba(76,229,255,.18);border-radius:7px;box-shadow:inset 0 0 0 1px rgba(157,243,255,.055),0 5px 16px rgba(0,0,0,.36),0 0 8px rgba(76,229,255,.045)}
+.analytics-view .analytics-summary-primary>.analytics-metric-impressions{border-top:2px solid rgba(183,255,86,.58)}
+.analytics-view .analytics-summary-primary>.analytics-metric-clicks{border-top:2px solid rgba(76,229,255,.58)}
+.analytics-view .analytics-summary-primary>.analytics-metric-ctr{border-top:2px solid rgba(180,92,255,.48)}
+.analytics-view .analytics-summary-primary .label{color:#9eb4b8;font-size:11px}
+.analytics-view .analytics-summary-primary .metric.impression{margin-top:7px;color:var(--neon-green);font:600 27px/1.25 "IBM Plex Sans JP",sans-serif;text-shadow:0 0 2px rgba(223,255,190,.8),0 0 7px rgba(183,255,86,.68),0 0 16px rgba(183,255,86,.3)}
+.analytics-view .analytics-summary-primary .metric.click{margin-top:7px;color:var(--signal-cyan);font:600 27px/1.25 "IBM Plex Sans JP",sans-serif;text-shadow:0 0 2px rgba(211,252,255,.85),0 0 7px rgba(76,229,255,.66),0 0 16px rgba(76,229,255,.3)}
+.analytics-view .analytics-summary-primary .metric.ctr{margin-top:7px;color:var(--signal-purple);font:600 27px/1.25 "IBM Plex Sans JP",sans-serif;text-shadow:0 0 2px rgba(255,224,248,.82),0 0 7px rgba(180,92,255,.62),0 0 16px rgba(180,92,255,.28)}
+.analytics-event-records{display:flex;align-items:baseline;gap:9px;min-height:31px;margin:0 0 18px;padding:6px 2px;border-bottom:1px solid rgba(76,229,255,.1);color:#85999d}
+.analytics-event-records-eyebrow{color:#819296;font:500 9px "Orbitron","IBM Plex Sans JP",sans-serif;letter-spacing:.09em;text-shadow:none}
+.analytics-event-records-label{font-size:10px;color:#8fa1a4}
+.analytics-event-records-value{color:#a9b8ba;font:500 12px "IBM Plex Sans JP",sans-serif;font-variant-numeric:tabular-nums;text-shadow:none}
+@media(max-width:700px){.analytics-view .analytics-summary-primary{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.analytics-view .analytics-summary-primary>.analytics-metric-ctr{grid-column:1/-1}.analytics-view .analytics-summary-primary>.card{min-height:88px;padding:12px}.analytics-view .analytics-summary-primary .metric.impression,.analytics-view .analytics-summary-primary .metric.click,.analytics-view .analytics-summary-primary .metric.ctr{font-size:clamp(20px,6vw,27px)}.analytics-event-records{margin-bottom:14px}}
 </style></head><body><div class="app"><aside class="side"><div class="logo">Wi-Fi MEDIA<small>広告・店舗・効果測定</small></div><div class="nav active" data-page="dashboard" onclick="navigateTo('dashboard')">ダッシュボード</div><div class="nav" data-page="ads" onclick="navigateTo('ads')">広告管理</div><div class="nav" data-page="stores" onclick="navigateTo('stores')">店舗管理</div><div class="nav" data-page="companies" onclick="navigateTo('companies')">企業管理</div><div class="nav" data-page="analytics" onclick="navigateTo('analytics')">効果測定</div><div class="nav" data-page="coupons" onclick="navigateTo('coupons')">クーポン管理</div><div class="nav" data-page="design" onclick="navigateTo('design')">Webデザイン</div><div class="side-logout"><button class="logout-button" id="logout-button" type="button" onclick="logout()">LOGOUT</button></div></aside><main class="main" id="main"></main></div><div class="modalbg" id="modal"><div class="modal"><button class="close" onclick="closeModal()">閉じる</button><h2 id="modalTitle">編集</h2><div id="modalBody"></div></div></div><script src="/static/qrcode-generator-2.0.4.js"></script><script>let S=null;
 let adTarget='global', adStores=null, adStoreId=null, adCampaigns=[], selectedCampaignId=null, adCampaign=null, adCreatingNew=false, adCampaignCount=0, adStoreLoading=false, adStoreError='', adStoreRequestSeq=0, adStoresLoading=false, adStoresRequestSeq=0, adSaving=false, adSaveError='';
 let adPcPreviewObserver=null;
@@ -2072,12 +2088,11 @@ async function reports(){
   const storeCampaignRows=a.storeCampaignAds||[];
 
   shell('<span class="analytics-title">ANALYTICS</span><span class="analytics-title-ja">効果測定</span>','PostgreSQLに記録された実測値です。月の区切りは日本時間です.',
-  `<div class="analytics-view">${analyticsConditionsMarkup(companies,selectedId,selectedPeriod,companyError)}<div class="analytics-system-status"><div><div class="analytics-console-name">ANALYTICS MONITOR</div><div class="analytics-console-message">Reading measured delivery and interaction data.</div></div><span class="analytics-live"><i></i> LIVE DATA</span></div><div class="analytics-all-time-scope"><span class="analytics-scope-tag">ALL TIME · 全期間</span></div><div class="grid analytics-summary">
+  `<div class="analytics-view">${analyticsConditionsMarkup(companies,selectedId,selectedPeriod,companyError)}<div class="analytics-system-status"><div><div class="analytics-console-name">ANALYTICS MONITOR</div><div class="analytics-console-message">Reading measured delivery and interaction data.</div></div><span class="analytics-live"><i></i> LIVE DATA</span></div><div class="analytics-all-time-scope"><span class="analytics-scope-tag">ALL TIME · 全期間</span></div><div class="grid analytics-summary analytics-summary-primary">
     <div class="card analytics-metric-impressions"><div class="label">累計表示回数</div><div class="metric impression">${a.impressions.toLocaleString()}</div></div>
     <div class="card analytics-metric-clicks"><div class="label">累計クリック</div><div class="metric click">${a.clicks.toLocaleString()}</div></div>
     <div class="card analytics-metric-ctr"><div class="label">実測CTR</div><div class="metric ctr">${a.ctr}%</div></div>
-    <div class="card analytics-metric-records"><div class="label">記録件数</div><div class="metric record">${(a.impressions+a.clicks).toLocaleString()}</div></div>
-  </div>
+  </div><div class="analytics-event-records"><span class="analytics-event-records-eyebrow">EVENT RECORDS</span><span class="analytics-event-records-label">記録件数</span><strong class="analytics-event-records-value">${(a.impressions+a.clicks).toLocaleString()}</strong></div>
 
   <section class="card analytics-panel analytics-trend-panel" style="margin-bottom:18px">
     <div class="analytics-section-heading analytics-scoped-heading"><div><span class="analytics-terminal-label">PERFORMANCE TREND</span><div class="section">パフォーマンス推移</div></div><span class="analytics-scope-tag">SELECTED PERIOD · 選択期間</span></div>
