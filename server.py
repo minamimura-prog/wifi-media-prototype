@@ -560,14 +560,47 @@ def record_event(event_type, store, ad_id="main"):
         data["events"] = events[-10000:]
         save_state(data, preserve_latest_events=False)
 
+def _public_coupon_store_target(coupon, stores):
+    """Resolve public coupon scope; a legacy store name is never global."""
+    raw_store_id = coupon.get("storeId")
+    if raw_store_id is None:
+        raw_store_id = coupon.get("store_id")
+    if raw_store_id is not None:
+        store_id = str(raw_store_id).strip()
+        if not store_id:
+            return "invalid", None
+        matches = [store for store in stores
+                   if str(store.get("id") or "") == store_id]
+        return ("store", matches[0]) if len(matches) == 1 else ("invalid", None)
+
+    store_name = coupon.get("store")
+    if store_name is None or store_name == "":
+        return "global", None
+    if not isinstance(store_name, str):
+        return "invalid", None
+    matches = [store for store in stores if store.get("name") == store_name]
+    return ("store", matches[0]) if len(matches) == 1 else ("invalid", None)
+
+
 def list_available_coupons(data=None, *, global_only=False):
     data = data or load_state()
     today = (datetime.now(timezone.utc) + timedelta(hours=9)).date().isoformat()
-    return [coupon for coupon in data.get("coupons", [])
-            if coupon.get("status") == "active"
-            and (not coupon.get("start") or coupon["start"] <= today)
-            and (not coupon.get("end") or coupon["end"] >= today)
-            and (not global_only or not (coupon.get("storeId") or coupon.get("store_id")))]
+    stores = data.get("stores", [])
+    available = []
+    for coupon in data.get("coupons", []):
+        if (coupon.get("status") != "active"
+                or (coupon.get("start") and coupon["start"] > today)
+                or (coupon.get("end") and coupon["end"] < today)):
+            continue
+        target_type, target_store = _public_coupon_store_target(coupon, stores)
+        if target_type == "invalid":
+            continue
+        if target_type == "store" and _store_is_unavailable(target_store):
+            continue
+        if global_only and target_type != "global":
+            continue
+        available.append(coupon)
+    return available
 
 def public_config():
     data = load_state()
@@ -676,11 +709,17 @@ def public_coupons_for_store(public_code):
     if store_id is None:
         return None
     available = list_available_coupons(state)
-    return [
-        coupon for coupon in available
-        if not coupon.get("storeId")
-        or str(coupon.get("storeId")) == str(store_id)
-    ]
+    matched = []
+    for coupon in available:
+        target_type, target_store = _public_coupon_store_target(
+            coupon, state.get("stores", [])
+        )
+        if target_type == "global" or (
+            target_type == "store"
+            and str(target_store.get("id")) == str(store_id)
+        ):
+            matched.append(coupon)
+    return matched
 
 def delete_draft_coupon(coupon_id):
     """Delete only a draft coupon; coupon_events remain available as history."""
