@@ -1050,6 +1050,12 @@ def save_state(data):
             )
             for store in stores:
                 store_id = str(store.get("id") or store.get("name") or "store")
+                # A normal state snapshot cannot edit an existing archived
+                # store row. These IDs come from the DB rows locked during
+                # preflight; only the dedicated restore API makes the row
+                # eligible for this upsert again.
+                if store_id in archived_store_ids_before_state:
+                    continue
                 public_code = _unique_public_code(conn, store_id)
                 conn.execute(
                     "INSERT INTO stores (id, public_code, name, store_type, wifi, monthly_users, legacy_clicks, status, archived_at) "
