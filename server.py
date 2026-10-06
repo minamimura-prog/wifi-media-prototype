@@ -522,6 +522,47 @@ def _preserve_json_store_archive_state(data, current_state):
     data["stores"] = normalized
 
 
+def _validate_json_store_identity_uniqueness(stores, current_state):
+    """Reject duplicate store IDs or public codes before writing JSON state."""
+    store_ids = set()
+    public_codes = {}
+    archived_public_codes = {}
+
+    for store in current_state.get("stores") or []:
+        if not isinstance(store, dict):
+            continue
+        archived_at = store.get("archivedAt", store.get("archived_at"))
+        code = store.get("publicCode")
+        if archived_at is not None and isinstance(code, str) and code != "":
+            owner = str(store.get("id") or store.get("name") or "store")
+            archived_public_codes.setdefault(code, owner)
+
+    for store in stores:
+        if not isinstance(store, dict):
+            raise ValueError("invalid store")
+        raw_id = store.get("id")
+        if raw_id not in (None, ""):
+            store_id = str(raw_id)
+            if store_id in store_ids:
+                raise ValueError("duplicate store id")
+            store_ids.add(store_id)
+
+        code = store.get("publicCode")
+        # Missing, null, and empty codes are all the existing no-code forms.
+        if code is None or code == "":
+            continue
+        if not isinstance(code, str):
+            raise ValueError("invalid publicCode")
+        owner = str(store.get("id") or store.get("name") or "store")
+        if code in public_codes:
+            raise ValueError("duplicate publicCode")
+        public_codes[code] = owner
+
+        archived_owner = archived_public_codes.get(code)
+        if archived_owner is not None and archived_owner != owner:
+            raise ValueError("archived publicCode belongs to another store")
+
+
 def _write_json_state(data):
     tmp = DATA + ".tmp"
     with open(tmp, "w", encoding="utf-8") as f:
@@ -573,6 +614,7 @@ def _save_json_state(data, preserve_latest_events=True):
     except (OSError, json.JSONDecodeError):
         current_state = {}
     _preserve_json_store_archive_state(data, current_state)
+    _validate_json_store_identity_uniqueness(data.get("stores", []), current_state)
     current_store = (current_state.get("ad") or {}).get("store")
     current_store_record = next(
         (store for store in current_state.get("stores", [])
@@ -846,11 +888,11 @@ def public_coupons_for_store(public_code):
             store = state_stores[0]
     else:
         state = load_state()
-        store = next(
-            (item for item in state.get("stores", [])
-             if item.get("publicCode") == public_code),
-            None,
-        )
+        matches = [item for item in state.get("stores", [])
+                   if item.get("publicCode") == public_code]
+        if len(matches) != 1:
+            return []
+        store = matches[0]
     if not store:
         return None
     if _store_is_unavailable(store):
