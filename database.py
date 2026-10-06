@@ -847,6 +847,80 @@ def get_default_ad_target_store():
     return row
 
 
+def _preflight_coupon_store_targets(conn, stores, coupons):
+    """Validate coupon target changes before the state transaction writes them."""
+    coupon_ids = list(dict.fromkeys(
+        str(coupon.get("id")) for coupon in coupons
+        if coupon.get("id") is not None and str(coupon.get("id"))
+    ))
+    existing_coupons = {}
+    if coupon_ids:
+        rows = conn.execute(
+            "SELECT id, store_id FROM coupons "
+            "WHERE id = ANY(%s) AND deleted_at IS NULL ORDER BY id FOR UPDATE",
+            (coupon_ids,),
+        ).fetchall()
+        existing_coupons = {str(row["id"]): row.get("store_id") for row in rows}
+
+    # Lock coupon rows before store rows, matching coupon-event lock order.
+    stored_stores = conn.execute(
+        "SELECT id, name, archived_at FROM stores ORDER BY id FOR UPDATE"
+    ).fetchall()
+    store_rows = {
+        str(row["id"]): {
+            "id": str(row["id"]), "name": row["name"],
+            "archived": row["archived_at"] is not None,
+        }
+        for row in stored_stores
+    }
+    for store in stores:
+        store_id = str(store.get("id") or store.get("name") or "store")
+        prior = store_rows.get(store_id, {})
+        store_rows[store_id] = {
+            "id": store_id,
+            "name": store.get("name", prior.get("name", "")),
+            # The persisted DB value is authoritative, while an archive in
+            # this same state payload must not be combined with a new coupon link.
+            "archived": prior.get("archived", False) or store.get("archivedAt") is not None,
+        }
+
+    stores_by_name = {}
+    for store_id, store in store_rows.items():
+        stores_by_name.setdefault(store["name"], []).append(store_id)
+
+    targets = {}
+    for coupon in coupons:
+        coupon_id = str(coupon.get("id") or "")
+        if not coupon_id:
+            continue
+        old_store_id = existing_coupons.get(coupon_id)
+        old_store_id = str(old_store_id) if old_store_id is not None else None
+        raw_store_id = coupon.get("storeId")
+        if raw_store_id:
+            target_store_id = str(raw_store_id)
+        else:
+            store_name = coupon.get("store")
+            matches = stores_by_name.get(store_name, []) if store_name else []
+            if len(matches) > 1:
+                # A legacy name may preserve a known existing ID, but must not
+                # select an arbitrary same-name store for a new/changed link.
+                if old_store_id in matches:
+                    target_store_id = old_store_id
+                else:
+                    if any(store_rows[match]["archived"] for match in matches):
+                        raise StoreInactiveError("store_inactive")
+                    raise ValueError("ambiguous coupon store name")
+            else:
+                target_store_id = matches[0] if matches else None
+
+        target = store_rows.get(target_store_id) if target_store_id is not None else None
+        if (target and target["archived"]
+                and target_store_id != old_store_id):
+            raise StoreInactiveError("store_inactive")
+        targets[coupon_id] = target_store_id
+    return targets
+
+
 def save_state(data):
     """Persist the current admin UI state without changing its API contract."""
     design = data.get("design") or {}
@@ -860,6 +934,10 @@ def save_state(data):
             ).fetchone()
             current_default_store_id = current_ad.get("store_id") if current_ad else None
             preexisting_store_id = _store_ids(conn).get(ad.get("store"))
+            coupons = data.get("coupons", [])
+            coupon_store_targets = _preflight_coupon_store_targets(
+                conn, stores, coupons
+            )
             preexisting_target_store = None
             existing_default_assignment = None
             if preexisting_store_id:
@@ -941,11 +1019,11 @@ def save_state(data):
                     "INSERT INTO campaign_stores (campaign_id, store_id) VALUES (%s, %s) ON CONFLICT DO NOTHING",
                     (campaign_id, target_id),
                 )
-            for coupon in data.get("coupons", []):
+            for coupon in coupons:
                 coupon_id = str(coupon.get("id") or "")
                 if not coupon_id:
                     continue
-                coupon_store_id = coupon.get("storeId") or store_ids.get(coupon.get("store"))
+                coupon_store_id = coupon_store_targets[coupon_id]
                 conn.execute(
                     "INSERT INTO coupons (id, ad_id, store_id, title, code, description, discount_type, "
                     "discount_value, terms, starts_on, ends_on, status) "

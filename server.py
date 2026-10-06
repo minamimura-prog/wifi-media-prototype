@@ -298,6 +298,64 @@ def load_state():
     data.setdefault("coupon_events", [])
     return data
 
+
+def _json_coupon_target(coupon, stores):
+    """Resolve a JSON coupon target by ID first, then an unambiguous legacy name."""
+    store_id = coupon.get("storeId") or coupon.get("store_id")
+    if store_id:
+        return str(store_id), []
+    store_name = coupon.get("store")
+    if not store_name:
+        return None, []
+    matches = [
+        str(store.get("id") or store.get("name") or "store")
+        for store in stores if store.get("name") == store_name
+    ]
+    return (matches[0] if len(matches) == 1 else None), matches
+
+
+def _validate_json_coupon_archive_assignments(data, current_state):
+    """Reject only coupon links newly targeting archived stores in JSON mode."""
+    current_stores = current_state.get("stores", [])
+    requested_stores = data.get("stores", [])
+    archived_store_ids = {
+        str(store.get("id") or store.get("name") or "store")
+        for store in current_stores + requested_stores
+        if store.get("archivedAt", store.get("archived_at")) is not None
+    }
+    current_coupons = {
+        str(coupon.get("id")): coupon
+        for coupon in current_state.get("coupons", [])
+        if coupon.get("id") is not None
+    }
+    for coupon in data.get("coupons", []):
+        coupon_id = str(coupon.get("id") or "")
+        if not coupon_id:
+            continue
+        old_coupon = current_coupons.get(coupon_id)
+        old_store_id, old_name_matches = (
+            _json_coupon_target(old_coupon, current_stores)
+            if old_coupon else (None, [])
+        )
+        target_store_id, name_matches = _json_coupon_target(coupon, requested_stores)
+        if len(name_matches) > 1:
+            unchanged_legacy_reference = bool(
+                old_coupon
+                and not (old_coupon.get("storeId") or old_coupon.get("store_id"))
+                and not (coupon.get("storeId") or coupon.get("store_id"))
+                and old_coupon.get("store") == coupon.get("store")
+                and old_name_matches == name_matches
+            )
+            if unchanged_legacy_reference:
+                continue
+            if archived_store_ids.intersection(name_matches):
+                raise database.StoreInactiveError("store_inactive")
+            raise ValueError("ambiguous coupon store name")
+        if (target_store_id in archived_store_ids
+                and target_store_id != old_store_id):
+            raise database.StoreInactiveError("store_inactive")
+
+
 def save_state(data, preserve_latest_events=True):
     if database.database_enabled():
         return database.save_state(data)
@@ -325,6 +383,7 @@ def save_state(data, preserve_latest_events=True):
     )
     if target_is_not_active and current_store != requested_store:
         raise database.StoreInactiveError("store_inactive")
+    _validate_json_coupon_archive_assignments(data, current_state)
     # The admin page submits a cached snapshot; retain newer events recorded
     # after that snapshot was loaded.
     if preserve_latest_events:
