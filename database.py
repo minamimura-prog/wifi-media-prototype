@@ -1604,26 +1604,32 @@ def record_event(event_type, store_name, ad_id="main", occurred_at=None, *, lega
     occurred_at = occurred_at or datetime.now(timezone.utc)
     with pool().connection() as conn:
         with conn.transaction():
-            # The browser's store value may be absent or stale. Prefer the
-            # store currently configured for this ad, using the submitted
-            # value only when this ad has no configured store.
+            # Read the ad target first, but do not let it override a concrete
+            # store name supplied by the caller. The ad target is only a
+            # fallback for omitted/unassigned legacy values.
             ad = conn.execute(
                 "SELECT s.id, s.name FROM ads a LEFT JOIN stores s ON s.id = a.store_id "
                 "WHERE a.id = %s",
                 (ad_id,),
             ).fetchone()
-            if ad and ad["name"]:
-                store_name = ad["name"]
-            elif not store_name or store_name == "未設定":
-                store_name = "未設定"
-            if ad and ad["id"]:
-                store = conn.execute(
-                    "SELECT id, name, status, company_id, archived_at FROM stores WHERE id = %s FOR UPDATE", (ad["id"],)
-                ).fetchone()
-            else:
-                if not store_name or store_name == "未設定":
-                    # Preserve the true global/unassigned event path without
-                    # resolving the display placeholder as a store name.
+            if store_name not in (None, "") and not isinstance(store_name, str):
+                raise LookupError("invalid store name")
+            explicit_store_name = (
+                isinstance(store_name, str) and bool(store_name) and store_name != "未設定"
+            )
+            requested_store = None
+            if legacy_import:
+                # Keep the one-time historical import behavior unchanged.
+                if ad and ad.get("name"):
+                    store_name = ad["name"]
+                elif not store_name or store_name == "未設定":
+                    store_name = "未設定"
+                if ad and ad.get("id"):
+                    store = conn.execute(
+                        "SELECT id, name, status, company_id, archived_at FROM stores "
+                        "WHERE id = %s FOR UPDATE", (ad["id"],)
+                    ).fetchone()
+                elif not store_name or store_name == "未設定":
                     store = None
                 else:
                     name_matches = conn.execute(
@@ -1631,16 +1637,36 @@ def record_event(event_type, store_name, ad_id="main", occurred_at=None, *, lega
                         "WHERE name = %s ORDER BY id FOR UPDATE",
                         (store_name,),
                     ).fetchall()
-                    if len(name_matches) != 1:
-                        if not legacy_import:
-                            raise LookupError(
-                                "store name must resolve to exactly one store"
-                            )
-                        # Legacy imports must not pick an arbitrary same-name
-                        # store; retain the event as unresolved historical data.
-                        store = None
-                    else:
-                        store = name_matches[0]
+                    store = name_matches[0] if len(name_matches) == 1 else None
+            elif explicit_store_name:
+                name_matches = conn.execute(
+                    "SELECT id, name, status, company_id, archived_at FROM stores "
+                    "WHERE name = %s ORDER BY id FOR UPDATE",
+                    (store_name,),
+                ).fetchall()
+                if len(name_matches) != 1:
+                    raise LookupError("store name must resolve to exactly one store")
+                requested_store = name_matches[0]
+
+                if requested_store and ad and ad.get("id"):
+                    if str(ad["id"]) != str(requested_store["id"]):
+                        raise StoreMismatchError("store_mismatch")
+                    # The name lookup already locked and validated this row.
+                    store = requested_store
+                elif requested_store:
+                    store = requested_store
+            else:
+                if ad and ad.get("id"):
+                    store = conn.execute(
+                        "SELECT id, name, status, company_id, archived_at FROM stores "
+                        "WHERE id = %s FOR UPDATE", (ad["id"],)
+                    ).fetchone()
+                    store_name = ad.get("name") or store_name
+                else:
+                    # Preserve the true global/unassigned event path without
+                    # resolving the display placeholder as a store name.
+                    store = None
+                    store_name = "未設定"
             if not legacy_import and _store_is_unavailable(store):
                 raise StoreInactiveError("store_inactive")
             if store and store.get("name"):

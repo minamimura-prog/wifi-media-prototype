@@ -634,20 +634,42 @@ def record_event(event_type, store, ad_id="main"):
         return database.record_event(event_type, store, ad_id)
     with LOCK:
         data = load_state()
-        # Resolve the store from the current ad configuration when the page
-        # could not provide one (for example, while an old config is loading).
-        if not store or store == "未設定":
-            ad = data.get("ad", {})
-            if str(ad.get("id") or "main") == str(ad_id):
-                store = ad.get("store")
+        stores = data.get("stores", [])
+        if store not in (None, "") and not isinstance(store, str):
+            raise LookupError("invalid store name")
+        explicit_store = isinstance(store, str) and bool(store) and store != "未設定"
+        requested_store = None
+        if explicit_store:
+            requested_matches = [item for item in stores if item.get("name") == store]
+            if len(requested_matches) != 1:
+                raise LookupError("store name must resolve to exactly one store")
+            requested_store = requested_matches[0]
+
+        ad = data.get("ad", {})
+        if str(ad.get("id") or "main") == str(ad_id):
+            ad_store_name = ad.get("store")
+        else:
+            ad_store_name = None
+
+        if explicit_store:
+            # Never replace a caller's explicit store with the default ad's
+            # target. If both identify stores, they must identify the same ID.
+            if ad_store_name not in (None, "", "未設定"):
+                ad_matches = [item for item in stores if item.get("name") == ad_store_name]
+                if (len(ad_matches) != 1
+                        or str(ad_matches[0].get("id")) != str(requested_store.get("id"))):
+                    raise database.StoreMismatchError("store_mismatch")
+            resolved_store = requested_store
+            store = resolved_store.get("name")
+        else:
+            # Resolve from the current ad configuration only when the page
+            # omitted a store or supplied the legacy unassigned placeholder.
+            store = ad_store_name
         if not store or store == "未設定":
             # An explicitly unassigned/global ad has no store attribution.
             resolved_store = None
-        else:
-            name_matches = [
-                item for item in data.get("stores", [])
-                if item.get("name") == store
-            ]
+        elif not explicit_store:
+            name_matches = [item for item in stores if item.get("name") == store]
             if len(name_matches) != 1:
                 raise LookupError("store name must resolve to exactly one store")
             resolved_store = name_matches[0]
@@ -1741,6 +1763,8 @@ class Handler(BaseHTTPRequestHandler):
                     return self.send_json({"ok": True})
                 try:
                     record_event(event_type, payload.get("store", ""), payload.get("adId", "main"))
+                except database.StoreMismatchError:
+                    return self.send_json({"ok": False, "error": "store_mismatch"}, 409)
                 except database.StoreInactiveError:
                     return self.send_json({"ok": False, "error": "store_inactive"}, 409)
                 return self.send_json({"ok": True})
