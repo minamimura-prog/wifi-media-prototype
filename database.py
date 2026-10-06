@@ -62,6 +62,14 @@ class CampaignArchivedError(Exception):
     """Raised when an archived campaign is submitted for a content update."""
 
 
+class CampaignStatusTransitionError(Exception):
+    """Raised when a campaign status transition is not permitted."""
+
+
+class InvalidCampaignStatusError(ValueError):
+    """Raised when a campaign status request is not a known status string."""
+
+
 def _validate_campaign_for_write(campaign):
     """Validate the campaign state and keep the legacy publication flag aligned."""
     if not isinstance(campaign, dict):
@@ -83,6 +91,127 @@ def _default_ad_campaign_status(ad):
             raise ValueError("invalid default ad status")
         return status
     return "active" if ad.get("published") is True else "draft"
+
+
+_CAMPAIGN_STATUS_TRANSITIONS = {
+    "draft": frozenset({"active", "archived"}),
+    "active": frozenset({"paused", "archived"}),
+    "paused": frozenset({"active", "archived"}),
+    "archived": frozenset(),
+}
+
+
+def _validate_campaign_status_transition(current_status, requested_status):
+    if current_status not in CAMPAIGN_STATUSES:
+        raise CampaignStatusTransitionError("unknown current campaign status")
+    if not isinstance(requested_status, str) or requested_status not in CAMPAIGN_STATUSES:
+        raise InvalidCampaignStatusError("invalid campaign status")
+    if requested_status not in _CAMPAIGN_STATUS_TRANSITIONS[current_status]:
+        raise CampaignStatusTransitionError("campaign status transition is not allowed")
+
+
+def change_campaign_status(campaign_id, requested_status):
+    """Change campaign state and ad publication atomically after store checks."""
+    campaign_id = str(campaign_id)
+    with pool().connection() as conn:
+        with conn.transaction():
+            is_default = campaign_id == "default"
+            if is_default:
+                campaign = conn.execute(
+                    "SELECT id, ad_id, status FROM campaigns WHERE id = %s FOR UPDATE",
+                    (campaign_id,),
+                ).fetchone()
+                if not campaign:
+                    return None
+                _validate_campaign_status_transition(campaign.get("status"), requested_status)
+                if requested_status == "archived":
+                    raise CampaignStatusTransitionError(
+                        "the default campaign cannot be archived"
+                    )
+                ad = conn.execute(
+                    "SELECT id, published, store_id FROM ads WHERE id = %s FOR UPDATE",
+                    (str(campaign["ad_id"]),),
+                ).fetchone()
+                assignments = conn.execute(
+                    "SELECT store_id FROM campaign_stores WHERE campaign_id = %s "
+                    "ORDER BY store_id FOR UPDATE",
+                    (campaign_id,),
+                ).fetchall()
+                assignment_ids = {str(row["store_id"]) for row in assignments}
+                ad_store_id = str(ad["store_id"]) if ad and ad.get("store_id") is not None else None
+                if ad_store_id is not None and assignment_ids and assignment_ids != {ad_store_id}:
+                    raise CampaignStatusTransitionError("campaign store relation is inconsistent")
+                related_store_ids = assignment_ids | ({ad_store_id} if ad_store_id is not None else set())
+                related_stores = []
+                if related_store_ids:
+                    related_stores = conn.execute(
+                        "SELECT id, archived_at FROM stores WHERE id = ANY(%s) "
+                        "ORDER BY id FOR UPDATE",
+                        (sorted(related_store_ids),),
+                    ).fetchall()
+                    if {str(row["id"]) for row in related_stores} != related_store_ids:
+                        raise CampaignStatusTransitionError("campaign store relation is invalid")
+            else:
+                # Store-campaign writes lock store rows before campaign rows.
+                # Read associations first, then acquire locks in that same order.
+                initial_campaign = conn.execute(
+                    "SELECT id, ad_id FROM campaigns WHERE id = %s",
+                    (campaign_id,),
+                ).fetchone()
+                if not initial_campaign:
+                    return None
+                initial_assignments = conn.execute(
+                    "SELECT store_id FROM campaign_stores WHERE campaign_id = %s "
+                    "ORDER BY store_id",
+                    (campaign_id,),
+                ).fetchall()
+                related_store_ids = {str(row["store_id"]) for row in initial_assignments}
+                if not related_store_ids:
+                    raise CampaignStatusTransitionError("campaign has no store assignment")
+                related_stores = conn.execute(
+                    "SELECT id, archived_at FROM stores WHERE id = ANY(%s) "
+                    "ORDER BY id FOR UPDATE",
+                    (sorted(related_store_ids),),
+                ).fetchall()
+                if {str(row["id"]) for row in related_stores} != related_store_ids:
+                    raise CampaignStatusTransitionError("campaign store relation is invalid")
+                assignments = conn.execute(
+                    "SELECT store_id FROM campaign_stores WHERE campaign_id = %s "
+                    "ORDER BY store_id FOR UPDATE",
+                    (campaign_id,),
+                ).fetchall()
+                if {str(row["store_id"]) for row in assignments} != related_store_ids:
+                    raise CampaignStatusTransitionError("campaign store relation changed")
+                campaign = conn.execute(
+                    "SELECT id, ad_id, status FROM campaigns WHERE id = %s FOR UPDATE",
+                    (campaign_id,),
+                ).fetchone()
+                if not campaign:
+                    return None
+                if str(campaign["ad_id"]) != str(initial_campaign["ad_id"]):
+                    raise CampaignStatusTransitionError("campaign ad changed")
+                _validate_campaign_status_transition(campaign.get("status"), requested_status)
+                ad = conn.execute(
+                    "SELECT id, published, store_id FROM ads WHERE id = %s FOR UPDATE",
+                    (str(campaign["ad_id"]),),
+                ).fetchone()
+
+            if not ad:
+                raise CampaignStatusTransitionError("campaign ad is missing")
+            if any(store.get("archived_at") is not None for store in related_stores):
+                raise StoreInactiveError("store_inactive")
+
+            published = requested_status == "active"
+            conn.execute(
+                "UPDATE campaigns SET status = %s, updated_at = now() WHERE id = %s",
+                (requested_status, campaign_id),
+            )
+            conn.execute(
+                "UPDATE ads SET published = %s, updated_at = now() WHERE id = %s",
+                (published, str(campaign["ad_id"])),
+            )
+    return {"campaign_id": campaign_id, "status": requested_status,
+            "published": published}
 
 
 _STORE_CAMPAIGN_IDEMPOTENCY_MAX_KEY_LENGTH = 255
@@ -847,6 +976,10 @@ def update_store_campaign(store_id, campaign_id, campaign):
                 return None
             if current.get("status") == "archived":
                 raise CampaignArchivedError("campaign_archived")
+            if campaign["status"] != current.get("status"):
+                raise CampaignStatusTransitionError(
+                    "campaign status must use the status endpoint"
+                )
             if campaign["status"] == "archived":
                 unchanged = (
                     campaign["name"] == current["campaign_name"]
@@ -1174,6 +1307,11 @@ def save_state(data):
                 )
             ad["status"] = campaign_status
             ad["published"] = campaign_status == "active"
+            if (current_default_campaign
+                    and campaign_status != current_default_campaign.get("status")):
+                raise CampaignStatusTransitionError(
+                    "campaign status must use the status endpoint"
+                )
             if ad_id != current_default_ad_id:
                 conn.execute(
                     "SELECT id FROM ads WHERE id = %s FOR UPDATE", (ad_id,)

@@ -60,6 +60,15 @@ def _admin_store_lifecycle_route(path):
     return (store_id, parts[5]) if store_id is not None else None
 
 
+def _admin_campaign_status_route(path):
+    parts = path.split("/")
+    if (len(parts) != 6 or parts[:4] != ["", "api", "admin", "campaigns"]
+            or parts[5] != "status"):
+        return None
+    campaign_id = _safe_admin_route_id(parts[4])
+    return campaign_id if campaign_id is not None else None
+
+
 def _validate_admin_company(payload):
     if not isinstance(payload, dict):
         raise ValueError("invalid payload")
@@ -613,6 +622,34 @@ def _change_json_store_lifecycle(store_id, action):
         return True
 
 
+def _change_json_campaign_status(campaign_id, requested_status):
+    """Safely change only the JSON fallback's default ad campaign state."""
+    if campaign_id != "default":
+        return None
+    with LOCK, STATE_SAVE_LOCK:
+        data = load_state()
+        ad = data.get("ad")
+        if not isinstance(ad, dict):
+            return None
+        current_status = database._default_ad_campaign_status(ad)
+        database._validate_campaign_status_transition(current_status, requested_status)
+        if requested_status == "archived":
+            raise database.CampaignStatusTransitionError(
+                "the default campaign cannot be archived"
+            )
+        target_id, target_store = _resolve_json_default_ad_target(ad, data.get("stores", []))
+        if target_id is not None and target_store is None:
+            raise database.CampaignStatusTransitionError("campaign store relation is invalid")
+        if (target_store
+                and target_store.get("archivedAt", target_store.get("archived_at")) is not None):
+            raise database.StoreInactiveError("store_inactive")
+        ad["status"] = requested_status
+        ad["published"] = requested_status == "active"
+        _write_json_state(data)
+        return {"campaign_id": campaign_id, "status": requested_status,
+                "published": ad["published"]}
+
+
 def save_state(data, preserve_latest_events=True):
     if database.database_enabled():
         return database.save_state(data)
@@ -639,6 +676,13 @@ def _save_json_state(data, preserve_latest_events=True):
             current_state = json.load(f)
     except (OSError, json.JSONDecodeError):
         current_state = {}
+    current_ad = current_state.get("ad")
+    if isinstance(current_ad, dict):
+        persisted_status = database._default_ad_campaign_status(current_ad)
+        if requested_ad.get("status") != persisted_status:
+            raise database.CampaignStatusTransitionError(
+                "campaign status must use the status endpoint"
+            )
     _preserve_json_store_archive_state(data, current_state)
     _validate_json_store_identity_uniqueness(data.get("stores", []), current_state)
     _validate_json_archived_default_ad(data, current_state)
@@ -1728,6 +1772,8 @@ class Handler(BaseHTTPRequestHandler):
             return self.send_json({"ok": False, "error": "store_campaign_conflict"}, 409)
         except database.CampaignArchivedError:
             return self.send_json({"ok": False, "error": "campaign_archived"}, 409)
+        except database.CampaignStatusTransitionError:
+            return self.send_json({"ok": False, "error": "campaign_status_conflict"}, 409)
         except database.StoreInactiveError:
             return self.send_json({"ok": False, "error": "store_inactive"}, 409)
         except Exception:
@@ -1793,6 +1839,38 @@ class Handler(BaseHTTPRequestHandler):
             if not found:
                 return self.send_json({"ok": False, "error": "store_not_found"}, 404)
             return self.send_json({"ok": True, "storeId": store_id})
+        campaign_status_id = _admin_campaign_status_route(path)
+        if campaign_status_id is not None:
+            if not self.require_admin_session(): return
+            if not self.require_same_origin(): return
+            payload, error_status = self.read_admin_json_payload()
+            if error_status:
+                return self.send_json({"ok": False, "error": "invalid_request"}, error_status)
+            if not isinstance(payload, dict) or set(payload) != {"status"}:
+                return self.send_json({"ok": False, "error": "invalid_request"}, 400)
+            try:
+                if database.database_enabled():
+                    result = database.change_campaign_status(
+                        campaign_status_id, payload["status"]
+                    )
+                else:
+                    result = _change_json_campaign_status(
+                        campaign_status_id, payload["status"]
+                    )
+            except database.StoreInactiveError:
+                return self.send_json({"ok": False, "error": "store_inactive"}, 409)
+            except database.CampaignStatusTransitionError:
+                return self.send_json({"ok": False, "error": "campaign_status_conflict"}, 409)
+            except database.InvalidCampaignStatusError:
+                return self.send_json({"ok": False, "error": "invalid_status"}, 400)
+            except Exception:
+                return self.send_json({"ok": False}, 503)
+            if result is None:
+                return self.send_json({"ok": False, "error": "not_found"}, 404)
+            return self.send_json({
+                "ok": True, "campaignId": result["campaign_id"],
+                "status": result["status"], "published": result["published"],
+            })
         if path == "/api/admin/companies":
             if not self.require_admin_session(): return
             if not self.require_same_origin(): return
@@ -1927,6 +2005,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send_json({"ok": True})
             except database.StoreInactiveError:
                 return self.send_json({"ok": False, "error": "store_inactive"}, 409)
+            except database.CampaignStatusTransitionError:
+                return self.send_json({"ok": False, "error": "campaign_status_conflict"}, 409)
             except Exception: return self.send_json({"ok": False}, 400)
         if path == "/api/upload":
             if not self.require_admin_session(): return
