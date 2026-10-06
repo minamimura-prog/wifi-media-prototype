@@ -921,6 +921,24 @@ def _preflight_coupon_store_targets(conn, stores, coupons):
     return targets
 
 
+def _validate_default_ad_archive_target(
+    store_row, current_default_store_id, assignment_ids, archived_store_ids_before_state
+):
+    if not store_row:
+        return
+    store_id = str(store_row["id"])
+    was_archived_before_state = store_id in archived_store_ids_before_state
+    if store_row.get("archived_at") is None and not was_archived_before_state:
+        return
+    existing_target_is_unambiguous = (
+        str(current_default_store_id or "") == store_id
+        and len(assignment_ids) <= 1
+        and (not assignment_ids or str(assignment_ids[0]) == store_id)
+    )
+    if not existing_target_is_unambiguous:
+        raise StoreInactiveError("store_inactive")
+
+
 def save_state(data):
     """Persist the current admin UI state without changing its API contract."""
     design = data.get("design") or {}
@@ -929,15 +947,41 @@ def save_state(data):
     with pool().connection() as conn:
         with conn.transaction():
             ad_id = str(ad.get("id") or "main")
-            current_ad = conn.execute(
-                "SELECT store_id FROM ads WHERE id = %s FOR UPDATE", (ad_id,)
+            current_default_campaign = conn.execute(
+                "SELECT ad_id FROM campaigns WHERE id = %s FOR UPDATE",
+                ("default",),
             ).fetchone()
+            current_default_ad_id = (
+                str(current_default_campaign["ad_id"]) if current_default_campaign else None
+            )
+            current_ad = None
+            if current_default_ad_id:
+                current_ad = conn.execute(
+                    "SELECT store_id FROM ads WHERE id = %s FOR UPDATE",
+                    (current_default_ad_id,),
+                ).fetchone()
+            if ad_id != current_default_ad_id:
+                conn.execute(
+                    "SELECT id FROM ads WHERE id = %s FOR UPDATE", (ad_id,)
+                ).fetchone()
             current_default_store_id = current_ad.get("store_id") if current_ad else None
+            default_assignment_rows = conn.execute(
+                "SELECT store_id FROM campaign_stores WHERE campaign_id = %s "
+                "ORDER BY store_id FOR UPDATE",
+                ("default",),
+            ).fetchall()
+            default_assignment_ids = [str(row["store_id"]) for row in default_assignment_rows]
             preexisting_store_id = _store_ids(conn).get(ad.get("store"))
             coupons = data.get("coupons", [])
             coupon_store_targets = _preflight_coupon_store_targets(
                 conn, stores, coupons
             )
+            archived_store_rows = conn.execute(
+                "SELECT id FROM stores WHERE archived_at IS NOT NULL ORDER BY id"
+            ).fetchall()
+            archived_store_ids_before_state = {
+                str(row["id"]) for row in archived_store_rows
+            }
             preexisting_target_store = None
             existing_default_assignment = None
             if preexisting_store_id:
@@ -945,10 +989,9 @@ def save_state(data):
                     "SELECT id, status FROM stores WHERE id = %s FOR UPDATE",
                     (str(preexisting_store_id),),
                 ).fetchone()
-                existing_default_assignment = conn.execute(
-                    "SELECT 1 FROM campaign_stores WHERE campaign_id = %s AND store_id = %s",
-                    ("default", str(preexisting_store_id)),
-                ).fetchone()
+                existing_default_assignment = (
+                    str(preexisting_store_id) in default_assignment_ids
+                )
             previously_configured_target = bool(
                 preexisting_store_id and (
                     str(current_default_store_id or "") == str(preexisting_store_id)
@@ -970,8 +1013,32 @@ def save_state(data):
                      _timestamp(store.get("archivedAt"))),
                 )
 
-            store_ids = _store_ids(conn)
-            store_id = store_ids.get(ad.get("store"))
+            requested_store_name = ad.get("store")
+            if requested_store_name is None or requested_store_name == "" or requested_store_name == "未設定":
+                store_id = None
+            elif not isinstance(requested_store_name, str):
+                raise ValueError("invalid default ad store")
+            else:
+                target_store_rows = conn.execute(
+                    "SELECT id, status, archived_at FROM stores WHERE name = %s "
+                    "ORDER BY id FOR UPDATE",
+                    (requested_store_name,),
+                ).fetchall()
+                if len(target_store_rows) != 1:
+                    if any(row.get("archived_at") is not None for row in target_store_rows):
+                        raise StoreInactiveError("store_inactive")
+                    raise ValueError("default ad store name must resolve to exactly one store")
+                target_store_row = target_store_rows[0]
+                store_id = str(target_store_row["id"])
+
+                # ads.store_id is exposed as the current default-ad target, while
+                # campaign_stores is also written by this endpoint. An archive
+                # target may only be retained when persisted references identify
+                # one unambiguous, existing store.
+                _validate_default_ad_archive_target(
+                    target_store_row, current_default_store_id, default_assignment_ids,
+                    archived_store_ids_before_state,
+                )
             target_store = None
             if store_id:
                 target_store = conn.execute(

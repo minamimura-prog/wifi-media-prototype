@@ -314,6 +314,97 @@ def _json_coupon_target(coupon, stores):
     return (matches[0] if len(matches) == 1 else None), matches
 
 
+def _resolve_json_default_ad_target(ad, stores):
+    """Resolve a default-ad target by explicit ID or its exact legacy name."""
+    if not isinstance(ad, dict):
+        raise ValueError("invalid default ad")
+    raw_store_id = ad.get("storeId")
+    if raw_store_id is None:
+        raw_store_id = ad.get("store_id")
+    if raw_store_id is not None:
+        if not str(raw_store_id).strip():
+            raise ValueError("invalid default ad store ID")
+        id_matches = [store for store in stores
+                      if str(store.get("id") or "") == str(raw_store_id)]
+        if len(id_matches) != 1:
+            raise ValueError("default ad store ID must resolve to exactly one store")
+        store = id_matches[0]
+        store_id = str(store.get("id") or "")
+        store_name = ad.get("store")
+        if store_name not in (None, "", "未設定"):
+            name_matches = [item for item in stores if item.get("name") == store_name]
+            if len(name_matches) != 1 or str(name_matches[0].get("id") or "") != store_id:
+                raise ValueError("default ad store ID and name do not match")
+        return store_id, store
+
+    store_name = ad.get("store")
+    if store_name is None or store_name == "" or store_name == "未設定":
+        return None, None
+    if not isinstance(store_name, str):
+        raise ValueError("invalid default ad store")
+    matches = [store for store in stores if store.get("name") == store_name]
+    if len(matches) != 1:
+        raise ValueError("default ad store name must resolve to exactly one store")
+    store = matches[0]
+    store_id = str(store.get("id") or store.get("name") or "store")
+    return store_id, store
+
+
+def _validate_json_default_ad_archive_assignment(data, current_state):
+    """Reject new JSON default-ad links to archived stores, preserving the same link."""
+    requested_ad = data.get("ad") or {}
+    current_ad = current_state.get("ad") or {}
+    requested_stores = data.get("stores", [])
+    current_stores = current_state.get("stores", [])
+    current_archived_ids = {
+        str(store.get("id") or store.get("name") or "store")
+        for store in current_stores
+        if store.get("archivedAt", store.get("archived_at")) is not None
+    }
+    try:
+        target_id, requested_target = _resolve_json_default_ad_target(
+            requested_ad, requested_stores
+        )
+    except ValueError as exc:
+        raw_store_id = requested_ad.get("storeId")
+        if raw_store_id is None:
+            raw_store_id = requested_ad.get("store_id")
+        if raw_store_id is not None:
+            possible_targets = [
+                store for store in current_stores + requested_stores
+                if str(store.get("id") or "") == str(raw_store_id)
+            ]
+        else:
+            store_name = requested_ad.get("store")
+            possible_targets = [
+                store for store in current_stores + requested_stores
+                if store_name not in (None, "", "未設定")
+                and store.get("name") == store_name
+            ]
+        if any(
+            store.get("archivedAt", store.get("archived_at")) is not None
+            for store in possible_targets
+        ):
+            raise database.StoreInactiveError("store_inactive") from exc
+        raise
+    if target_id is None:
+        return
+
+    requested_target_is_archived = bool(
+        requested_target
+        and requested_target.get("archivedAt", requested_target.get("archived_at")) is not None
+    )
+    if target_id not in current_archived_ids and not requested_target_is_archived:
+        return
+
+    try:
+        current_target_id, _ = _resolve_json_default_ad_target(current_ad, current_stores)
+    except ValueError as exc:
+        raise database.StoreInactiveError("store_inactive") from exc
+    if current_target_id != target_id:
+        raise database.StoreInactiveError("store_inactive")
+
+
 def _validate_json_coupon_archive_assignments(data, current_state):
     """Reject only coupon links newly targeting archived stores in JSON mode."""
     current_stores = current_state.get("stores", [])
@@ -383,6 +474,7 @@ def save_state(data, preserve_latest_events=True):
     )
     if target_is_not_active and current_store != requested_store:
         raise database.StoreInactiveError("store_inactive")
+    _validate_json_default_ad_archive_assignment(data, current_state)
     _validate_json_coupon_archive_assignments(data, current_state)
     # The admin page submits a cached snapshot; retain newer events recorded
     # after that snapshot was loaded.
