@@ -51,6 +51,36 @@ class StoreMismatchError(Exception):
     """Raised when a store coupon is used from a different public store page."""
 
 
+CAMPAIGN_STATUSES = frozenset({"draft", "active", "paused", "archived"})
+
+
+class CampaignArchivedError(Exception):
+    """Raised when an archived campaign is submitted for a content update."""
+
+
+def _validate_campaign_for_write(campaign):
+    """Validate the campaign state and keep the legacy publication flag aligned."""
+    if not isinstance(campaign, dict):
+        raise ValueError("invalid campaign")
+    status = campaign.get("status")
+    if not isinstance(status, str) or status not in CAMPAIGN_STATUSES:
+        raise ValueError("invalid campaign status")
+    if campaign.get("published") is not (status == "active"):
+        raise ValueError("campaign status and published flag do not match")
+
+
+def _default_ad_campaign_status(ad):
+    """Resolve default-ad status, retaining compatibility with legacy payloads."""
+    if not isinstance(ad, dict):
+        raise ValueError("invalid default ad")
+    if "status" in ad:
+        status = ad["status"]
+        if not isinstance(status, str) or status not in CAMPAIGN_STATUSES:
+            raise ValueError("invalid default ad status")
+        return status
+    return "active" if ad.get("published") is True else "draft"
+
+
 _STORE_CAMPAIGN_IDEMPOTENCY_MAX_KEY_LENGTH = 255
 
 
@@ -592,6 +622,7 @@ def create_store_campaign(store_id, campaign_id, ad_id, campaign):
     """Create an ad, campaign, and assignment atomically for one store."""
     if campaign_id == "default" or ad_id == "main":
         raise ValueError("reserved identifiers")
+    _validate_campaign_for_write(campaign)
     with pool().connection() as conn:
         with conn.transaction():
             store = conn.execute(
@@ -641,6 +672,7 @@ def create_store_campaign_idempotent(
         raise ValueError("invalid idempotency key")
     if campaign_id == "default" or ad_id == "main":
         raise ValueError("reserved identifiers")
+    _validate_campaign_for_write(campaign)
     payload_hash = _store_campaign_payload_hash(campaign)
     store_id = str(store_id)
     with pool().connection() as conn:
@@ -726,6 +758,7 @@ def update_store_campaign(store_id, campaign_id, campaign):
     """Update only an exclusively-owned, non-global campaign assigned to a store."""
     if campaign_id == "default":
         return None
+    _validate_campaign_for_write(campaign)
     with pool().connection() as conn:
         with conn.transaction():
             store = conn.execute(
@@ -737,8 +770,10 @@ def update_store_campaign(store_id, campaign_id, campaign):
             if store.get("archived_at") is not None:
                 raise StoreInactiveError("store_inactive")
             current = conn.execute(
-                "SELECT c.id AS campaign_id, c.ad_id, "
-                "COALESCE(a.media_url_mobile, '') AS media_url_mobile "
+                "SELECT c.id AS campaign_id, c.ad_id, c.status, c.name AS campaign_name, "
+                "c.starts_on AS campaign_starts_on, c.ends_on AS campaign_ends_on, "
+                "a.title, a.body, a.landing_url, a.media_url, "
+                "COALESCE(a.media_url_mobile, '') AS media_url_mobile, a.published "
                 "FROM campaign_stores cs "
                 "JOIN campaigns c ON c.id = cs.campaign_id "
                 "JOIN ads a ON a.id = c.ad_id "
@@ -751,6 +786,23 @@ def update_store_campaign(store_id, campaign_id, campaign):
             ).fetchone()
             if not current:
                 return None
+            if current.get("status") == "archived":
+                raise CampaignArchivedError("campaign_archived")
+            if campaign["status"] == "archived":
+                unchanged = (
+                    campaign["name"] == current["campaign_name"]
+                    and campaign["starts_on"] == current["campaign_starts_on"]
+                    and campaign["ends_on"] == current["campaign_ends_on"]
+                    and campaign["title"] == current["title"]
+                    and campaign["body"] == current["body"]
+                    and campaign["landing_url"] == current["landing_url"]
+                    and campaign["media_url"] == current["media_url"]
+                    and campaign.get("media_url_mobile", current["media_url_mobile"] or "")
+                        == (current["media_url_mobile"] or "")
+                    and campaign["published"] is False
+                )
+                if not unchanged:
+                    raise CampaignArchivedError("campaign archive must not change content")
             _ensure_store_campaign_period_available(
                 conn, store_id, campaign, exclude_campaign_id=current["campaign_id"]
             )
@@ -805,7 +857,8 @@ def load_state():
         ad = conn.execute(
             "SELECT a.id, a.store_id, a.title, a.body, a.landing_url, a.media_url, "
             "COALESCE(a.media_url_mobile, '') AS media_url_mobile, "
-            "a.starts_on, a.ends_on, a.published, s.name AS store_name "
+            "a.starts_on, a.ends_on, a.published, c.status AS campaign_status, "
+            "s.name AS store_name "
             "FROM campaigns c "
             "JOIN ads a ON a.id = c.ad_id "
             "LEFT JOIN stores s ON s.id = a.store_id "
@@ -839,6 +892,7 @@ def load_state():
         "mediaMobile": ad["media_url_mobile"] or "",
         "link": ad["landing_url"], "start": _date(ad["starts_on"]),
         "end": _date(ad["ends_on"]), "published": ad["published"],
+        "status": ad["campaign_status"],
     } if ad else {}
     return {
         "design": config.get("design", {}),
@@ -989,7 +1043,9 @@ def _validate_default_ad_archive_target(
         raise StoreInactiveError("store_inactive")
 
 
-def _validate_archived_default_ad_content(ad, ad_id, current_ad, current_default_ad_id):
+def _validate_archived_default_ad_content(
+    ad, ad_id, current_ad, current_default_ad_id, current_campaign_status
+):
     """Allow a same-target archived default ad only when its persisted content is unchanged."""
     if not current_ad or str(ad_id) != str(current_default_ad_id):
         raise StoreInactiveError("store_inactive")
@@ -1007,6 +1063,7 @@ def _validate_archived_default_ad_content(ad, ad_id, current_ad, current_default
         "starts_on": _date(ad.get("start")),
         "ends_on": _date(ad.get("end")),
         "published": bool(ad.get("published", False)),
+        "status": _default_ad_campaign_status(ad),
     }
     persisted = {
         "title": current_ad.get("title"),
@@ -1017,6 +1074,9 @@ def _validate_archived_default_ad_content(ad, ad_id, current_ad, current_default
         "starts_on": _date(current_ad.get("starts_on")),
         "ends_on": _date(current_ad.get("ends_on")),
         "published": bool(current_ad.get("published")),
+        "status": current_campaign_status or (
+            "active" if current_ad.get("published") is True else "draft"
+        ),
     }
     if requested != persisted:
         raise StoreInactiveError("store_inactive")
@@ -1026,12 +1086,14 @@ def save_state(data):
     """Persist the current admin UI state without changing its API contract."""
     design = data.get("design") or {}
     stores = data.get("stores") or []
-    ad = data.get("ad") or {}
+    ad = dict(data.get("ad") or {})
+    status_was_provided = "status" in ad
+    campaign_status = _default_ad_campaign_status(ad)
     with pool().connection() as conn:
         with conn.transaction():
             ad_id = str(ad.get("id") or "main")
             current_default_campaign = conn.execute(
-                "SELECT ad_id FROM campaigns WHERE id = %s FOR UPDATE",
+                "SELECT ad_id, status FROM campaigns WHERE id = %s FOR UPDATE",
                 ("default",),
             ).fetchone()
             current_default_ad_id = (
@@ -1044,6 +1106,15 @@ def save_state(data):
                     "starts_on, ends_on, published FROM ads WHERE id = %s FOR UPDATE",
                     (current_default_ad_id,),
                 ).fetchone()
+            if (not status_was_provided and current_default_campaign and current_ad
+                    and ad.get("published") is bool(current_ad.get("published"))):
+                persisted_status = current_default_campaign.get("status")
+                campaign_status = (
+                    persisted_status if persisted_status in CAMPAIGN_STATUSES
+                    else ("active" if current_ad.get("published") is True else "draft")
+                )
+            ad["status"] = campaign_status
+            ad["published"] = campaign_status == "active"
             if ad_id != current_default_ad_id:
                 conn.execute(
                     "SELECT id FROM ads WHERE id = %s FOR UPDATE", (ad_id,)
@@ -1055,6 +1126,83 @@ def save_state(data):
                 ("default",),
             ).fetchall()
             default_assignment_ids = [str(row["store_id"]) for row in default_assignment_rows]
+            preserve_archived_default = bool(
+                current_default_campaign
+                and current_default_campaign.get("status") == "archived"
+            )
+            archive_default_now = bool(
+                campaign_status == "archived" and not preserve_archived_default
+            )
+            if preserve_archived_default:
+                requested_target_id = None
+                requested_store_name = ad.get("store")
+                if requested_store_name not in (None, "", "未設定"):
+                    if not isinstance(requested_store_name, str):
+                        raise ValueError("invalid default ad store")
+                    archived_default_targets = conn.execute(
+                        "SELECT id FROM stores WHERE name = %s ORDER BY id FOR UPDATE",
+                        (requested_store_name,),
+                    ).fetchall()
+                    if len(archived_default_targets) != 1:
+                        raise ValueError("archived campaign target must remain unchanged")
+                    requested_target_id = str(archived_default_targets[0]["id"])
+                persisted_status = current_default_campaign.get("status")
+                persisted = {
+                    "title": current_ad.get("title") if current_ad else None,
+                    "body": current_ad.get("body") if current_ad else None,
+                    "link": current_ad.get("landing_url") if current_ad else None,
+                    "media": current_ad.get("media_url") if current_ad else None,
+                    "mediaMobile": (current_ad.get("media_url_mobile") or "") if current_ad else None,
+                    "start": _date(current_ad.get("starts_on")) if current_ad else None,
+                    "end": _date(current_ad.get("ends_on")) if current_ad else None,
+                    "status": persisted_status,
+                    "published": bool(current_ad.get("published")) if current_ad else None,
+                }
+                requested = {
+                    "title": ad.get("title", ""),
+                    "body": ad.get("body", ""),
+                    "link": ad.get("link", ""),
+                    "media": ad.get("media", ""),
+                    "mediaMobile": (ad.get("mediaMobile") or "") if "mediaMobile" in ad
+                                    else ((current_ad.get("media_url_mobile") or "") if current_ad else None),
+                    "start": _date(ad.get("start")),
+                    "end": _date(ad.get("end")),
+                    "status": campaign_status,
+                    "published": campaign_status == "active",
+                }
+                if (str(requested_target_id or "") != str(current_default_store_id or "")
+                        or requested != persisted):
+                    raise ValueError("archived campaign is read-only")
+            elif archive_default_now:
+                requested_target_id = None
+                requested_store_name = ad.get("store")
+                if requested_store_name not in (None, "", "未設定"):
+                    if not isinstance(requested_store_name, str):
+                        raise ValueError("invalid default ad store")
+                    archive_targets = conn.execute(
+                        "SELECT id FROM stores WHERE name = %s ORDER BY id FOR UPDATE",
+                        (requested_store_name,),
+                    ).fetchall()
+                    if len(archive_targets) != 1:
+                        raise ValueError("campaign archive target must remain unchanged")
+                    requested_target_id = str(archive_targets[0]["id"])
+                content_unchanged = bool(current_ad) and (
+                    str(ad_id) == str(current_default_ad_id)
+                    and str(requested_target_id or "") == str(current_default_store_id or "")
+                    and ad.get("title", "") == current_ad.get("title")
+                    and ad.get("body", "") == current_ad.get("body")
+                    and ad.get("link", "") == current_ad.get("landing_url")
+                    and ad.get("media", "") == current_ad.get("media_url")
+                    and ((ad.get("mediaMobile") or "") if "mediaMobile" in ad
+                         else (current_ad.get("media_url_mobile") or ""))
+                        == (current_ad.get("media_url_mobile") or "")
+                    and _date(ad.get("start")) == _date(current_ad.get("starts_on"))
+                    and _date(ad.get("end")) == _date(current_ad.get("ends_on"))
+                    and campaign_status == "archived"
+                    and ad.get("published") is False
+                )
+                if not content_unchanged:
+                    raise ValueError("campaign archive must not change content")
             preexisting_store_id = _store_ids(conn).get(ad.get("store"))
             coupons = data.get("coupons", [])
             coupon_store_targets = _preflight_coupon_store_targets(
@@ -1078,7 +1226,8 @@ def save_state(data):
                     if (requested_target_id == str(current_default_store_id or "")
                             and requested_target_id in archived_store_ids_before_state):
                         _validate_archived_default_ad_content(
-                            ad, ad_id, current_ad, current_default_ad_id
+                            ad, ad_id, current_ad, current_default_ad_id,
+                            current_default_campaign.get("status"),
                         )
             preexisting_target_store = None
             existing_default_assignment = None
@@ -1155,36 +1304,39 @@ def save_state(data):
             )
             if target_store and not active_for_new_assignment and not previously_configured_target:
                 raise StoreInactiveError("store_inactive")
-            has_mobile_media = "mediaMobile" in ad
-            mobile_media = ad.get("mediaMobile") or ""
-            conn.execute(
-                "INSERT INTO ads (id, store_id, title, body, landing_url, media_url, media_url_mobile, starts_on, ends_on, published) "
-                "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s) "
-                "ON CONFLICT (id) DO UPDATE SET store_id=EXCLUDED.store_id, title=EXCLUDED.title, "
-                "body=EXCLUDED.body, landing_url=EXCLUDED.landing_url, media_url=EXCLUDED.media_url, "
-                "media_url_mobile=CASE WHEN %s THEN EXCLUDED.media_url_mobile ELSE ads.media_url_mobile END, "
-                "starts_on=EXCLUDED.starts_on, ends_on=EXCLUDED.ends_on, published=EXCLUDED.published, updated_at=now()",
-                (ad_id, store_id, ad.get("title", ""), ad.get("body", ""), ad.get("link", ""),
-                 ad.get("media", ""), mobile_media, _date(ad.get("start")), _date(ad.get("end")),
-                 bool(ad.get("published", False)), has_mobile_media),
-            )
             campaign_id = "default"
-            conn.execute(
-                "INSERT INTO campaigns (id, ad_id, name, starts_on, ends_on, status) "
-                "VALUES (%s, %s, %s, %s, %s, %s) "
-                "ON CONFLICT (id) DO UPDATE SET ad_id=EXCLUDED.ad_id, name=EXCLUDED.name, "
-                "starts_on=EXCLUDED.starts_on, ends_on=EXCLUDED.ends_on, status=EXCLUDED.status, updated_at=now()",
-                (campaign_id, ad_id, ad.get("title", ""), _date(ad.get("start")), _date(ad.get("end")),
-                 "active" if ad.get("published") else "draft"),
-            )
+            if not preserve_archived_default:
+                has_mobile_media = "mediaMobile" in ad
+                mobile_media = ad.get("mediaMobile") or ""
+                conn.execute(
+                    "INSERT INTO ads (id, store_id, title, body, landing_url, media_url, media_url_mobile, starts_on, ends_on, published) "
+                    "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s) "
+                    "ON CONFLICT (id) DO UPDATE SET store_id=EXCLUDED.store_id, title=EXCLUDED.title, "
+                    "body=EXCLUDED.body, landing_url=EXCLUDED.landing_url, media_url=EXCLUDED.media_url, "
+                    "media_url_mobile=CASE WHEN %s THEN EXCLUDED.media_url_mobile ELSE ads.media_url_mobile END, "
+                    "starts_on=EXCLUDED.starts_on, ends_on=EXCLUDED.ends_on, published=EXCLUDED.published, updated_at=now()",
+                    (ad_id, store_id, ad.get("title", ""), ad.get("body", ""), ad.get("link", ""),
+                     ad.get("media", ""), mobile_media, _date(ad.get("start")), _date(ad.get("end")),
+                     campaign_status == "active", has_mobile_media),
+                )
+                conn.execute(
+                    "INSERT INTO campaigns (id, ad_id, name, starts_on, ends_on, status) "
+                    "VALUES (%s, %s, %s, %s, %s, %s) "
+                    "ON CONFLICT (id) DO UPDATE SET ad_id=EXCLUDED.ad_id, name=EXCLUDED.name, "
+                    "starts_on=EXCLUDED.starts_on, ends_on=EXCLUDED.ends_on, status=EXCLUDED.status, updated_at=now()",
+                    (campaign_id, ad_id, ad.get("title", ""), _date(ad.get("start")), _date(ad.get("end")),
+                     campaign_status),
+                )
             target_id = store_id
             preserve_stopped_default_assignment = bool(
                 target_store and not active_for_new_assignment
                 and previously_configured_target
             )
-            if not preserve_stopped_default_assignment:
+            if (not preserve_stopped_default_assignment and not preserve_archived_default
+                    and not archive_default_now):
                 conn.execute("DELETE FROM campaign_stores WHERE campaign_id = %s", (campaign_id,))
-            if target_id and not preserve_stopped_default_assignment:
+            if (target_id and not preserve_stopped_default_assignment
+                    and not preserve_archived_default and not archive_default_now):
                 conn.execute(
                     "INSERT INTO campaign_stores (campaign_id, store_id) VALUES (%s, %s) ON CONFLICT DO NOTHING",
                     (campaign_id, target_id),

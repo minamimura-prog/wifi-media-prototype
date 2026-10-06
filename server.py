@@ -21,7 +21,7 @@ PORT = int(os.environ.get("PORT", "5050"))
 ALLOWED = {".gif", ".jpg", ".jpeg", ".png", ".webp"}
 MAX_BYTES = 12 * 1024 * 1024
 ADMIN_CAMPAIGN_MAX_BYTES = 64 * 1024
-ADMIN_CAMPAIGN_STATUSES = {"draft", "active"}
+ADMIN_CAMPAIGN_STATUSES = database.CAMPAIGN_STATUSES
 IDEMPOTENCY_KEY_PATTERN = re.compile(r"^[A-Za-z0-9._~:-]{16,255}$")
 LOCK = threading.RLock()
 STATE_SAVE_LOCK = LOCK
@@ -138,6 +138,8 @@ def _validate_admin_campaign(payload):
         raise ValueError("invalid status")
     if type(payload["published"]) is not bool:
         raise ValueError("invalid published")
+    if payload["published"] is not (payload["status"] == "active"):
+        raise ValueError("status and published must agree")
 
     starts_on = _parse_admin_campaign_date(payload.get("startsOn"), "startsOn")
     ends_on = _parse_admin_campaign_date(payload.get("endsOn"), "endsOn")
@@ -415,14 +417,31 @@ def _validate_json_default_ad_archive_assignment(data, current_state):
     if current_target_id != target_id:
         raise database.StoreInactiveError("store_inactive")
     target_fields = {"store", "storeId", "store_id"}
+    current_ad_content = dict(current_ad)
+    current_ad_content["status"] = database._default_ad_campaign_status(current_ad)
+    requested_ad_content = dict(requested_ad)
+    requested_ad_content["status"] = database._default_ad_campaign_status(requested_ad)
     current_content = {
-        key: value for key, value in current_ad.items() if key not in target_fields
+        key: value for key, value in current_ad_content.items() if key not in target_fields
     }
     requested_content = {
-        key: value for key, value in requested_ad.items() if key not in target_fields
+        key: value for key, value in requested_ad_content.items() if key not in target_fields
     }
     if current_content != requested_content:
         raise database.StoreInactiveError("store_inactive")
+
+
+def _validate_json_archived_default_ad(data, current_state):
+    """Keep an archived default campaign fully read-only in JSON state saves."""
+    current_ad = current_state.get("ad") or {}
+    if database._default_ad_campaign_status(current_ad) != "archived":
+        return
+    requested_ad = data.get("ad") or {}
+    current = dict(current_ad)
+    current["status"] = "archived"
+    current["published"] = False
+    if requested_ad != current:
+        raise ValueError("archived campaign is read-only")
 
 
 def _validate_json_coupon_archive_assignments(data, current_state):
@@ -602,6 +621,13 @@ def save_state(data, preserve_latest_events=True):
 
 
 def _save_json_state(data, preserve_latest_events=True):
+    requested_ad = data.get("ad") or {}
+    if not isinstance(requested_ad, dict):
+        raise ValueError("invalid default ad")
+    requested_ad = dict(requested_ad)
+    requested_ad["status"] = database._default_ad_campaign_status(requested_ad)
+    requested_ad["published"] = requested_ad["status"] == "active"
+    data["ad"] = requested_ad
     requested_store = (data.get("ad") or {}).get("store")
     requested_store_record = next(
         (store for store in data.get("stores", [])
@@ -615,6 +641,7 @@ def _save_json_state(data, preserve_latest_events=True):
         current_state = {}
     _preserve_json_store_archive_state(data, current_state)
     _validate_json_store_identity_uniqueness(data.get("stores", []), current_state)
+    _validate_json_archived_default_ad(data, current_state)
     current_store = (current_state.get("ad") or {}).get("store")
     current_store_record = next(
         (store for store in current_state.get("stores", [])
@@ -1651,6 +1678,8 @@ class Handler(BaseHTTPRequestHandler):
             updated = database.update_store_campaign(store_id, campaign_id, campaign)
         except database.StoreCampaignConflictError:
             return self.send_json({"ok": False, "error": "store_campaign_conflict"}, 409)
+        except database.CampaignArchivedError:
+            return self.send_json({"ok": False, "error": "campaign_archived"}, 409)
         except database.StoreInactiveError:
             return self.send_json({"ok": False, "error": "store_inactive"}, 409)
         except Exception:
