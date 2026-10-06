@@ -627,10 +627,17 @@ def record_event(event_type, store, ad_id="main"):
             ad = data.get("ad", {})
             if str(ad.get("id") or "main") == str(ad_id):
                 store = ad.get("store")
-        resolved_store = next(
-            (item for item in data.get("stores", []) if item.get("name") == (store or "未設定")),
-            None,
-        )
+        if not store or store == "未設定":
+            # An explicitly unassigned/global ad has no store attribution.
+            resolved_store = None
+        else:
+            name_matches = [
+                item for item in data.get("stores", [])
+                if item.get("name") == store
+            ]
+            if len(name_matches) != 1:
+                raise LookupError("store name must resolve to exactly one store")
+            resolved_store = name_matches[0]
         if _store_is_unavailable(resolved_store):
             raise database.StoreInactiveError("store_inactive")
         events = data.setdefault("events", [])

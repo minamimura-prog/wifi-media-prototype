@@ -1621,10 +1621,26 @@ def record_event(event_type, store_name, ad_id="main", occurred_at=None, *, lega
                     "SELECT id, name, status, company_id, archived_at FROM stores WHERE id = %s FOR UPDATE", (ad["id"],)
                 ).fetchone()
             else:
-                store = conn.execute(
-                    "SELECT id, name, status, company_id, archived_at FROM stores WHERE name = %s ORDER BY id LIMIT 1 FOR UPDATE",
-                    (store_name,),
-                ).fetchone()
+                if not store_name or store_name == "未設定":
+                    # Preserve the true global/unassigned event path without
+                    # resolving the display placeholder as a store name.
+                    store = None
+                else:
+                    name_matches = conn.execute(
+                        "SELECT id, name, status, company_id, archived_at FROM stores "
+                        "WHERE name = %s ORDER BY id FOR UPDATE",
+                        (store_name,),
+                    ).fetchall()
+                    if len(name_matches) != 1:
+                        if not legacy_import:
+                            raise LookupError(
+                                "store name must resolve to exactly one store"
+                            )
+                        # Legacy imports must not pick an arbitrary same-name
+                        # store; retain the event as unresolved historical data.
+                        store = None
+                    else:
+                        store = name_matches[0]
             if not legacy_import and _store_is_unavailable(store):
                 raise StoreInactiveError("store_inactive")
             if store and store.get("name"):
