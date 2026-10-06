@@ -724,33 +724,25 @@ def record_event(event_type, store, ad_id="main"):
             requested_store = requested_matches[0]
 
         ad = data.get("ad", {})
-        if str(ad.get("id") or "main") == str(ad_id):
-            ad_store_name = ad.get("store")
-        else:
-            ad_store_name = None
+        if str(ad.get("id") or "main") != str(ad_id):
+            raise database.AdInactiveError("ad_inactive")
+        if not _json_ad_is_currently_deliverable(ad):
+            raise database.AdInactiveError("ad_inactive")
+        target_type, ad_target = _resolve_json_ad_event_target(ad, stores)
+        if target_type == "invalid":
+            raise database.AdInactiveError("ad_inactive")
 
         if explicit_store:
-            # Never replace a caller's explicit store with the default ad's
-            # target. If both identify stores, they must identify the same ID.
-            if ad_store_name not in (None, "", "未設定"):
-                ad_matches = [item for item in stores if item.get("name") == ad_store_name]
-                if (len(ad_matches) != 1
-                        or str(ad_matches[0].get("id")) != str(requested_store.get("id"))):
-                    raise database.StoreMismatchError("store_mismatch")
+            # Resolve the caller's explicit name first; never replace it with
+            # another target or a global attribution.
+            if (target_type == "store"
+                    and str(ad_target.get("id")) != str(requested_store.get("id"))):
+                raise database.StoreMismatchError("store_mismatch")
             resolved_store = requested_store
             store = resolved_store.get("name")
         else:
-            # Resolve from the current ad configuration only when the page
-            # omitted a store or supplied the legacy unassigned placeholder.
-            store = ad_store_name
-        if not store or store == "未設定":
-            # An explicitly unassigned/global ad has no store attribution.
-            resolved_store = None
-        elif not explicit_store:
-            name_matches = [item for item in stores if item.get("name") == store]
-            if len(name_matches) != 1:
-                raise LookupError("store name must resolve to exactly one store")
-            resolved_store = name_matches[0]
+            resolved_store = ad_target if target_type == "store" else None
+            store = resolved_store.get("name") if resolved_store else "未設定"
         if _store_is_unavailable(resolved_store):
             raise database.StoreInactiveError("store_inactive")
         events = data.setdefault("events", [])
@@ -855,46 +847,64 @@ def _campaign_date(value):
     return None, False
 
 def _campaign_is_deliverable(campaign, today):
-    if campaign.get("campaign_status") != "active" or campaign.get("published") is not True:
-        return False
-    starts_on, valid_start = _campaign_date(campaign.get("starts_on"))
-    ends_on, valid_end = _campaign_date(campaign.get("ends_on"))
-    ad_starts_on, valid_ad_start = _campaign_date(campaign.get("ad_starts_on"))
-    ad_ends_on, valid_ad_end = _campaign_date(campaign.get("ad_ends_on"))
-    if not valid_start or not valid_end or not valid_ad_start or not valid_ad_end:
-        return False
-    return all(
-        (start is None or start <= today) and (end is None or today <= end)
-        for start, end in ((starts_on, ends_on), (ad_starts_on, ad_ends_on))
-    )
+    return database.campaign_is_deliverable(campaign, today)
 
 
 def _json_default_ad_is_deliverable(data, ad, today=None):
     """Fail closed unless the JSON default ad is active, in-period, and global."""
-    try:
-        status = database._default_ad_campaign_status(ad)
-    except (TypeError, ValueError):
-        return False
-    if status != "active" or ad.get("published") is not True:
+    if not _json_ad_is_currently_deliverable(ad, today):
         return False
 
-    # In JSON state, "未設定" is the explicit shared-default marker. A named
-    # target, missing target, or ID-based target is not global for this route.
+    # "未設定" is the explicit JSON representation of a shared default ad.
     if ad.get("storeId") is not None or ad.get("store_id") is not None:
         return False
     if ad.get("store") != "未設定":
         return False
     if any(store.get("name") == "未設定" for store in data.get("stores", [])):
         return False
+    return True
 
+
+def _json_ad_is_currently_deliverable(ad, today=None):
+    """Check JSON ad state and current ad-period eligibility."""
+    try:
+        status = database._default_ad_campaign_status(ad)
+    except (TypeError, ValueError):
+        return False
+    if status != "active" or ad.get("published") is not True:
+        return False
     today = today or datetime.now(ZoneInfo("Asia/Tokyo")).date()
     start_value = ad.get("start")
     end_value = ad.get("end")
-    starts_on, valid_start = _campaign_date(None if start_value == "" else start_value)
-    ends_on, valid_end = _campaign_date(None if end_value == "" else end_value)
-    if not valid_start or not valid_end:
-        return False
-    return (starts_on is None or starts_on <= today) and (ends_on is None or today <= ends_on)
+    return database.campaign_is_deliverable({
+        "campaign_status": status, "published": ad.get("published"),
+        "starts_on": None, "ends_on": None,
+        "ad_starts_on": None if start_value == "" else start_value,
+        "ad_ends_on": None if end_value == "" else end_value,
+    }, today)
+
+
+def _resolve_json_ad_event_target(ad, stores):
+    """Resolve the JSON default-ad target by ID or unambiguous legacy name."""
+    target_id = ad.get("storeId")
+    if target_id is None:
+        target_id = ad.get("store_id")
+    if target_id is not None:
+        target_id = str(target_id).strip()
+        if not target_id:
+            return "invalid", None
+        matches = [store for store in stores
+                   if str(store.get("id") or "") == target_id]
+        return ("store", matches[0]) if len(matches) == 1 else ("invalid", None)
+
+    target_name = ad.get("store")
+    if target_name == "未設定":
+        matches = [store for store in stores if store.get("name") == target_name]
+        return ("invalid", None) if matches else ("global", None)
+    if not isinstance(target_name, str) or not target_name:
+        return "invalid", None
+    matches = [store for store in stores if store.get("name") == target_name]
+    return ("store", matches[0]) if len(matches) == 1 else ("invalid", None)
 
 def public_config_for_store(public_code):
     """Build public config for one PostgreSQL-resolved store, without global ad fallback."""
@@ -1884,9 +1894,16 @@ class Handler(BaseHTTPRequestHandler):
                         recorded = database.record_store_ad_event(
                             event_type, store_code, campaign_id, ad_id,
                             delivery_date=datetime.now(ZoneInfo("Asia/Tokyo")).date(),
+                            store_name=payload.get("store"),
                         )
                     except database.StoreInactiveError:
                         return self.send_json({"ok": False, "error": "store_inactive"}, 409)
+                    except database.StoreMismatchError:
+                        return self.send_json({"ok": False, "error": "store_mismatch"}, 409)
+                    except database.AdInactiveError:
+                        return self.send_json({"ok": False, "error": "ad_inactive"}, 409)
+                    except LookupError as e:
+                        return self.send_json({"error": str(e)}, 400)
                     except Exception:
                         return self.send_json({"error":"event unavailable"}, 503)
                     if not recorded:
@@ -1898,6 +1915,8 @@ class Handler(BaseHTTPRequestHandler):
                     return self.send_json({"ok": False, "error": "store_mismatch"}, 409)
                 except database.StoreInactiveError:
                     return self.send_json({"ok": False, "error": "store_inactive"}, 409)
+                except database.AdInactiveError:
+                    return self.send_json({"ok": False, "error": "ad_inactive"}, 409)
                 return self.send_json({"ok": True})
             except Exception as e: return self.send_json({"error": str(e)}, 400)
         if path == "/api/state":

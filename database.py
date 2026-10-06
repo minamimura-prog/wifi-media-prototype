@@ -41,6 +41,10 @@ class StoreInactiveError(Exception):
     """Raised when a new public event targets a stopped store."""
 
 
+class AdInactiveError(Exception):
+    """Raised when a request refers to an ad that is no longer deliverable."""
+
+
 def _store_is_unavailable(store):
     return bool(store) and (
         store.get("status") == "停止中" or store.get("archived_at") is not None
@@ -116,6 +120,40 @@ def _campaign_periods_overlap(left_start, left_end, right_start, right_end):
         (left_end is not None and right_start is not None and left_end < right_start)
         or (right_end is not None and left_start is not None and right_end < left_start)
     )
+
+
+def _delivery_date(value):
+    """Parse a delivery DATE; NULL is unbounded and malformed values fail closed."""
+    if value is None:
+        return None, True
+    if isinstance(value, datetime):
+        return value.date(), True
+    if isinstance(value, date):
+        return value, True
+    if isinstance(value, str) and re.fullmatch(r"\d{4}-\d{2}-\d{2}", value):
+        try:
+            return date.fromisoformat(value), True
+        except ValueError:
+            return None, False
+    return None, False
+
+
+def campaign_is_deliverable(campaign, today):
+    """Shared current-state check for a campaign and its underlying ad."""
+    if campaign.get("campaign_status") != "active" or campaign.get("published") is not True:
+        return False
+    periods = (
+        (campaign.get("starts_on"), campaign.get("ends_on")),
+        (campaign.get("ad_starts_on"), campaign.get("ad_ends_on")),
+    )
+    for start_value, end_value in periods:
+        start, valid_start = _delivery_date(start_value)
+        end, valid_end = _delivery_date(end_value)
+        if (not valid_start or not valid_end
+                or (start is not None and start > today)
+                or (end is not None and end < today)):
+            return False
+    return True
 
 
 def _ensure_store_campaign_period_available(
@@ -454,6 +492,7 @@ def get_campaigns_for_store(store_id):
             "JOIN campaigns c ON c.id = cs.campaign_id "
             "JOIN ads a ON a.id = c.ad_id "
             "WHERE cs.store_id = %s AND c.id <> %s "
+            "AND (a.store_id IS NULL OR a.store_id = cs.store_id) "
             "ORDER BY c.created_at, c.id",
             (str(store_id), "default"),
         ).fetchall()
@@ -1829,21 +1868,23 @@ def record_event(event_type, store_name, ad_id="main", occurred_at=None, *, lega
     occurred_at = occurred_at or datetime.now(timezone.utc)
     with pool().connection() as conn:
         with conn.transaction():
-            # Read the ad target first, but do not let it override a concrete
-            # store name supplied by the caller. The ad target is only a
-            # fallback for omitted/unassigned legacy values.
-            ad = conn.execute(
-                "SELECT s.id, s.name FROM ads a LEFT JOIN stores s ON s.id = a.store_id "
-                "WHERE a.id = %s",
-                (ad_id,),
-            ).fetchone()
             if store_name not in (None, "") and not isinstance(store_name, str):
                 raise LookupError("invalid store name")
             explicit_store_name = (
                 isinstance(store_name, str) and bool(store_name) and store_name != "未設定"
             )
-            requested_store = None
+            legacy_campaign = None
             if legacy_import:
+                # Keep the one-time historical import behavior unchanged.
+                ad = conn.execute(
+                    "SELECT s.id, s.name FROM ads a LEFT JOIN stores s ON s.id = a.store_id "
+                    "WHERE a.id = %s",
+                    (ad_id,),
+                ).fetchone()
+                legacy_campaign = conn.execute(
+                    "SELECT id FROM campaigns WHERE ad_id = %s ORDER BY id LIMIT 1",
+                    (ad_id,),
+                ).fetchone()
                 # Keep the one-time historical import behavior unchanged.
                 if ad and ad.get("name"):
                     store_name = ad["name"]
@@ -1863,54 +1904,100 @@ def record_event(event_type, store_name, ad_id="main", occurred_at=None, *, lega
                         (store_name,),
                     ).fetchall()
                     store = name_matches[0] if len(name_matches) == 1 else None
-            elif explicit_store_name:
-                name_matches = conn.execute(
-                    "SELECT id, name, status, company_id, archived_at FROM stores "
-                    "WHERE name = %s ORDER BY id FOR UPDATE",
-                    (store_name,),
-                ).fetchall()
-                if len(name_matches) != 1:
-                    raise LookupError("store name must resolve to exactly one store")
-                requested_store = name_matches[0]
-
-                if requested_store and ad and ad.get("id"):
-                    if str(ad["id"]) != str(requested_store["id"]):
-                        raise StoreMismatchError("store_mismatch")
-                    # The name lookup already locked and validated this row.
-                    store = requested_store
-                elif requested_store:
-                    store = requested_store
             else:
-                if ad and ad.get("id"):
-                    store = conn.execute(
-                        "SELECT id, name, status, company_id, archived_at FROM stores "
-                        "WHERE id = %s FOR UPDATE", (ad["id"],)
-                    ).fetchone()
-                    store_name = ad.get("name") or store_name
+                requested_store = None
+                requested_store_id = None
+                if explicit_store_name:
+                    requested_name_rows = conn.execute(
+                        "SELECT id FROM stores WHERE name = %s ORDER BY id",
+                        (store_name,),
+                    ).fetchall()
+                    if len(requested_name_rows) != 1:
+                        raise LookupError("store name must resolve to exactly one store")
+                    requested_store_id = str(requested_name_rows[0]["id"])
+                campaign = conn.execute(
+                    "SELECT c.id AS campaign_id, c.ad_id, c.status AS campaign_status, "
+                    "c.starts_on, c.ends_on, a.published, "
+                    "a.starts_on AS ad_starts_on, a.ends_on AS ad_ends_on, "
+                    "a.store_id AS target_store_id "
+                    "FROM campaigns c JOIN ads a ON a.id = c.ad_id "
+                    "WHERE c.id = %s AND a.id = %s FOR UPDATE OF c, a",
+                    ("default", str(ad_id)),
+                ).fetchone()
+                if not campaign or not campaign_is_deliverable(
+                    campaign, datetime.now(ZoneInfo("Asia/Tokyo")).date()
+                ):
+                    raise AdInactiveError("ad_inactive")
+
+                assignment_rows = conn.execute(
+                    "SELECT store_id FROM campaign_stores WHERE campaign_id = %s "
+                    "ORDER BY store_id FOR UPDATE",
+                    ("default",),
+                ).fetchall()
+                assignment_ids = [str(row["store_id"]) for row in assignment_rows]
+                target_store_id = campaign.get("target_store_id")
+                if target_store_id is None:
+                    if assignment_ids:
+                        raise AdInactiveError("ad_inactive")
+                    is_global = True
                 else:
-                    # Preserve the true global/unassigned event path without
-                    # resolving the display placeholder as a store name.
-                    store = None
-                    store_name = "未設定"
+                    if assignment_ids != [str(target_store_id)]:
+                        raise AdInactiveError("ad_inactive")
+                    is_global = False
+
+                target_store = None
+                if target_store_id is not None:
+                    target_store = conn.execute(
+                        "SELECT id, name, status, company_id, archived_at FROM stores "
+                        "WHERE id = %s FOR UPDATE",
+                        (str(target_store_id),),
+                    ).fetchone()
+                    if not target_store:
+                        raise AdInactiveError("ad_inactive")
+
+                if explicit_store_name:
+                    name_matches = conn.execute(
+                        "SELECT id, name, status, company_id, archived_at FROM stores "
+                        "WHERE name = %s ORDER BY id FOR UPDATE",
+                        (store_name,),
+                    ).fetchall()
+                    if len(name_matches) != 1:
+                        raise LookupError("store name must resolve to exactly one store")
+                    requested_store = name_matches[0]
+                    if str(requested_store["id"]) != requested_store_id:
+                        raise LookupError("store name resolution changed")
+                    if not is_global and str(requested_store["id"]) != str(target_store_id):
+                        raise StoreMismatchError("store_mismatch")
+                    store = requested_store
+                else:
+                    store = target_store
+                    if store is None:
+                        store_name = "未設定"
+                if _store_is_unavailable(store):
+                    raise StoreInactiveError("store_inactive")
+
             if not legacy_import and _store_is_unavailable(store):
                 raise StoreInactiveError("store_inactive")
             if store and store.get("name"):
                 store_name = store["name"]
-            campaign = conn.execute("SELECT id FROM campaigns WHERE ad_id = %s ORDER BY id LIMIT 1", (ad_id,)).fetchone()
             conn.execute(
                 "INSERT INTO ad_events "
                 "(event_type, store_id, store_name, ad_id, campaign_id, company_id, "
                 "company_attribution_status, occurred_at) "
                 "VALUES (%s, %s, %s, %s, %s, %s, %s, %s)",
                 (event_type, store["id"] if store else None, store_name or "未設定", ad_id,
-                 campaign["id"] if campaign else None,
+                 campaign["campaign_id"] if not legacy_import else (
+                     legacy_campaign["id"] if legacy_campaign else None
+                 ),
                  None if legacy_import or not store else store.get("company_id"),
                  "legacy_unknown" if legacy_import else ("captured" if store else "store_unresolved"),
                  occurred_at),
             )
 
 
-def record_store_ad_event(event_type, public_code, campaign_id, ad_id, delivery_date):
+def record_store_ad_event(
+    event_type, public_code, campaign_id, ad_id, delivery_date, store_name=None
+):
     """Record a store delivery event only for the exact active assignment.
 
     The public code, campaign ID, and ad ID are untrusted request values. An
@@ -1925,11 +2012,43 @@ def record_store_ad_event(event_type, public_code, campaign_id, ad_id, delivery_
     with pool().connection() as conn:
         with conn.transaction():
             store = conn.execute(
-                "SELECT id, status, company_id, archived_at FROM stores WHERE public_code = %s FOR UPDATE",
+                "SELECT id, name, status, company_id, archived_at "
+                "FROM stores WHERE public_code = %s FOR UPDATE",
                 (public_code,),
             ).fetchone()
+            if not store:
+                return False
             if _store_is_unavailable(store):
                 raise StoreInactiveError("store_inactive")
+            if store_name not in (None, "", "未設定"):
+                if not isinstance(store_name, str):
+                    raise LookupError("invalid store name")
+                # The public code already resolved this exact store ID. The
+                # optional name is only a consistency check, not a selector.
+                if store_name != store.get("name"):
+                    raise StoreMismatchError("store_mismatch")
+
+            campaign = conn.execute(
+                "SELECT c.id AS campaign_id, c.ad_id, c.status AS campaign_status, "
+                "c.starts_on, c.ends_on, a.published, a.store_id AS ad_store_id, "
+                "a.starts_on AS ad_starts_on, a.ends_on AS ad_ends_on "
+                "FROM campaign_stores cs "
+                "JOIN campaigns c ON c.id = cs.campaign_id "
+                "JOIN ads a ON a.id = c.ad_id "
+                "JOIN stores s ON s.id = cs.store_id "
+                "WHERE s.public_code = %s AND c.id = %s AND a.id = %s "
+                "AND c.id <> %s FOR UPDATE OF s, cs, c, a",
+                (public_code, campaign_id, ad_id, "default"),
+            ).fetchone()
+            if not campaign:
+                return False
+            if (campaign.get("ad_store_id") is not None
+                    and str(campaign["ad_store_id"]) != str(store["id"])):
+                raise StoreMismatchError("store_mismatch")
+            if not campaign_is_deliverable(
+                campaign, delivery_date
+            ):
+                raise AdInactiveError("ad_inactive")
             row = conn.execute(
                 "INSERT INTO ad_events "
                 "(event_type, store_id, store_name, ad_id, campaign_id, company_id, "
@@ -1941,13 +2060,16 @@ def record_store_ad_event(event_type, public_code, campaign_id, ad_id, delivery_
                 "JOIN ads a ON a.id = c.ad_id "
                 "WHERE s.public_code = %s AND c.id = %s AND a.id = %s "
                 "AND c.id <> %s "
+                "AND (a.store_id IS NULL OR a.store_id = s.id) "
                 "AND c.status = 'active' AND a.published IS TRUE "
                 "AND s.status <> '停止中' AND s.archived_at IS NULL "
                 "AND (c.starts_on IS NULL OR c.starts_on <= %s) "
                 "AND (c.ends_on IS NULL OR c.ends_on >= %s) "
+                "AND (a.starts_on IS NULL OR a.starts_on <= %s) "
+                "AND (a.ends_on IS NULL OR a.ends_on >= %s) "
                 "RETURNING id",
                 (event_type, occurred_at, public_code, campaign_id, ad_id, "default",
-                 delivery_date, delivery_date),
+                 delivery_date, delivery_date, delivery_date, delivery_date),
             ).fetchone()
     return row is not None
 
