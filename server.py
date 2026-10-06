@@ -22,7 +22,8 @@ MAX_BYTES = 12 * 1024 * 1024
 ADMIN_CAMPAIGN_MAX_BYTES = 64 * 1024
 ADMIN_CAMPAIGN_STATUSES = {"draft", "active"}
 IDEMPOTENCY_KEY_PATTERN = re.compile(r"^[A-Za-z0-9._~:-]{16,255}$")
-LOCK = threading.Lock()
+LOCK = threading.RLock()
+STATE_SAVE_LOCK = LOCK
 COUPON_EVENT_TYPES = {"view", "copy", "redeem"}
 ADMIN_SESSION_COOKIE = "wifi_media_admin_session"
 ADMIN_SESSION_MAX_AGE = 24 * 60 * 60
@@ -47,6 +48,15 @@ def _admin_store_company_route(path):
             or parts[5] != "company"):
         return None
     return _safe_admin_route_id(parts[4])
+
+
+def _admin_store_lifecycle_route(path):
+    parts = path.split("/")
+    if (len(parts) != 6 or parts[:4] != ["", "api", "admin", "stores"]
+            or parts[5] not in {"archive", "restore"}):
+        return None
+    store_id = _safe_admin_route_id(parts[4])
+    return (store_id, parts[5]) if store_id is not None else None
 
 
 def _validate_admin_company(payload):
@@ -447,9 +457,88 @@ def _validate_json_coupon_archive_assignments(data, current_state):
             raise database.StoreInactiveError("store_inactive")
 
 
+def _preserve_json_store_archive_state(data, current_state):
+    payload_stores = data.get("stores") or []
+    if not isinstance(payload_stores, list):
+        raise ValueError("invalid stores")
+    current_stores = current_state.get("stores") or []
+    current_by_id = {}
+    for store in current_stores:
+        if not isinstance(store, dict):
+            continue
+        key = str(store.get("id") or store.get("name") or "store")
+        current_by_id.setdefault(key, []).append(store)
+
+    normalized = []
+    payload_ids = set()
+    for store in payload_stores:
+        if not isinstance(store, dict):
+            raise ValueError("invalid store")
+        item = dict(store)
+        key = str(item.get("id") or item.get("name") or "store")
+        payload_ids.add(key)
+        existing = current_by_id.get(key, [])
+        if len(existing) > 1:
+            raise ValueError("ambiguous existing store id")
+        if len(existing) == 1:
+            stored_archive = existing[0].get("archivedAt", existing[0].get("archived_at"))
+            item["archivedAt"] = stored_archive
+            if stored_archive is not None:
+                item["status"] = "停止中"
+        else:
+            item["archivedAt"] = None
+        item.pop("archived_at", None)
+        normalized.append(item)
+
+    # PostgreSQL state writes never delete omitted store rows. Keep archived
+    # JSON records too, so omission cannot act as an alternate archive bypass.
+    for key, matches in current_by_id.items():
+        if key not in payload_ids and len(matches) == 1:
+            stored = matches[0]
+            if stored.get("archivedAt", stored.get("archived_at")) is not None:
+                normalized.append(dict(stored, status="停止中"))
+    data["stores"] = normalized
+
+
+def _write_json_state(data):
+    tmp = DATA + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+    os.replace(tmp, DATA)
+
+
+def _change_json_store_lifecycle(store_id, action):
+    with STATE_SAVE_LOCK:
+        data = load_state()
+        matches = [store for store in data.get("stores", [])
+                   if str(store.get("id") or "") == str(store_id)]
+        if len(matches) != 1:
+            return False
+        store = matches[0]
+        archived_at = store.get("archivedAt", store.get("archived_at"))
+        if action == "archive":
+            store["archivedAt"] = archived_at or datetime.now(timezone.utc).isoformat(timespec="seconds")
+            store["status"] = "停止中"
+        elif action == "restore":
+            if archived_at is None:
+                return True
+            store["archivedAt"] = None
+            store.pop("archived_at", None)
+            store["status"] = "停止中"
+        else:
+            raise ValueError("invalid store lifecycle action")
+        _write_json_state(data)
+        return True
+
+
 def save_state(data, preserve_latest_events=True):
     if database.database_enabled():
         return database.save_state(data)
+    with STATE_SAVE_LOCK:
+        return _save_json_state(data, preserve_latest_events)
+
+
+def _save_json_state(data, preserve_latest_events=True):
     requested_store = (data.get("ad") or {}).get("store")
     requested_store_record = next(
         (store for store in data.get("stores", [])
@@ -461,6 +550,7 @@ def save_state(data, preserve_latest_events=True):
             current_state = json.load(f)
     except (OSError, json.JSONDecodeError):
         current_state = {}
+    _preserve_json_store_archive_state(data, current_state)
     current_store = (current_state.get("ad") or {}).get("store")
     current_store_record = next(
         (store for store in current_state.get("stores", [])
@@ -490,10 +580,7 @@ def save_state(data, preserve_latest_events=True):
             data.setdefault("coupon_events", [])
     data.setdefault("coupons", [])
     data.setdefault("coupon_events", [])
-    tmp = DATA + ".tmp"
-    with open(tmp, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
-    os.replace(tmp, DATA)
+    _write_json_state(data)
 
 def now_jst():
     return datetime.now(ZoneInfo("Asia/Tokyo")).isoformat(timespec="seconds")
@@ -1502,6 +1589,27 @@ class Handler(BaseHTTPRequestHandler):
         path = urlparse(self.path).path
         if path == "/api/admin/login": return self.handle_admin_login()
         if path == "/api/admin/logout": return self.handle_admin_logout()
+        lifecycle_route = _admin_store_lifecycle_route(path)
+        if lifecycle_route:
+            if not self.require_admin_session(): return
+            if not self.require_same_origin(): return
+            payload, error_status = self.read_admin_json_payload()
+            if error_status:
+                return self.send_json({"ok": False, "error": "invalid_request"}, error_status)
+            if payload != {}:
+                return self.send_json({"ok": False, "error": "invalid_request"}, 400)
+            store_id, action = lifecycle_route
+            try:
+                if database.database_enabled():
+                    found = (database.archive_store(store_id) if action == "archive"
+                             else database.restore_store(store_id))
+                else:
+                    found = _change_json_store_lifecycle(store_id, action)
+            except Exception:
+                return self.send_json({"ok": False}, 503)
+            if not found:
+                return self.send_json({"ok": False, "error": "store_not_found"}, 404)
+            return self.send_json({"ok": True, "storeId": store_id})
         if path == "/api/admin/companies":
             if not self.require_admin_session(): return
             if not self.require_same_origin(): return

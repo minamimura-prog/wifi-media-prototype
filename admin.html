@@ -1979,7 +1979,7 @@ async function saveStore(event){
     renderStores();
   }finally{storeSavePending=false;}
 }
-async function archiveStore(storeId){const key=String(storeId??'');if(!key||storeSavePending)return;const target=findStoreById(key);if(!target||target.archivedAt!==null&&target.archivedAt!==undefined)return;const message=`「${target.name}」をアーカイブします。\n店舗IDと過去の広告・クーポン・分析履歴は保持されます。\n通常の店舗一覧と新規配信対象からは外れます。\n\n店舗ID: ${key}`;if(!confirm(message))return;const originalStore=typeof structuredClone==='function'?structuredClone(target):JSON.parse(JSON.stringify(target));storeSavePending=true;S={...S,stores:S.stores.map(store=>String(store?.id??'')===key?{...store,archivedAt:new Date().toISOString(),status:'停止中'}:store)};try{const saved=await save();if(saved===false)return}catch(error){try{await load();toast(error?.message||'保存できませんでした。サーバーから最新状態を再取得しました。')}catch(_){const stores=Array.isArray(S?.stores)?S.stores:[];let restored=false;const restoredStores=stores.map(store=>{if(String(store?.id??'')!==key)return store;restored=true;return originalStore});if(!restored)restoredStores.push(originalStore);S={...S,stores:restoredStores};toast('保存状態を確認できませんでした。画面を再読み込みして確認してください。')}}finally{storeSavePending=false;if(location.hash==='#stores')renderStores()}}
+async function archiveStore(storeId){const key=String(storeId??'');if(!key||storeSavePending)return;const target=findStoreById(key);if(!target||target.archivedAt!==null&&target.archivedAt!==undefined)return;const message=`「${target.name}」をアーカイブします。\n店舗IDと過去の広告・クーポン・分析履歴は保持されます。\n通常の店舗一覧と新規配信対象からは外れます。\n\n店舗ID: ${key}`;if(!confirm(message))return;storeSavePending=true;try{const response=await apiFetch(`/api/admin/stores/${encodeURIComponent(key)}/archive`,{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});if(!response.ok)throw new Error('アーカイブ状態を保存できませんでした。');await load();toast('店舗をアーカイブしました。');}catch(error){let refreshed=false;try{await load();refreshed=true;}catch(_){}toast(refreshed?'店舗状態を再取得しました。現在の状態を確認してください。':'保存状態を確認できませんでした。画面を再読み込みして確認してください。');}finally{storeSavePending=false;if(location.hash==='#stores')renderStores()}}
 async function restoreStore(storeId){
   const key=String(storeId??'');
   if(!key||storeSavePending)return;
@@ -1987,45 +1987,25 @@ async function restoreStore(storeId){
   if(!target||target.archivedAt===null||target.archivedAt===undefined)return;
   const message=`「${target.name}」を通常の店舗一覧へ復元します。\n復元後は安全のため停止中になります。\n広告・クーポン配信は自動再開されません。\n\n店舗ID: ${key}`;
   if(!confirm(message))return;
-  const originalStore=typeof structuredClone==='function'?structuredClone(target):JSON.parse(JSON.stringify(target));
   storeSavePending=true;
-  S={...S,stores:S.stores.map(store=>String(store?.id??'')===key?{...store,archivedAt:null,status:'停止中'}:store)};
-  const applyLoadedStoreState=()=>{
+  try{
+    const response=await apiFetch(`/api/admin/stores/${encodeURIComponent(key)}/restore`,{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
+    if(!response.ok)throw new Error('復元状態を保存できませんでした。');
+    await load();
     const serverStore=findStoreById(key);
-    if(!serverStore){
-      toast('保存状態を確認できませんでした。画面を再読み込みして確認してください。');
-      return;
-    }
+    if(!serverStore)throw new Error('復元状態を確認できませんでした。');
     if(serverStore.archivedAt===null||serverStore.archivedAt===undefined){
       storeListView='normal';
-      toast(serverStore.status==='停止中'?'店舗を通常一覧へ復元しました。停止中のため配信は再開されていません。':'サーバー状態を反映しました。店舗の状態を確認してください。');
+      toast('店舗を通常一覧へ復元しました。停止中のため配信は再開されていません。');
     }else{
       storeListView='archived';
       toast('サーバー状態を再読み込みしました。復元状態を確認してください。');
     }
     renderStores();
-  };
-  try{
-    const response=await apiFetch('/api/state',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(S)});
-    if(!response.ok)throw new Error('保存応答を確認できませんでした。');
-    await load();
-    applyLoadedStoreState();
   }catch(error){
-    try{
-      await load();
-      applyLoadedStoreState();
-    }catch(_){
-      const stores=Array.isArray(S?.stores)?S.stores:[];
-      let restored=false;
-      const restoredStores=stores.map(store=>{
-        if(String(store?.id??'')!==key)return store;
-        restored=true;
-        return originalStore;
-      });
-      if(!restored)restoredStores.push(originalStore);
-      S={...S,stores:restoredStores};
-      toast('保存状態を確認できませんでした。画面を再読み込みして確認してください。');
-    }
+    let refreshed=false;try{await load();refreshed=true;}catch(_){}
+    if(refreshed){const serverStore=findStoreById(key);if(serverStore?.archivedAt===null||serverStore?.archivedAt===undefined)storeListView='normal';else if(serverStore)storeListView='archived';}
+    toast(refreshed?'店舗状態を再取得しました。現在の状態を確認してください。':'保存状態を確認できませんでした。画面を再読み込みして確認してください。');
   }finally{
     storeSavePending=false;
     if(location.hash==='#stores')renderStores();

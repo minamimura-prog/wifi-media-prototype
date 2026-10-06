@@ -528,6 +528,44 @@ def assign_store_company(store_id, company_id):
     return "ok"
 
 
+def archive_store(store_id):
+    """Archive a store without deleting its identity or related history."""
+    with pool().connection() as conn:
+        with conn.transaction():
+            store = conn.execute(
+                "SELECT id FROM stores WHERE id = %s FOR UPDATE",
+                (str(store_id),),
+            ).fetchone()
+            if not store:
+                return False
+            conn.execute(
+                "UPDATE stores SET archived_at = COALESCE(archived_at, now()), "
+                "status = '停止中', updated_at = now() WHERE id = %s",
+                (str(store_id),),
+            )
+    return True
+
+
+def restore_store(store_id):
+    """Restore an archived store as stopped so delivery cannot resume."""
+    with pool().connection() as conn:
+        with conn.transaction():
+            store = conn.execute(
+                "SELECT id, archived_at FROM stores WHERE id = %s FOR UPDATE",
+                (str(store_id),),
+            ).fetchone()
+            if not store:
+                return False
+            if store.get("archived_at") is None:
+                return True
+            conn.execute(
+                "UPDATE stores SET archived_at = NULL, status = '停止中', "
+                "updated_at = now() WHERE id = %s",
+                (str(store_id),),
+            )
+    return True
+
+
 def get_admin_campaigns_for_store(store_id):
     """Return editable store campaigns, excluding reserved global records."""
     if store_id is None:
@@ -866,6 +904,7 @@ def _preflight_coupon_store_targets(conn, stores, coupons):
     stored_stores = conn.execute(
         "SELECT id, name, archived_at FROM stores ORDER BY id FOR UPDATE"
     ).fetchall()
+    persisted_stores = {str(row["id"]): row for row in stored_stores}
     store_rows = {
         str(row["id"]): {
             "id": str(row["id"]), "name": row["name"],
@@ -875,13 +914,24 @@ def _preflight_coupon_store_targets(conn, stores, coupons):
     }
     for store in stores:
         store_id = str(store.get("id") or store.get("name") or "store")
+        persisted = persisted_stores.get(store_id)
+        if persisted:
+            stored_archive = persisted.get("archived_at")
+            store["archivedAt"] = (
+                stored_archive.isoformat()
+                if hasattr(stored_archive, "isoformat") else stored_archive
+            )
+            if stored_archive is not None:
+                store["status"] = "停止中"
+        else:
+            # A new store cannot be created already archived through a state snapshot.
+            store["archivedAt"] = None
         prior = store_rows.get(store_id, {})
         store_rows[store_id] = {
             "id": store_id,
             "name": store.get("name", prior.get("name", "")),
-            # The persisted DB value is authoritative, while an archive in
-            # this same state payload must not be combined with a new coupon link.
-            "archived": prior.get("archived", False) or store.get("archivedAt") is not None,
+            # Only the persisted DB value determines the existing archive state.
+            "archived": prior.get("archived", False),
         }
 
     stores_by_name = {}
