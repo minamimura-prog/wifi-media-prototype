@@ -814,10 +814,15 @@ def public_config():
     design = data.get("design") or {}
     ad = data.get("ad") or {}
     if database.database_enabled():
-        target_store = database.get_default_ad_target_store()
-        target_is_available = not _store_is_unavailable(target_store)
+        delivery = database.get_default_ad_delivery_state()
+        today = datetime.now(ZoneInfo("Asia/Tokyo")).date()
+        target_is_available = bool(
+            delivery
+            and delivery.get("is_global") is True
+            and _campaign_is_deliverable(delivery, today)
+        )
     else:
-        target_is_available = _json_default_ad_target_is_available(data, ad)
+        target_is_available = _json_default_ad_is_deliverable(data, ad)
     if not target_is_available:
         ad = {}
     return {
@@ -854,6 +859,39 @@ def _campaign_is_deliverable(campaign, today):
         return False
     starts_on, valid_start = _campaign_date(campaign.get("starts_on"))
     ends_on, valid_end = _campaign_date(campaign.get("ends_on"))
+    ad_starts_on, valid_ad_start = _campaign_date(campaign.get("ad_starts_on"))
+    ad_ends_on, valid_ad_end = _campaign_date(campaign.get("ad_ends_on"))
+    if not valid_start or not valid_end or not valid_ad_start or not valid_ad_end:
+        return False
+    return all(
+        (start is None or start <= today) and (end is None or today <= end)
+        for start, end in ((starts_on, ends_on), (ad_starts_on, ad_ends_on))
+    )
+
+
+def _json_default_ad_is_deliverable(data, ad, today=None):
+    """Fail closed unless the JSON default ad is active, in-period, and global."""
+    try:
+        status = database._default_ad_campaign_status(ad)
+    except (TypeError, ValueError):
+        return False
+    if status != "active" or ad.get("published") is not True:
+        return False
+
+    # In JSON state, "未設定" is the explicit shared-default marker. A named
+    # target, missing target, or ID-based target is not global for this route.
+    if ad.get("storeId") is not None or ad.get("store_id") is not None:
+        return False
+    if ad.get("store") != "未設定":
+        return False
+    if any(store.get("name") == "未設定" for store in data.get("stores", [])):
+        return False
+
+    today = today or datetime.now(ZoneInfo("Asia/Tokyo")).date()
+    start_value = ad.get("start")
+    end_value = ad.get("end")
+    starts_on, valid_start = _campaign_date(None if start_value == "" else start_value)
+    ends_on, valid_end = _campaign_date(None if end_value == "" else end_value)
     if not valid_start or not valid_end:
         return False
     return (starts_on is None or starts_on <= today) and (ends_on is None or today <= ends_on)

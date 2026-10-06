@@ -446,7 +446,8 @@ def get_campaigns_for_store(store_id):
     with pool().connection() as conn:
         rows = conn.execute(
             "SELECT c.id AS campaign_id, c.ad_id, c.name AS campaign_name, "
-            "c.starts_on, c.ends_on, c.status AS campaign_status, "
+            "c.starts_on, c.ends_on, a.starts_on AS ad_starts_on, "
+            "a.ends_on AS ad_ends_on, c.status AS campaign_status, "
             "a.title, a.body, a.landing_url, a.media_url, "
             "COALESCE(a.media_url_mobile, '') AS media_url_mobile, a.published "
             "FROM campaign_stores cs "
@@ -457,6 +458,25 @@ def get_campaigns_for_store(store_id):
             (str(store_id), "default"),
         ).fetchall()
     return [dict(row) for row in rows]
+
+
+def get_default_ad_delivery_state():
+    """Return the canonical default-campaign state used for public delivery."""
+    with pool().connection() as conn:
+        row = conn.execute(
+            "SELECT c.status AS campaign_status, c.starts_on, c.ends_on, "
+            "a.published, a.starts_on AS ad_starts_on, a.ends_on AS ad_ends_on, "
+            "a.store_id, s.id AS target_store_id, s.status AS store_status, "
+            "s.archived_at, "
+            "(a.store_id IS NULL AND NOT EXISTS ("
+            "SELECT 1 FROM campaign_stores cs WHERE cs.campaign_id = c.id"
+            ")) AS is_global "
+            "FROM campaigns c JOIN ads a ON a.id = c.ad_id "
+            "LEFT JOIN stores s ON s.id = a.store_id "
+            "WHERE c.id = %s",
+            ("default",),
+        ).fetchone()
+    return dict(row) if row else None
 
 
 def list_admin_stores():
