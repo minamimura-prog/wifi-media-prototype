@@ -822,6 +822,19 @@ def public_coupons_for_store(public_code):
     state = None
     if database.database_enabled():
         store = database.get_store_by_public_code(public_code)
+        if store:
+            # PostgreSQL coupon targets are resolved against the DB-backed
+            # state, which also supplies the authoritative store status and
+            # archived_at values. Do not use an empty fallback here: that
+            # would make archived/stopped target checks impossible.
+            state = load_state()
+            state_stores = [
+                item for item in state.get("stores", [])
+                if str(item.get("id")) == str(store.get("id"))
+            ]
+            if len(state_stores) != 1:
+                return []
+            store = state_stores[0]
     else:
         state = load_state()
         store = next(
