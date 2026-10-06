@@ -7,6 +7,7 @@ from datetime import date, datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 import ipaddress
 import hmac, json, os, secrets, uuid, mimetypes, threading
+import copy
 import re
 import logging
 import stat
@@ -482,9 +483,17 @@ def _preserve_json_store_archive_state(data, current_state):
             raise ValueError("ambiguous existing store id")
         if len(existing) == 1:
             stored_archive = existing[0].get("archivedAt", existing[0].get("archived_at"))
-            item["archivedAt"] = stored_archive
             if stored_archive is not None:
-                item["status"] = "停止中"
+                # Archived stores are frozen during ordinary state saves. Use
+                # the persisted object as the source of truth for every field,
+                # not just its archive timestamp and status.
+                preserved = copy.deepcopy(existing[0])
+                preserved["archivedAt"] = stored_archive
+                preserved["status"] = "停止中"
+                preserved.pop("archived_at", None)
+                normalized.append(preserved)
+                continue
+            item["archivedAt"] = stored_archive
         else:
             item["archivedAt"] = None
         item.pop("archived_at", None)
@@ -496,7 +505,11 @@ def _preserve_json_store_archive_state(data, current_state):
         if key not in payload_ids and len(matches) == 1:
             stored = matches[0]
             if stored.get("archivedAt", stored.get("archived_at")) is not None:
-                normalized.append(dict(stored, status="停止中"))
+                preserved = copy.deepcopy(stored)
+                preserved["archivedAt"] = stored.get("archivedAt", stored.get("archived_at"))
+                preserved["status"] = "停止中"
+                preserved.pop("archived_at", None)
+                normalized.append(preserved)
     data["stores"] = normalized
 
 
