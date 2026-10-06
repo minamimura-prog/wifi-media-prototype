@@ -736,6 +736,60 @@ def delete_draft_coupon(coupon_id):
         save_state(data)
         return True
 
+def _record_json_coupon_event(coupon_id, event_type, store_code):
+    with LOCK:
+        data = load_state()
+        current_coupon = next(
+            (item for item in data.get("coupons", [])
+             if str(item.get("id")) == coupon_id),
+            None,
+        )
+        if not current_coupon:
+            raise LookupError("coupon not found")
+
+        stores = data.get("stores", [])
+        target_type, target_store = _public_coupon_store_target(current_coupon, stores)
+        if target_type == "invalid":
+            raise LookupError("coupon target not found")
+        if target_type == "store" and _store_is_unavailable(target_store):
+            raise database.StoreInactiveError("store_inactive")
+
+        page_store = None
+        if store_code:
+            page_matches = [store for store in stores
+                            if store.get("publicCode") == store_code]
+            if len(page_matches) != 1:
+                raise LookupError("store not found")
+            page_store = page_matches[0]
+            if _store_is_unavailable(page_store):
+                raise database.StoreInactiveError("store_inactive")
+
+        if target_type == "store":
+            if not page_store or str(target_store.get("id")) != str(page_store.get("id")):
+                raise database.StoreMismatchError("store_mismatch")
+            attribution_store = target_store
+        else:
+            attribution_store = page_store
+
+        event = {
+            "couponId": coupon_id,
+            "couponCode": current_coupon.get("code", ""),
+            "type": event_type,
+            "store": attribution_store.get("name") if attribution_store else "未設定",
+            "storeId": str(attribution_store.get("id")) if attribution_store else None,
+            "companyId": attribution_store.get("companyId") if attribution_store else None,
+            "companyAttributionStatus": "captured" if attribution_store else "store_unresolved",
+            "adId": current_coupon.get("adId") or data.get("ad", {}).get("id", "main"),
+            "at": now_jst(),
+        }
+        if store_code:
+            event["storeCode"] = store_code
+        events = data.setdefault("coupon_events", [])
+        events.append(event)
+        data["coupon_events"] = events[-10000:]
+        save_state(data, preserve_latest_events=False)
+
+
 def record_coupon_event(payload):
     if payload.get("type") not in COUPON_EVENT_TYPES:
         raise ValueError("invalid coupon event type")
@@ -751,13 +805,17 @@ def record_coupon_event(payload):
     coupon = next((item for item in data.get("coupons", []) if str(item.get("id")) == coupon_id), None)
     if not coupon:
         raise LookupError("coupon not found")
+    postgres_enabled = database.database_enabled()
+    if not postgres_enabled:
+        _record_json_coupon_event(coupon_id, payload["type"], store_code)
+        return
+
     event_store = next(
         (item for item in data.get("stores", [])
          if (coupon.get("storeId") and str(item.get("id")) == str(coupon.get("storeId")))
          or (not coupon.get("storeId") and item.get("name") == (coupon.get("store") or "未設定"))),
         None,
     )
-    postgres_enabled = database.database_enabled()
     page_store = None
     if store_code and not postgres_enabled:
         page_store = next(
