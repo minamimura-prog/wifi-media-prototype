@@ -989,6 +989,39 @@ def _validate_default_ad_archive_target(
         raise StoreInactiveError("store_inactive")
 
 
+def _validate_archived_default_ad_content(ad, ad_id, current_ad, current_default_ad_id):
+    """Allow a same-target archived default ad only when its persisted content is unchanged."""
+    if not current_ad or str(ad_id) != str(current_default_ad_id):
+        raise StoreInactiveError("store_inactive")
+
+    requested = {
+        "title": ad.get("title", ""),
+        "body": ad.get("body", ""),
+        "landing_url": ad.get("link", ""),
+        "media_url": ad.get("media", ""),
+        # The existing save contract preserves this field when omitted.
+        "media_url_mobile": (
+            (ad.get("mediaMobile") or "") if "mediaMobile" in ad
+            else (current_ad.get("media_url_mobile") or "")
+        ),
+        "starts_on": _date(ad.get("start")),
+        "ends_on": _date(ad.get("end")),
+        "published": bool(ad.get("published", False)),
+    }
+    persisted = {
+        "title": current_ad.get("title"),
+        "body": current_ad.get("body"),
+        "landing_url": current_ad.get("landing_url"),
+        "media_url": current_ad.get("media_url"),
+        "media_url_mobile": current_ad.get("media_url_mobile") or "",
+        "starts_on": _date(current_ad.get("starts_on")),
+        "ends_on": _date(current_ad.get("ends_on")),
+        "published": bool(current_ad.get("published")),
+    }
+    if requested != persisted:
+        raise StoreInactiveError("store_inactive")
+
+
 def save_state(data):
     """Persist the current admin UI state without changing its API contract."""
     design = data.get("design") or {}
@@ -1007,7 +1040,8 @@ def save_state(data):
             current_ad = None
             if current_default_ad_id:
                 current_ad = conn.execute(
-                    "SELECT store_id FROM ads WHERE id = %s FOR UPDATE",
+                    "SELECT id, store_id, title, body, landing_url, media_url, media_url_mobile, "
+                    "starts_on, ends_on, published FROM ads WHERE id = %s FOR UPDATE",
                     (current_default_ad_id,),
                 ).fetchone()
             if ad_id != current_default_ad_id:
@@ -1032,6 +1066,20 @@ def save_state(data):
             archived_store_ids_before_state = {
                 str(row["id"]) for row in archived_store_rows
             }
+            requested_store_name = ad.get("store")
+            if (isinstance(requested_store_name, str)
+                    and requested_store_name not in ("", "未設定")):
+                requested_target_rows = conn.execute(
+                    "SELECT id FROM stores WHERE name = %s ORDER BY id FOR UPDATE",
+                    (requested_store_name,),
+                ).fetchall()
+                if len(requested_target_rows) == 1:
+                    requested_target_id = str(requested_target_rows[0]["id"])
+                    if (requested_target_id == str(current_default_store_id or "")
+                            and requested_target_id in archived_store_ids_before_state):
+                        _validate_archived_default_ad_content(
+                            ad, ad_id, current_ad, current_default_ad_id
+                        )
             preexisting_target_store = None
             existing_default_assignment = None
             if preexisting_store_id:
@@ -1069,7 +1117,6 @@ def save_state(data):
                      _timestamp(store.get("archivedAt"))),
                 )
 
-            requested_store_name = ad.get("store")
             if requested_store_name is None or requested_store_name == "" or requested_store_name == "未設定":
                 store_id = None
             elif not isinstance(requested_store_name, str):

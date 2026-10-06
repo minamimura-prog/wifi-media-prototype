@@ -414,6 +414,15 @@ def _validate_json_default_ad_archive_assignment(data, current_state):
         raise database.StoreInactiveError("store_inactive") from exc
     if current_target_id != target_id:
         raise database.StoreInactiveError("store_inactive")
+    target_fields = {"store", "storeId", "store_id"}
+    current_content = {
+        key: value for key, value in current_ad.items() if key not in target_fields
+    }
+    requested_content = {
+        key: value for key, value in requested_ad.items() if key not in target_fields
+    }
+    if current_content != requested_content:
+        raise database.StoreInactiveError("store_inactive")
 
 
 def _validate_json_coupon_archive_assignments(data, current_state):
