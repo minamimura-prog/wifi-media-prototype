@@ -770,23 +770,23 @@ def record_event(event_type, store, ad_id="main"):
         ad = data.get("ad", {})
         if str(ad.get("id") or "main") != str(ad_id):
             raise database.AdInactiveError("ad_inactive")
-        if not _json_ad_is_currently_deliverable(ad):
+        # Keep event eligibility aligned with public_config(): the legacy
+        # event route has no verified store-page/campaign context, so it may
+        # record only a default ad that the public config exposes as global.
+        if not _json_default_ad_is_deliverable(data, ad):
             raise database.AdInactiveError("ad_inactive")
         target_type, ad_target = _resolve_json_ad_event_target(ad, stores)
-        if target_type == "invalid":
+        if target_type != "global":
             raise database.AdInactiveError("ad_inactive")
 
         if explicit_store:
-            # Resolve the caller's explicit name first; never replace it with
-            # another target or a global attribution.
-            if (target_type == "store"
-                    and str(ad_target.get("id")) != str(requested_store.get("id"))):
-                raise database.StoreMismatchError("store_mismatch")
-            resolved_store = requested_store
-            store = resolved_store.get("name")
+            # No verified store context exists on this legacy route. A client
+            # cannot attribute a true-global impression/click to an arbitrary
+            # store merely by supplying its name.
+            raise database.StoreMismatchError("store_mismatch")
         else:
-            resolved_store = ad_target if target_type == "store" else None
-            store = resolved_store.get("name") if resolved_store else "未設定"
+            resolved_store = None
+            store = "未設定"
         if _store_is_unavailable(resolved_store):
             raise database.StoreInactiveError("store_inactive")
         events = data.setdefault("events", [])

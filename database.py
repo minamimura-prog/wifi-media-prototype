@@ -2093,6 +2093,13 @@ def record_event(event_type, store_name, ad_id="main", occurred_at=None, *, lega
                     if not target_store:
                         raise AdInactiveError("ad_inactive")
 
+                # The legacy /api/event route has no verified store-page
+                # context. Public delivery exposes the default campaign only
+                # when it is truly global (no ads.store_id and no assignments);
+                # store-scoped delivery uses record_store_ad_event instead.
+                if not is_global:
+                    raise AdInactiveError("ad_inactive")
+
                 if explicit_store_name:
                     name_matches = conn.execute(
                         "SELECT id, name, status, company_id, archived_at FROM stores "
@@ -2104,9 +2111,9 @@ def record_event(event_type, store_name, ad_id="main", occurred_at=None, *, lega
                     requested_store = name_matches[0]
                     if str(requested_store["id"]) != requested_store_id:
                         raise LookupError("store name resolution changed")
-                    if not is_global and str(requested_store["id"]) != str(target_store_id):
-                        raise StoreMismatchError("store_mismatch")
-                    store = requested_store
+                    # A global default ad has no verified store attribution.
+                    # Do not let a caller attach it to an arbitrary store name.
+                    raise StoreMismatchError("store_mismatch")
                 else:
                     store = target_store
                     if store is None:
