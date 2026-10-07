@@ -1065,6 +1065,7 @@ body:has(.ad-management-view){background-color:#070b0d;background-image:radial-g
 @media(max-width:700px){.ad-campaigns-panel .store-campaign-row{grid-template-columns:minmax(0,1fr) auto}.ad-campaigns-panel .store-campaign-period{grid-column:1/-1}}
 </style></head><body><div class="app"><aside class="side"><div class="logo">Wi-Fi MEDIA<small>広告・店舗・効果測定</small></div><div class="nav active" data-page="dashboard" onclick="navigateTo('dashboard')">ダッシュボード</div><div class="nav" data-page="ads" onclick="navigateTo('ads')">広告管理</div><div class="nav" data-page="stores" onclick="navigateTo('stores')">店舗管理</div><div class="nav" data-page="companies" onclick="navigateTo('companies')">企業管理</div><div class="nav" data-page="analytics" onclick="navigateTo('analytics')">効果測定</div><div class="nav" data-page="coupons" onclick="navigateTo('coupons')">クーポン管理</div><div class="nav" data-page="design" onclick="navigateTo('design')">Webデザイン</div><div class="side-logout"><button class="logout-button" id="logout-button" type="button" onclick="logout()">LOGOUT</button></div></aside><main class="main" id="main"></main></div><div class="modalbg" id="modal"><div class="modal"><button class="close" onclick="closeModal()">閉じる</button><h2 id="modalTitle">編集</h2><div id="modalBody"></div></div></div><script src="/static/qrcode-generator-2.0.4.js"></script><script>let S=null;
 let adTarget='global', adStores=null, adStoreId=null, adCampaigns=[], selectedCampaignId=null, adCampaign=null, adCreatingNew=false, adCampaignCount=0, adStoreLoading=false, adStoreError='', adStoreRequestSeq=0, adStoresLoading=false, adStoresRequestSeq=0, adSaving=false, adStatusSaving=false, adSaveError='';
+let adLocalPreviewUrls={pc:'',mobile:''};
 let adPcPreviewObserver=null;
 let adCreateIdempotencyKey=null, adCreateAttempt=null, adCreateUncertain=false, adCreateBlocked=false, adCreateStoreId=null;
 let companyAdminData={companies:[],stores:[]}, companyDataLoaded=false, companyDirectoryLoaded=false, companyRequestSeq=0, companyCreateSaving=false, companyAssignSaving=new Set(), companyFormNotice='', companyFormNoticeType='', companyLoadError='', companyStoreNotices={}, companyFormValues={name:'',code:'',businessType:'',status:'active'};
@@ -1081,7 +1082,7 @@ async function apiFetch(url, options){
   }
   return response;
 }
-const PAGE_RENDERERS={dashboard:()=>dashboard(),ads:()=>ads(),stores:()=>stores(),companies:()=>companyManagement(),analytics:()=>reports(),coupons:()=>couponManager(),design:()=>design()};function setActivePage(page){document.querySelectorAll('.side .nav').forEach(item=>item.classList.toggle('active',item.dataset.page===page))}function resolvePage(){const page=location.hash.slice(1);if(Object.prototype.hasOwnProperty.call(PAGE_RENDERERS,page))return page;history.replaceState(null,'',location.pathname+location.search+'#dashboard');return 'dashboard'}function renderCurrentPage(){if(!S)return;const page=resolvePage();if(page!=='dashboard')disposeDashboardPcPreviewScale();document.body.classList.toggle('dashboard-layout-active',page==='dashboard');document.querySelector('.app')?.classList.toggle('dashboard-layout-active',page==='dashboard');setActivePage(page);PAGE_RENDERERS[page]()}function navigateTo(page){if(adSaving&&adTarget==='store'&&adCreatingNew)return;if(!Object.prototype.hasOwnProperty.call(PAGE_RENDERERS,page))return;if(location.hash==='#'+page){renderCurrentPage();return}location.hash=page}window.addEventListener('hashchange',()=>{if(adSaving&&adTarget==='store'&&adCreatingNew){history.replaceState(null,'',location.pathname+location.search+'#ads');return}if(S)renderCurrentPage()});async function load(){S=await apiFetch('/api/state').then(r=>r.json());renderCurrentPage()}async function save(){const response=await apiFetch('/api/state',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(S)});if(!response.ok){let result={};try{result=await response.json()}catch(_){}await load();toast(result.error==='store_inactive'?'停止中店舗は新しい広告の指定先にできません。':'保存できませんでした。');return false}await load();toast('保存しました');return true}function shell(t,s,c){document.getElementById('main').innerHTML=`<div class="pagehead"><div><h1>${t}</h1><div class="sub">${s}</div></div></div>${c}`}async function ensureDashboardCompanyData(){
+const PAGE_RENDERERS={dashboard:()=>dashboard(),ads:()=>ads(),stores:()=>stores(),companies:()=>companyManagement(),analytics:()=>reports(),coupons:()=>couponManager(),design:()=>design()};function setActivePage(page){document.querySelectorAll('.side .nav').forEach(item=>item.classList.toggle('active',item.dataset.page===page))}function resolvePage(){const page=location.hash.slice(1);if(Object.prototype.hasOwnProperty.call(PAGE_RENDERERS,page))return page;history.replaceState(null,'',location.pathname+location.search+'#dashboard');return 'dashboard'}function renderCurrentPage(){if(!S)return;const page=resolvePage();if(page!=='ads')clearAdLocalPreviewUrls();if(page!=='dashboard')disposeDashboardPcPreviewScale();document.body.classList.toggle('dashboard-layout-active',page==='dashboard');document.querySelector('.app')?.classList.toggle('dashboard-layout-active',page==='dashboard');setActivePage(page);PAGE_RENDERERS[page]()}function navigateTo(page){if(adSaving&&adTarget==='store'&&adCreatingNew)return;if(!Object.prototype.hasOwnProperty.call(PAGE_RENDERERS,page))return;if(location.hash==='#'+page){renderCurrentPage();return}location.hash=page}window.addEventListener('hashchange',()=>{if(adSaving&&adTarget==='store'&&adCreatingNew){history.replaceState(null,'',location.pathname+location.search+'#ads');return}if(S)renderCurrentPage()});async function load(){S=await apiFetch('/api/state').then(r=>r.json());renderCurrentPage()}async function save(){const response=await apiFetch('/api/state',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(S)});if(!response.ok){let result={};try{result=await response.json()}catch(_){}await load();toast(result.error==='store_inactive'?'停止中店舗は新しい広告の指定先にできません。':'保存できませんでした。');return false}await load();toast('保存しました');return true}function shell(t,s,c){document.getElementById('main').innerHTML=`<div class="pagehead"><div><h1>${t}</h1><div class="sub">${s}</div></div></div>${c}`}async function ensureDashboardCompanyData(){
   if(companyDirectoryLoaded)return;
   const [companyResponse,storeResponse]=await Promise.all([companyApiFetch('/api/admin/companies'),companyApiFetch('/api/admin/stores')]);
   if(!companyResponse.ok||!storeResponse.ok)throw new Error('企業・店舗一覧を取得できませんでした。');
@@ -1234,6 +1235,7 @@ async function dashboard(){
   await loadDashboardKpis();
 }
 function ads(){
+  clearAdLocalPreviewUrls();
   if(adCreatingNew&&adCreateUncertain&&adCreateStoreId){adTarget='store';adStoreId=adCreateStoreId;adStoreLoading=false;adStoreError='';adSaveError=adSaveError||'前回の保存結果を確認できません。同じ内容で再試行するか、画面を再読み込みして登録状況を確認してください。';renderAds();return;}
   resetAdCreateIdempotency();adTarget='global';adStoreId=null;adCampaigns=[];selectedCampaignId=null;adCampaign=null;adCreatingNew=false;adCampaignCount=0;adStoreLoading=false;adStoreError='';adSaveError='';adStoreRequestSeq++;
   renderAds();loadAdStores();
@@ -1281,6 +1283,7 @@ function selectStoreCampaign(campaignId){
   if(adCreatingNew&&adCreateUncertain){setAdSaveFeedback('前回の保存結果が未確定です。同じ内容で再試行するか、画面を再読み込みして登録状況を確認してください。');return;}
   const selected=adCampaigns.find(item=>item.campaignId===campaignId);
   if(!selected)return;
+  clearAdLocalPreviewUrls();
   resetAdCreateIdempotency();adCreatingNew=false;selectedCampaignId=selected.campaignId;adCampaign=selected;adSaveError='';renderAds();
 }
 function startNewStoreAd(){
@@ -1288,6 +1291,7 @@ function startNewStoreAd(){
   if(adTarget!=='store'||adSaving||adStoreLoading||adStoreError||adCreatingNew)return;
   if(!store||store.status!=='稼働中'||isArchivedStore(store)){setAdSaveFeedback('停止中・アーカイブ済み、または状態を確認できない店舗では、新しい広告を作成できません。');return;}
   if(!beginAdCreateIdempotency(adStoreId)){setAdSaveFeedback('安全な保存キーを生成できません。対応ブラウザで再度お試しください。');return;}
+  clearAdLocalPreviewUrls();
   adCreatingNew=true;selectedCampaignId=null;adCampaign=null;adSaveError='';renderAds();
 }
 function displayCampaignDate(value){
@@ -1396,6 +1400,8 @@ function renderAds(){
   `<div class="ad-management-view"><div class="ad-system-status"><div><div class="ad-console-name">AD DELIVERY CONTROL</div><div class="ad-console-message">Editing current advertisement configuration.</div></div><span class="ad-ready"><i></i> READY</span></div><div class="ad-target-row"><label for="adDeliveryTarget">配信対象</label><select id="adDeliveryTarget" onchange="changeAdTarget(this.value)" ${adStoresLoading||adSaving||adStatusSaving||(adCreatingNew&&adCreateUncertain)?'disabled':''}><option value="global" ${isGlobal?'selected':''}>全店舗共通</option>${storeOptions}</select></div><div class="layout ad-layout"><div class="ad-left-stack">${storeCampaignPanel}<section class="card ad-panel ad-config-panel"><div class="section ad-panel-heading"><span class="ad-terminal-label">AD CONFIGURATION</span><span>広告内容 · ${isGlobal?'全店舗共通':esc(store?.name||'選択店舗')}</span></div>${isGlobal?globalNotice:notice}${selectedStoreStopped?'<div class="ad-store-notice" role="status">停止中店舗です。キャンペーン状態は操作できますが、店舗が稼働するまでは広告は配信されません。</div>':''}${lockStore?`<p id="adSaveFeedback" class="ad-store-notice ad-target-error" role="alert" ${adSaveError?'':'hidden'}>${esc(adSaveError)}</p>`:''}${isGlobal?'<div class="field"><label>店舗</label><div class="sub">全店舗共通（店舗指定なし）</div></div>':`<div class="field"><label>店舗</label><select id="aStore" ${lockStore||adSaving||adStatusSaving||globalReadOnly?'disabled':''}>${formStoreOptions}</select></div>`}<div class="field"><label>タイトル</label><input id="aTitle" maxlength="500" value="${esc(fieldValue('title'))}" ${formDisabled?'disabled':''}></div><div class="field"><label>本文</label><textarea id="aBody" maxlength="24000" ${formDisabled?'disabled':''}>${esc(fieldValue('body'))}</textarea></div><div class="twocol"><div class="field"><label>掲載開始</label><input id="aStart" type="date" value="${esc(fieldValue(isGlobal?'start':'startsOn'))}" ${formDisabled?'disabled':''}></div><div class="field"><label>掲載終了</label><input id="aEnd" type="date" value="${esc(fieldValue(isGlobal?'end':'endsOn'))}" ${formDisabled?'disabled':''}></div></div><div class="field"><label>「詳しく見る」のリンク先</label><input id="aLink" type="url" maxlength="4096" value="${esc(fieldValue(isGlobal?'link':'landingUrl'))}" placeholder="https://..." ${formDisabled?'disabled':''}></div><div class="field"><label for="aFilePc">PC用画像</label><input id="aFilePc" type="file" accept=".gif,image/gif,image/png,image/jpeg,image/webp" ${formDisabled||(adCreatingNew&&adCreateUncertain)?'disabled':''}><small>推奨サイズ：1920 × 1080px（16:9）</small></div><div class="field"><label for="aFileMobile">スマホ用画像</label><input id="aFileMobile" type="file" accept=".gif,image/gif,image/png,image/jpeg,image/webp" ${formDisabled||(adCreatingNew&&adCreateUncertain)?'disabled':''}><small>推奨サイズ：1080 × 1350px（4:5）</small>${storeMediaReadout}<div class="previewbox ad-upload-note"><strong>MEDIA UPLOAD</strong><span>GIF / JPG / JPEG / PNG / WebP</span><small>PC用・スマホ用画像はそれぞれ別にアップロードできます。未選択の画像は現在のURLを維持します。</small></div></div><div class="actions ad-actions"><button id="adSaveButton" class="ad-primary ${lockStore&&storeSaveLocked?'ad-store-disabled':''}" onclick="publishAd()" ${adSaving||adStatusSaving||storeSaveLocked||globalReadOnly?'disabled':''}>${adSaving?'保存中…':saveLabel}</button><button class="secondary ad-secondary" onclick="openAdPublicPage()" ${adSaving||adStatusSaving?'disabled':''}>公開ページを開く</button></div>${lockStore?'<p class="ad-store-notice">店舗別広告は保存すると選択店舗へ反映されます。</p>':''}</section></div><section class="card ad-panel ad-preview-panel"><div class="ad-preview-head"><div><span class="ad-terminal-label">AD PREVIEW</span><div class="section">広告プレビュー</div></div><span class="ad-connected"><i></i> EDITING</span></div><div class="ad-preview-devices"><section class="ad-preview-device"><div class="ad-preview-device-heading"><span class="ad-terminal-label">PC PREVIEW</span><span class="ad-preview-spec">DESKTOP · 16:9</span></div><div class="ad-preview-pc-viewport" id="adPcPreviewViewport" inert>${adEditorPreviewMarkup('pc')}</div><div class="ad-preview-caption">PC表示 · 960 × 540</div></section><section class="ad-preview-device ad-preview-mobile-device"><div class="ad-preview-device-heading"><span class="ad-terminal-label">MOBILE PREVIEW</span><span class="ad-preview-spec">600px以下</span></div><div class="ad-preview-mobile-viewport" inert><div class="phonewrap ad-crt-frame"><div class="phone ad-crt-phone">${adEditorPreviewMarkup('mobile')}</div></div></div></section></div><div class="ad-preview-footer"><span>PREVIEW MODE : EDITING</span><span class="ad-signal"><i></i><i></i><i></i></span></div></section></div></div>`);
   observeAdPcPreviewScale();
   document.querySelectorAll('#aTitle,#aBody,#aStart,#aEnd,#aLink').forEach(el=>el.addEventListener('input',updateAdEditorPreview));
+  document.getElementById('aFilePc')?.addEventListener('change',event=>setAdLocalPreviewImage('pc',event.currentTarget.files?.[0]||null));
+  document.getElementById('aFileMobile')?.addEventListener('change',event=>setAdLocalPreviewImage('mobile',event.currentTarget.files?.[0]||null));
   updateAdEditorPreview();
   document.querySelectorAll('[data-store-campaign-id]').forEach(button=>button.addEventListener('click',()=>selectStoreCampaign(button.dataset.storeCampaignId)));
   document.querySelectorAll('[data-ad-status-campaign]').forEach(button=>button.addEventListener('click',()=>changeCampaignStatus(button.dataset.adStatusCampaign,button.dataset.adStatusNext)));
@@ -1406,6 +1412,20 @@ function adEditorPreviewMarkup(device){
   const prefix=mobile?'adEditorMobile':'adEditorPc';
   return `<div class="ad-editor-preview-canvas${mobile?' ad-editor-preview-mobile-canvas':''}" id="${prefix}Canvas" role="img" aria-label="編集中の広告プレビュー"><div class="ad-editor-preview-image-wrap"><img class="ad-editor-preview-image" id="${prefix}Image" alt="" hidden><div class="ad-editor-preview-image-placeholder" id="${prefix}ImagePlaceholder" aria-hidden="true">画像未設定</div></div><div class="ad-editor-preview-copy"><h2 class="ad-editor-preview-title" id="${prefix}Title"></h2><p class="ad-editor-preview-body" id="${prefix}Body"></p><div class="ad-editor-preview-meta"><span id="${prefix}Period"></span><span id="${prefix}LinkState"></span></div><button class="ad-editor-preview-cta" id="${prefix}Cta" type="button" disabled aria-disabled="true">詳しく見る</button></div></div>`;
 }
+function clearAdLocalPreviewUrls(){
+  for(const slot of ['pc','mobile']){
+    const objectUrl=adLocalPreviewUrls[slot];
+    if(objectUrl){URL.revokeObjectURL(objectUrl);adLocalPreviewUrls[slot]='';}
+  }
+}
+function setAdLocalPreviewImage(slot,file){
+  if(!['pc','mobile'].includes(slot))return;
+  const oldUrl=adLocalPreviewUrls[slot];
+  if(oldUrl){URL.revokeObjectURL(oldUrl);adLocalPreviewUrls[slot]='';}
+  const allowedTypes=new Set(['image/gif','image/png','image/jpeg','image/webp']);
+  if(file&&allowedTypes.has(file.type))adLocalPreviewUrls[slot]=URL.createObjectURL(file);
+  updateAdEditorPreview();
+}
 function updateAdEditorPreview(){
   const titleInput=document.getElementById('aTitle');
   const bodyInput=document.getElementById('aBody');
@@ -1415,10 +1435,11 @@ function updateAdEditorPreview(){
   const start=document.getElementById('aStart')?.value||'';
   const end=document.getElementById('aEnd')?.value||'';
   const link=document.getElementById('aLink')?.value.trim()||'';
-  const starts=adTarget==='global'?(typeof S?.ad?.media==='string'?S.ad.media:''):(adCreatingNew?'':(adCampaign?.mediaUrl||''));
-  const mobileImage=adTarget==='global'?(typeof S?.ad?.mediaMobile==='string'?S.ad.mediaMobile:''):(adCreatingNew?'':(adCampaign?.mediaUrlMobile||''));
+  const savedPcImage=adTarget==='global'?(typeof S?.ad?.media==='string'?S.ad.media:''):(adCreatingNew?'':(adCampaign?.mediaUrl||''));
+  const savedMobileImage=adTarget==='global'?(typeof S?.ad?.mediaMobile==='string'?S.ad.mediaMobile:''):(adCreatingNew?'':(adCampaign?.mediaUrlMobile||''));
   const safeImageUrl=value=>{
     if(typeof value!=='string'||!value.trim())return '';
+    if(value===adLocalPreviewUrls.pc||value===adLocalPreviewUrls.mobile)return value;
     try{const url=new URL(value,location.origin);return ['http:','https:'].includes(url.protocol)?url.href:'';}catch(_){return '';}
   };
   const safeLink=()=>{
@@ -1427,9 +1448,11 @@ function updateAdEditorPreview(){
   };
   const linkReady=safeLink();
   const periodValue=start||end?`掲載期間：${start||'指定なし'} 〜 ${end||'指定なし'}`:'掲載期間：未設定';
+  const pcImage=adLocalPreviewUrls.pc||savedPcImage;
+  const mobileImage=adLocalPreviewUrls.mobile||adLocalPreviewUrls.pc||savedMobileImage||savedPcImage;
   const previewValues=[
-    {prefix:'adEditorPc',image:starts},
-    {prefix:'adEditorMobile',image:mobileImage||starts},
+    {prefix:'adEditorPc',image:pcImage},
+    {prefix:'adEditorMobile',image:mobileImage},
   ];
   for(const preview of previewValues){
     const titleNode=document.getElementById(`${preview.prefix}Title`);
@@ -1447,8 +1470,13 @@ function updateAdEditorPreview(){
     ctaNode.classList.toggle('is-unlinked',!linkReady);
     ctaNode.setAttribute('aria-label',linkReady?'詳しく見る（プレビュー専用・操作不可）':'詳しく見る（リンク未設定・操作不可）');
     const imageUrl=safeImageUrl(preview.image);
-    if(imageUrl){imageNode.src=imageUrl;imageNode.hidden=false;placeholder.hidden=true;}
-    else{imageNode.removeAttribute('src');imageNode.hidden=true;placeholder.hidden=false;}
+    imageNode.dataset.previewSrc=imageUrl;
+    imageNode.onerror=()=>{
+      if(imageNode.dataset.previewSrc!==imageUrl)return;
+      imageNode.hidden=true;placeholder.textContent='画像を表示できません';placeholder.hidden=false;
+    };
+    if(imageUrl){placeholder.textContent='画像を読み込んでいます…';imageNode.src=imageUrl;imageNode.hidden=false;placeholder.hidden=true;}
+    else{imageNode.removeAttribute('src');imageNode.hidden=true;placeholder.textContent='画像未設定';placeholder.hidden=false;}
   }
 }
 async function loadAdStores(){
@@ -1478,10 +1506,12 @@ async function changeAdTarget(value){
   }
   const select=document.getElementById('adDeliveryTarget');
   if(value==='global'){
+    clearAdLocalPreviewUrls();
     resetAdCreateIdempotency();adStoreRequestSeq++;adTarget='global';adStoreId=null;adCampaigns=[];selectedCampaignId=null;adCampaign=null;adCreatingNew=false;adCampaignCount=0;adStoreLoading=false;adStoreError='';adSaveError='';renderAds();return;
   }
   const store=adStores?.find(x=>String(x.id)===String(value));
   if(!store){if(select)select.value='global';return;}
+  clearAdLocalPreviewUrls();
   resetAdCreateIdempotency();adTarget='store';adStoreId=String(store.id);adCampaigns=[];selectedCampaignId=null;adCampaign=null;adCreatingNew=false;adCampaignCount=0;adStoreLoading=true;adStoreError='';adSaveError='';
   const seq=++adStoreRequestSeq;renderAds();
   try{
@@ -1587,7 +1617,7 @@ async function publishGlobalAd(){
       if(target==='pc')media=uploaded.url;else mediaMobile=uploaded.url;
     }
     const status=defaultAdStatus();
-    S.ad={...S.ad,status,store:'未設定',storeId:null,store_id:null,title:document.getElementById('aTitle').value,body:document.getElementById('aBody').value,start:document.getElementById('aStart').value,end:document.getElementById('aEnd').value,link:document.getElementById('aLink').value,media,mediaMobile,published:status==='active'};await save();
+    S.ad={...S.ad,status,store:'未設定',storeId:null,store_id:null,title:document.getElementById('aTitle').value,body:document.getElementById('aBody').value,start:document.getElementById('aStart').value,end:document.getElementById('aEnd').value,link:document.getElementById('aLink').value,media,mediaMobile,published:status==='active'};await save();clearAdLocalPreviewUrls();if(location.hash==='#ads')updateAdEditorPreview();
   }finally{adSaving=false;updateAdSavingUI();}
 }
 async function publishStoreAd(){
@@ -1625,7 +1655,7 @@ async function publishStoreAd(){
   const recoverSuccessfulMutation=message=>{
     if(!isCurrent())return;
     const recoveredCampaign=mutationResult?.campaign;
-    if(recoveredCampaign&&typeof recoveredCampaign.campaignId==='string'&&recoveredCampaign.campaignId){applyStoreCampaigns([recoveredCampaign],recoveredCampaign.campaignId);adCreatingNew=false;adStoreError='';adStoreLoading=false;renderAds();reloadStoreAdPreview();}
+    if(recoveredCampaign&&typeof recoveredCampaign.campaignId==='string'&&recoveredCampaign.campaignId){clearAdLocalPreviewUrls();applyStoreCampaigns([recoveredCampaign],recoveredCampaign.campaignId);adCreatingNew=false;adStoreError='';adStoreLoading=false;renderAds();reloadStoreAdPreview();}
     else{applyStoreCampaigns([],null);adCreatingNew=false;selectedCampaignId=null;adCampaign=null;adStoreError='保存結果を確認できませんでした。再読み込みしてください。';adStoreLoading=false;renderAds();}
     setAdSaveFeedback(message);
   };
@@ -1695,6 +1725,7 @@ async function publishStoreAd(){
     let result;try{result=await refreshed.json();}catch(_){recoverSuccessfulMutation('保存しましたが、最新情報を再取得できませんでした。画面を再読み込みしてください。');return;}
     if(!Array.isArray(result.campaigns)){recoverSuccessfulMutation('保存しましたが、最新情報を再取得できませんでした。画面を再読み込みしてください。');return;}
     if(!isCurrent())return;
+    clearAdLocalPreviewUrls();
     if(isCreate){
       if(!result.campaigns.some(item=>item?.campaignId===returnedCampaignId)){
         adCampaigns=result.campaigns;adCampaignCount=result.campaigns.length;selectedCampaignId=null;adCampaign=null;adCreatingNew=false;
@@ -1738,6 +1769,7 @@ async function reloadCampaignAfterStatus(campaignId,target,storeId){
   if(!Array.isArray(payload.campaigns))return false;
   if(location.hash==='#ads'&&adTarget==='store'&&String(adStoreId)===String(storeId)){
     if(!payload.campaigns.some(item=>item?.campaignId===campaignId))return false;
+    clearAdLocalPreviewUrls();
     applyStoreCampaigns(payload.campaigns,campaignId);adStoreLoading=false;adStoreError='';adSaveError='';
     renderAds();reloadStoreAdPreview();
   }
