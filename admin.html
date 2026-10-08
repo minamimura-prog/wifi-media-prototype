@@ -1291,6 +1291,7 @@ function hasUnsavedAdChanges(){
   const current={title,body,start:value('aStart')??'',end:value('aEnd')??'',link:value('aLink')??'',pcImage:pcFile||adEditorBaseline.pcImage,mobileImage:mobileFile||adEditorBaseline.mobileImage};
   return Object.keys(adEditorBaseline).some(key=>current[key]!==adEditorBaseline[key]);
 }
+function confirmDiscardAdChanges(){return !hasUnsavedAdChanges()||window.confirm('未保存の変更があります。保存せずに移動しますか？');}
 function secureAdCreateKey(){
   const cryptoApi=window.crypto;
   try{
@@ -1322,8 +1323,9 @@ function adCreateFormFingerprint(storeId,values){
 function selectStoreCampaign(campaignId){
   if(adTarget!=='store'||adSaving||adStoreLoading)return;
   if(adCreatingNew&&adCreateUncertain){setAdSaveFeedback('前回の保存結果が未確定です。同じ内容で再試行するか、画面を再読み込みして登録状況を確認してください。');return;}
+  if(!adCreatingNew&&selectedCampaignId===campaignId)return;
   const selected=adCampaigns.find(item=>item.campaignId===campaignId);
-  if(!selected)return;
+  if(!selected||!confirmDiscardAdChanges())return;
   clearAdLocalPreviewUrls();
   resetAdCreateIdempotency();adCreatingNew=false;selectedCampaignId=selected.campaignId;adCampaign=selected;adSaveError='';renderAds();
 }
@@ -1331,6 +1333,7 @@ function startNewStoreAd(){
   const store=adStores?.find(item=>String(item.id)===String(adStoreId));
   if(adTarget!=='store'||adSaving||adStoreLoading||adStoreError||adCreatingNew)return;
   if(!store||store.status!=='稼働中'||isArchivedStore(store)){setAdSaveFeedback('停止中・アーカイブ済み、または状態を確認できない店舗では、新しい広告を作成できません。');return;}
+  if(!confirmDiscardAdChanges())return;
   if(!beginAdCreateIdempotency(adStoreId)){setAdSaveFeedback('安全な保存キーを生成できません。対応ブラウザで再度お試しください。');return;}
   clearAdLocalPreviewUrls();
   adCreatingNew=true;selectedCampaignId=null;adCampaign=null;adSaveError='';renderAds();
@@ -1557,17 +1560,23 @@ async function loadAdStores(){
 async function changeAdTarget(value){
   if(adSaving)return;
   const requestedStoreId=value==='global'?null:String(value);
+  const select=document.getElementById('adDeliveryTarget');
+  const currentTargetValue=adTarget==='global'?'global':String(adStoreId??'');
   if(adTarget==='store'&&adCreatingNew&&adCreateUncertain&&String(adCreateStoreId)===String(adStoreId)){
     if(requestedStoreId!==String(adStoreId)){adSaveError='前回の保存結果が未確定です。別店舗へ移動する前に、同じ内容で再試行するか画面を再読み込みして登録状況を確認してください。';renderAds();return;}
     renderAds();return;
   }
-  const select=document.getElementById('adDeliveryTarget');
+  const store=value==='global'?null:adStores?.find(x=>String(x.id)===String(value));
+  if(value!=='global'&&!store){if(select)select.value='global';return;}
+  const requestedTargetValue=value==='global'?'global':String(value);
+  if(requestedTargetValue!==currentTargetValue&&!confirmDiscardAdChanges()){
+    if(select)select.value=currentTargetValue;
+    return;
+  }
   if(value==='global'){
     clearAdLocalPreviewUrls();
     resetAdCreateIdempotency();adStoreRequestSeq++;adTarget='global';adStoreId=null;adCampaigns=[];selectedCampaignId=null;adCampaign=null;adCreatingNew=false;adCampaignCount=0;adStoreLoading=false;adStoreError='';adSaveError='';renderAds();return;
   }
-  const store=adStores?.find(x=>String(x.id)===String(value));
-  if(!store){if(select)select.value='global';return;}
   clearAdLocalPreviewUrls();
   resetAdCreateIdempotency();adTarget='store';adStoreId=String(store.id);adCampaigns=[];selectedCampaignId=null;adCampaign=null;adCreatingNew=false;adCampaignCount=0;adStoreLoading=true;adStoreError='';adSaveError='';
   const seq=++adStoreRequestSeq;renderAds();
