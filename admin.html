@@ -1292,6 +1292,7 @@ function hasUnsavedAdChanges(){
   return Object.keys(adEditorBaseline).some(key=>current[key]!==adEditorBaseline[key]);
 }
 function confirmDiscardAdChanges(){return !hasUnsavedAdChanges()||window.confirm('未保存の変更があります。保存せずに移動しますか？');}
+window.addEventListener('beforeunload',event=>{if(!hasUnsavedAdChanges())return;event.preventDefault();event.returnValue='';});
 function secureAdCreateKey(){
   const cryptoApi=window.crypto;
   try{
