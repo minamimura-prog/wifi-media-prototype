@@ -950,6 +950,8 @@ body.dashboard-layout-active{background-color:#070b0d;background-image:radial-gr
 .dashboard-view .dashboard-data-table button.secondary:active{transform:translateY(1px);box-shadow:0 1px 0 rgba(8,43,49,.9)}
 .dashboard-view .dashboard-data-table button.secondary:focus-visible{outline:2px solid var(--admin-control-cyan);outline-offset:2px}
 .dashboard-view .dashboard-data-table button.secondary:disabled{color:#728287;background:#101719;border-color:#344349;box-shadow:none;cursor:not-allowed;transform:none}
+.dashboard-view .dashboard-store-actions{white-space:nowrap}
+.dashboard-view .dashboard-store-actions button+button{margin-left:6px}
 
 
 .dashboard-preview-stack{display:flex;flex-direction:column;gap:14px}
@@ -1377,6 +1379,7 @@ body:has(.ad-management-view){background-color:#070b0d;background-image:radial-g
 .analytics-view .analytics-conditions-panel .analytics-scope-toolbar select:focus{outline:2px solid rgba(76,229,255,.38);outline-offset:1px;border-color:#8af4fb;background:#071116;box-shadow:inset 0 2px 5px rgba(0,0,0,.3),0 0 0 3px rgba(76,229,255,.14),0 0 16px rgba(76,229,255,.16)}
 .analytics-view .analytics-conditions-panel .analytics-scope-toolbar select:disabled{color:#89979a;background:#1b2225;border-color:#343f43;box-shadow:inset 0 1px 3px rgba(0,0,0,.2);cursor:not-allowed;opacity:.72}
 .analytics-view .analytics-scope-error{grid-column:1;margin:1px 0 0;padding-top:6px;border-top:1px solid rgba(255,112,123,.2)}
+.analytics-view .analytics-store-coupon-note{margin:0 0 12px;padding:0 0 9px;border-bottom:1px solid rgba(76,229,255,.09);color:#8fa8ac;font-size:11px;line-height:1.6}
 .analytics-view .analytics-condition-period{display:grid;align-content:start;gap:5px;min-width:0;padding:0 0 12px;border-bottom:1px solid rgba(76,229,255,.08)}
 .analytics-view .analytics-condition-period .analytics-period-tabs{gap:6px}
 .analytics-view .analytics-period-tab{min-height:36px;padding:7px 12px;color:#b8d4d7;background:linear-gradient(180deg,rgba(8,24,29,.92),rgba(5,15,19,.96));border:1px solid #45646d;border-radius:5px;box-shadow:inset 0 1px 0 rgba(255,255,255,.04);font-weight:700;cursor:pointer;transition:transform .14s ease,border-color .14s ease,background .14s ease,box-shadow .14s ease,color .14s ease}
@@ -1413,7 +1416,7 @@ let storeCompanyOptionsData=[], storeCompanyOptionsError='', storeSavePending=fa
 let storePublicCodes=new Map(), storePublicCodeSeq=0, storePublicCodeLoading=false, storePublicCodeError='', storeSearchQuery='', storeListView='normal', storeEditInitialValues=null;
 let couponFormError='', designSaveError='';
 let dashboardSelectedCompany='all', dashboardStoreSearch='', dashboardSelectedStoreId=null, dashboardDirectoryError='', dashboardKpiRequestSeq=0, dashboardKpiAbortController=null;
-let analyticsCompanies=null, analyticsCompaniesPromise=null, analyticsSelectedCompanyId=null, analyticsSelectedPeriod='30d', analyticsRequestSeq=0;
+let analyticsCompanies=null, analyticsCompaniesPromise=null, analyticsSelectedCompanyId=null, analyticsSelectedStoreId=null, analyticsSelectedPeriod='30d', analyticsRequestSeq=0;
 let dashboardPcPreviewObserver=null, dashboardPcPreviewResizeHandler=null;
 async function apiFetch(url, options){
   const response=await window.fetch(url, options);
@@ -1424,7 +1427,7 @@ async function apiFetch(url, options){
   return response;
 }
 const ADMIN_PAGE_HISTORY_KEY='__wifiMediaAdminPageHistory';let adminPageHistoryPosition=null,adminPageHistoryChain=null,adminPageHistoryHash=location.hash,pendingAdminHistoryRestore=null;const suppressedAdminHashChanges=new Set();function createAdminPageHistoryChain(){return typeof crypto?.randomUUID==='function'?crypto.randomUUID():`admin-${Date.now()}-${Math.random().toString(36).slice(2)}`}function makeAdminPageHistoryState(position,chain=adminPageHistoryChain,baseState=history.state){const current=baseState&&typeof baseState==='object'?{...baseState}:{};current[ADMIN_PAGE_HISTORY_KEY]={version:2,position,chain};return current}function readAdminPageHistoryEntry(state){const value=state&&typeof state==='object'?state[ADMIN_PAGE_HISTORY_KEY]:null;return value&&value.version===2&&Number.isInteger(value.position)&&typeof value.chain==='string'&&value.chain?{position:value.position,chain:value.chain}:null}function initializeAdminPageHistory(){const entry=readAdminPageHistoryEntry(history.state);if(entry){adminPageHistoryPosition=entry.position;adminPageHistoryChain=entry.chain}else{adminPageHistoryPosition=0;adminPageHistoryChain=createAdminPageHistoryChain();history.replaceState(makeAdminPageHistoryState(0,adminPageHistoryChain),'',location.href)}adminPageHistoryHash=location.hash}function ensureAdminPageHistoryEntry(){if(Number.isInteger(adminPageHistoryPosition)&&adminPageHistoryChain)return;adminPageHistoryPosition=0;adminPageHistoryChain=createAdminPageHistoryChain();history.replaceState(makeAdminPageHistoryState(0,adminPageHistoryChain),'',location.href)}function historyUrlHash(url){try{return new URL(url,location.href).hash}catch(_){return ''}}function suppressAdminHashChange(url){const hash=historyUrlHash(url);if(hash)suppressedAdminHashChanges.add(hash)}function rebaseAdminPageHistoryEntry(){adminPageHistoryPosition=0;adminPageHistoryChain=createAdminPageHistoryChain();history.replaceState(makeAdminPageHistoryState(0,adminPageHistoryChain),'',location.href)}function restoreUnknownAdminHistoryTarget(previousHash){const state=history.state&&typeof history.state==='object'?{...history.state}:{};delete state[ADMIN_PAGE_HISTORY_KEY];const url=location.pathname+location.search+previousHash;history.replaceState(state,'',url);adminPageHistoryPosition=null;adminPageHistoryChain=null;adminPageHistoryHash=previousHash}
-const PAGE_RENDERERS={dashboard:()=>dashboard(),ads:()=>ads(),stores:()=>stores(),companies:()=>companyManagement(),analytics:()=>reports(),coupons:()=>couponManager(),design:()=>design()};function setActivePage(page){document.querySelectorAll('.side .nav').forEach(item=>item.classList.toggle('active',item.dataset.page===page))}function resolvePage(){const page=location.hash.slice(1);if(Object.prototype.hasOwnProperty.call(PAGE_RENDERERS,page))return page;history.replaceState(makeAdminPageHistoryState(adminPageHistoryPosition,adminPageHistoryChain),'',location.pathname+location.search+'#dashboard');return 'dashboard'}function renderCurrentPage(){if(!S)return;const page=resolvePage();adminPageHistoryHash=location.hash;if(page!=='ads')clearAdLocalPreviewUrls();if(page!=='dashboard')disposeDashboardPcPreviewScale();document.body.classList.toggle('dashboard-layout-active',page==='dashboard');document.querySelector('.app')?.classList.toggle('dashboard-layout-active',page==='dashboard');setActivePage(page);PAGE_RENDERERS[page]()}function navigateTo(page){if(adSaving&&adTarget==='store'&&adCreatingNew)return;if(!Object.prototype.hasOwnProperty.call(PAGE_RENDERERS,page))return;const targetHash='#'+page;if(location.hash===targetHash)return;if(location.hash==='#ads'&&!confirmDiscardAdChanges())return;ensureAdminPageHistoryEntry();adminPageHistoryPosition++;history.pushState(makeAdminPageHistoryState(adminPageHistoryPosition,adminPageHistoryChain),'',targetHash);if(S)renderCurrentPage()}window.addEventListener('popstate',event=>{const target=readAdminPageHistoryEntry(event.state);const targetHash=location.hash;if(pendingAdminHistoryRestore){const pending=pendingAdminHistoryRestore;if(target&&target.chain===pending.chain&&target.position===pending.position&&targetHash===pending.hash){adminPageHistoryPosition=target.position;adminPageHistoryChain=target.chain;adminPageHistoryHash=targetHash;suppressAdminHashChange(location.href);pendingAdminHistoryRestore=null;return}pendingAdminHistoryRestore=null}const previousPosition=adminPageHistoryPosition,previousChain=adminPageHistoryChain,previousHash=adminPageHistoryHash;const leavesAds=previousHash==='#ads'&&targetHash!=='#ads';const hasChanges=leavesAds&&hasUnsavedAdChanges({allowDuringHistoryNavigation:true});if(hasChanges&&!confirmDiscardAdChanges({allowDuringHistoryNavigation:true})){suppressAdminHashChange(location.href);if(target&&previousChain&&target.chain===previousChain&&Number.isInteger(previousPosition)){const delta=previousPosition-target.position;if(delta!==0){pendingAdminHistoryRestore={chain:previousChain,position:previousPosition,hash:previousHash};history.go(delta);return}}restoreUnknownAdminHistoryTarget(previousHash);return}if(target){adminPageHistoryPosition=target.position;adminPageHistoryChain=target.chain}else{rebaseAdminPageHistoryEntry()}adminPageHistoryHash=location.hash});window.addEventListener('hashchange',event=>{if(suppressedAdminHashChanges.delete(historyUrlHash(event.newURL)))return;if(adSaving&&adTarget==='store'&&adCreatingNew){history.replaceState(makeAdminPageHistoryState(adminPageHistoryPosition,adminPageHistoryChain),'',location.pathname+location.search+'#ads');adminPageHistoryHash='#ads';return}if(S){const entry=readAdminPageHistoryEntry(history.state);if(entry){adminPageHistoryPosition=entry.position;adminPageHistoryChain=entry.chain}else{adminPageHistoryPosition=null;adminPageHistoryChain=null}renderCurrentPage()}});async function load(){S=await apiFetch('/api/state').then(r=>r.json());renderCurrentPage()}async function save(options={}){let response;try{response=await apiFetch('/api/state',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(S)})}catch(error){if(!options.preserveFormOnFailure)throw error;const message='保存できませんでした。';if(options.onFailure)options.onFailure(message);else toast(message,{type:'error'});return false}if(!response.ok){let result={};try{result=await response.json()}catch(_){}if(!options.preserveFormOnFailure)await load();const message=result.error==='store_inactive'?'停止中店舗は新しい広告の指定先にできません。':'保存できませんでした。';if(options.onFailure)options.onFailure(message);else toast(message,{type:'error'});return false}await load();toast('保存しました',{type:'success'});return true}function shell(t,s,c){document.getElementById('main').innerHTML=`<div class="pagehead"><div><h1>${t}</h1><div class="sub">${s}</div></div></div>${c}`}async function ensureDashboardCompanyData(){
+const PAGE_RENDERERS={dashboard:()=>dashboard(),ads:()=>ads(),stores:()=>stores(),companies:()=>companyManagement(),analytics:()=>reports(),coupons:()=>couponManager(),design:()=>design()};function navigateToStoreCoupons(storeId){const id=String(storeId??'');if(!id)return;const current=parseAdminRoute();if(current.page==='coupons'&&current.params.get('store')===id)return;ensureAdminPageHistoryEntry();adminPageHistoryPosition++;const targetHash=buildAdminHash('coupons',{store:id});history.pushState(makeAdminPageHistoryState(adminPageHistoryPosition,adminPageHistoryChain),'',targetHash);if(S)renderCurrentPage()}function navigateToStoreAnalytics(storeId){const id=String(storeId??'');if(!id)return;const current=parseAdminRoute();if(current.page==='analytics'&&current.params.get('store')===id)return;ensureAdminPageHistoryEntry();adminPageHistoryPosition++;const targetHash=buildAdminHash('analytics',{store:id});history.pushState(makeAdminPageHistoryState(adminPageHistoryPosition,adminPageHistoryChain),'',targetHash);if(S)renderCurrentPage()}function setActivePage(page){document.querySelectorAll('.side .nav').forEach(item=>item.classList.toggle('active',item.dataset.page===page))}function parseAdminRoute(hash=location.hash){const route=String(hash||'').replace(/^#/,'');const queryIndex=route.indexOf('?');return {page:queryIndex<0?route:route.slice(0,queryIndex),params:new URLSearchParams(queryIndex<0?'':route.slice(queryIndex+1))}}function isAdminRoute(page,hash=location.hash){return parseAdminRoute(hash).page===page}function buildAdminHash(page,params){const query=params instanceof URLSearchParams?params.toString():new URLSearchParams(params||{}).toString();return '#'+page+(query?'?'+query:'')}function setAdminRouteHash(hash){if(location.hash===hash)return;history.replaceState(makeAdminPageHistoryState(adminPageHistoryPosition,adminPageHistoryChain),'',location.pathname+location.search+hash);adminPageHistoryHash=hash}function resolvePage(){const page=parseAdminRoute().page;if(Object.prototype.hasOwnProperty.call(PAGE_RENDERERS,page))return page;history.replaceState(makeAdminPageHistoryState(adminPageHistoryPosition,adminPageHistoryChain),'',location.pathname+location.search+'#dashboard');return 'dashboard'}function renderCurrentPage(){if(!S)return;const page=resolvePage();adminPageHistoryHash=location.hash;if(page!=='ads')clearAdLocalPreviewUrls();if(page!=='dashboard')disposeDashboardPcPreviewScale();document.body.classList.toggle('dashboard-layout-active',page==='dashboard');document.querySelector('.app')?.classList.toggle('dashboard-layout-active',page==='dashboard');setActivePage(page);PAGE_RENDERERS[page]()}function navigateTo(page){if(adSaving&&adTarget==='store'&&adCreatingNew)return;if(!Object.prototype.hasOwnProperty.call(PAGE_RENDERERS,page))return;if(isAdminRoute(page))return;if(isAdminRoute('ads')&&!confirmDiscardAdChanges())return;const targetHash='#'+page;ensureAdminPageHistoryEntry();adminPageHistoryPosition++;history.pushState(makeAdminPageHistoryState(adminPageHistoryPosition,adminPageHistoryChain),'',targetHash);if(S)renderCurrentPage()}function navigateToStoreAds(storeId){const id=String(storeId??'');if(!id)return;if(adSaving&&adTarget==='store'&&adCreatingNew)return;const current=parseAdminRoute();if(current.page==='ads'&&current.params.get('store')===id)return;if(current.page==='ads'&&!confirmDiscardAdChanges())return;ensureAdminPageHistoryEntry();adminPageHistoryPosition++;const targetHash=buildAdminHash('ads',{store:id});history.pushState(makeAdminPageHistoryState(adminPageHistoryPosition,adminPageHistoryChain),'',targetHash);if(S)renderCurrentPage()}window.addEventListener('popstate',event=>{const target=readAdminPageHistoryEntry(event.state);const targetHash=location.hash;if(pendingAdminHistoryRestore){const pending=pendingAdminHistoryRestore;if(target&&target.chain===pending.chain&&target.position===pending.position&&targetHash===pending.hash){adminPageHistoryPosition=target.position;adminPageHistoryChain=target.chain;adminPageHistoryHash=targetHash;suppressAdminHashChange(location.href);pendingAdminHistoryRestore=null;return}pendingAdminHistoryRestore=null}const previousPosition=adminPageHistoryPosition,previousChain=adminPageHistoryChain,previousHash=adminPageHistoryHash;const previousRoute=parseAdminRoute(previousHash),targetRoute=parseAdminRoute(targetHash);const leavesAds=previousRoute.page==='ads'&&(targetRoute.page!=='ads'||previousRoute.params.get('store')!==targetRoute.params.get('store'));const hasChanges=leavesAds&&hasUnsavedAdChanges({allowDuringHistoryNavigation:true});if(hasChanges&&!confirmDiscardAdChanges({allowDuringHistoryNavigation:true})){suppressAdminHashChange(location.href);if(target&&previousChain&&target.chain===previousChain&&Number.isInteger(previousPosition)){const delta=previousPosition-target.position;if(delta!==0){pendingAdminHistoryRestore={chain:previousChain,position:previousPosition,hash:previousHash};history.go(delta);return}}restoreUnknownAdminHistoryTarget(previousHash);return}if(target){adminPageHistoryPosition=target.position;adminPageHistoryChain=target.chain}else{rebaseAdminPageHistoryEntry()}adminPageHistoryHash=location.hash});window.addEventListener('hashchange',event=>{if(suppressedAdminHashChanges.delete(historyUrlHash(event.newURL)))return;if(adSaving&&adTarget==='store'&&adCreatingNew){const previousHash=isAdminRoute('ads',adminPageHistoryHash)?adminPageHistoryHash:'#ads';history.replaceState(makeAdminPageHistoryState(adminPageHistoryPosition,adminPageHistoryChain),'',location.pathname+location.search+previousHash);adminPageHistoryHash=previousHash;return}if(S){const entry=readAdminPageHistoryEntry(history.state);if(entry){adminPageHistoryPosition=entry.position;adminPageHistoryChain=entry.chain}else{adminPageHistoryPosition=null;adminPageHistoryChain=null}renderCurrentPage()}});async function load(){S=await apiFetch('/api/state').then(r=>r.json());renderCurrentPage()}async function save(options={}){let response;try{response=await apiFetch('/api/state',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(S)})}catch(error){if(!options.preserveFormOnFailure)throw error;const message='保存できませんでした。';if(options.onFailure)options.onFailure(message);else toast(message,{type:'error'});return false}if(!response.ok){let result={};try{result=await response.json()}catch(_){}if(!options.preserveFormOnFailure)await load();const message=result.error==='store_inactive'?'停止中店舗は新しい広告の指定先にできません。':'保存できませんでした。';if(options.onFailure)options.onFailure(message);else toast(message,{type:'error'});return false}await load();toast('保存しました',{type:'success'});return true}function shell(t,s,c){document.getElementById('main').innerHTML=`<div class="pagehead"><div><h1>${t}</h1><div class="sub">${s}</div></div></div>${c}`}async function ensureDashboardCompanyData(){
   if(companyDirectoryLoaded)return;
   const [companyResponse,storeResponse]=await Promise.all([companyApiFetch('/api/admin/companies'),companyApiFetch('/api/admin/stores')]);
   if(!companyResponse.ok||!storeResponse.ok)throw new Error('企業・店舗一覧を取得できませんでした。');
@@ -1503,7 +1506,7 @@ function renderDashboardStores(){
   if(dashboardSelectedStoreId&&(!selectedStore||!dashboardStorePreviewUrl(selectedStore))){dashboardSelectedStoreId=null;selectedStore=null;}
   syncDashboardPreview(selectedStore);
   if(!stores.length){body.innerHTML='<tr><td colspan="5" class="dashboard-empty-row">条件に一致する店舗がありません</td></tr>';return;}
-  body.innerHTML=stores.map((store,index)=>`<tr data-dashboard-store-id="${esc(String(store.id))}" class="${String(store.id)===dashboardSelectedStoreId?'is-preview-selected':''}" tabindex="0" aria-selected="${String(store.id)===dashboardSelectedStoreId?'true':'false'}"><td><span class="dashboard-store-number">${String(index+1).padStart(2,'0')}</span><span class="dashboard-store-identity"><b>${esc(store.name||'')}</b><small>${esc(store.companyName||(store.companyId?'所属企業情報なし':'未所属'))}</small></span></td><td>${esc(S.ad.title||'')}</td><td>${Number(store.users||0).toLocaleString()}</td><td><span class="badge ${isArchivedStore(store)?'is-archived':store.status==='停止中'?'off':''}">${esc(store.status||'')}</span></td><td><button type="button" class="secondary" data-dashboard-store-edit="${esc(String(store.id))}">編集</button></td></tr>`).join('');
+  body.innerHTML=stores.map((store,index)=>`<tr data-dashboard-store-id="${esc(String(store.id))}" class="${String(store.id)===dashboardSelectedStoreId?'is-preview-selected':''}" tabindex="0" aria-selected="${String(store.id)===dashboardSelectedStoreId?'true':'false'}"><td><span class="dashboard-store-number">${String(index+1).padStart(2,'0')}</span><span class="dashboard-store-identity"><b>${esc(store.name||'')}</b><small>${esc(store.companyName||(store.companyId?'所属企業情報なし':'未所属'))}</small></span></td><td>${esc(S.ad.title||'')}</td><td>${Number(store.users||0).toLocaleString()}</td><td><span class="badge ${isArchivedStore(store)?'is-archived':store.status==='停止中'?'off':''}">${esc(store.status||'')}</span></td><td class="dashboard-store-actions"><button type="button" class="secondary" data-dashboard-store-ads="${esc(String(store.id))}" aria-label="${esc(store.name||'店舗')}の広告管理を開く">広告</button><button type="button" class="secondary" data-dashboard-store-coupons="${esc(String(store.id))}" aria-label="${esc(store.name||'店舗')}のクーポン管理を開く">クーポン</button><button type="button" class="secondary" data-dashboard-store-analytics="${esc(String(store.id))}" aria-label="${esc(store.name||'店舗')}の効果測定を開く">効果測定</button><button type="button" class="secondary" data-dashboard-store-edit="${esc(String(store.id))}">編集</button></td></tr>`).join('');
   body.querySelectorAll('tr[data-dashboard-store-id]').forEach(row=>{
     row.addEventListener('click',event=>{
       if(event.target.closest('button'))return;
@@ -1515,7 +1518,7 @@ function renderDashboardStores(){
     });
     row.querySelectorAll('button').forEach(button=>button.addEventListener('click',event=>{
       event.stopPropagation();
-      if(button.hasAttribute('data-dashboard-store-edit'))editStore(button.dataset.dashboardStoreEdit);
+      if(button.hasAttribute('data-dashboard-store-ads'))navigateToStoreAds(button.dataset.dashboardStoreAds);else if(button.hasAttribute('data-dashboard-store-coupons'))navigateToStoreCoupons(button.dataset.dashboardStoreCoupons);else if(button.hasAttribute('data-dashboard-store-analytics'))navigateToStoreAnalytics(button.dataset.dashboardStoreAnalytics);else if(button.hasAttribute('data-dashboard-store-edit'))editStore(button.dataset.dashboardStoreEdit);
     }));
   });
 }
@@ -1579,8 +1582,9 @@ async function dashboard(){
 function ads(){
   clearAdLocalPreviewUrls();
   if(adCreatingNew&&adCreateUncertain&&adCreateStoreId){adTarget='store';adStoreId=adCreateStoreId;adStoreLoading=false;adStoreError='';adSaveError=adSaveError||'前回の保存結果を確認できません。同じ内容で再試行するか、画面を再読み込みして登録状況を確認してください。';renderAds();return;}
-  resetAdCreateIdempotency();adTarget='global';adStoreId=null;adCampaigns=[];selectedCampaignId=null;adCampaign=null;adCreatingNew=false;adCampaignCount=0;adStoreLoading=false;adStoreError='';adSaveError='';adStoreRequestSeq++;
-  renderAds();loadAdStores();
+  const requestedStoreId=parseAdminRoute().params.get('store');
+  resetAdCreateIdempotency();adTarget=requestedStoreId?'store':'global';adStoreId=requestedStoreId||null;adCampaigns=[];selectedCampaignId=null;adCampaign=null;adCreatingNew=false;adCampaignCount=0;adStoreLoading=!!requestedStoreId;adStoreError='';adSaveError='';adStoreRequestSeq++;
+  renderAds();loadAdStores(requestedStoreId);
 }
 function isArchivedStore(store){return store?.archivedAt!==null&&store?.archivedAt!==undefined;}
 function resolveStoreCampaignSelection(campaigns, preferredId){
@@ -1623,7 +1627,7 @@ function adEditorIsReadOnly(){
   return !campaign||!['draft','active','paused'].includes(campaign.status);
 }
 function hasUnsavedAdChanges(options={}){
-  if((location.hash!=='#ads'&&!options.allowDuringHistoryNavigation)||!adEditorBaseline||adEditorIsReadOnly())return false;
+  if((!isAdminRoute('ads')&&!options.allowDuringHistoryNavigation)||!adEditorBaseline||adEditorIsReadOnly())return false;
   const value=id=>document.getElementById(id)?.value;
   const title=value('aTitle'),body=value('aBody');
   if(title===undefined||body===undefined)return false;
@@ -1882,21 +1886,24 @@ function updateAdEditorPreview(){
     else{imageNode.removeAttribute('src');imageNode.hidden=true;placeholder.textContent='画像未設定';placeholder.hidden=false;}
   }
 }
-async function loadAdStores(){
+async function loadAdStores(requestedStoreId=null){
   const seq=++adStoresRequestSeq;adStoresLoading=true;renderAds();
   try{
     const response=await companyApiFetch('/api/admin/stores');
     if(!response.ok)throw new Error('店舗一覧を読み込めませんでした。');
     const payload=await response.json();
-    if(seq!==adStoresRequestSeq||location.hash!=='#ads')return;
+    if(seq!==adStoresRequestSeq||!isAdminRoute('ads'))return;
     if(!Array.isArray(payload.stores))throw new Error('店舗一覧を読み込めませんでした。');
     adStores=payload.stores.filter(x=>x&&x.id!==undefined&&typeof x.name==='string'&&typeof x.publicCode==='string');
+    if(requestedStoreId&&!adStores.some(x=>String(x.id)===String(requestedStoreId))){
+      resetAdCreateIdempotency();adStoreRequestSeq++;adTarget='global';adStoreId=null;adCampaigns=[];selectedCampaignId=null;adCampaign=null;adCreatingNew=false;adCampaignCount=0;adStoreLoading=false;adStoreError='';adSaveError='';setAdminRouteHash('#ads');renderAds();toast('指定された店舗が見つかりません。',{type:'info'});return;
+    }
     if(adTarget==='store'&&!adStores.some(x=>String(x.id)===String(adStoreId))){
       resetAdCreateIdempotency();adStoreRequestSeq++;adTarget='global';adStoreId=null;adCampaigns=[];selectedCampaignId=null;adCampaign=null;adCreatingNew=false;adCampaignCount=0;adStoreLoading=false;adStoreError='';adSaveError='';
     }
-    adStoresLoading=false;renderAds();
+    adStoresLoading=false;renderAds();if(requestedStoreId)await changeAdTarget(requestedStoreId);
   }catch(error){
-    if(seq!==adStoresRequestSeq||location.hash!=='#ads')return;
+    if(seq!==adStoresRequestSeq||!isAdminRoute('ads'))return;
     adStoresLoading=false;adStoreError='店舗一覧を読み込めませんでした。';renderAds();
   }
 }
@@ -1927,12 +1934,12 @@ async function changeAdTarget(value){
     const response=await apiFetch(`/api/admin/stores/${encodeURIComponent(store.id)}/campaigns`);
     if(!response.ok)throw new Error('店舗広告を読み込めませんでした。');
     const payload=await response.json();
-    if(seq!==adStoreRequestSeq||adTarget!=='store'||String(adStoreId)!==String(store.id)||location.hash!=='#ads')return;
+    if(seq!==adStoreRequestSeq||adTarget!=='store'||String(adStoreId)!==String(store.id)||!isAdminRoute('ads'))return;
     if(!Array.isArray(payload.campaigns))throw new Error('店舗広告を読み込めませんでした。');
     applyStoreCampaigns(payload.campaigns,selectedCampaignId);
     adStoreLoading=false;renderAds();
   }catch(error){
-    if(seq!==adStoreRequestSeq||adTarget!=='store'||String(adStoreId)!==String(store.id)||location.hash!=='#ads')return;
+    if(seq!==adStoreRequestSeq||adTarget!=='store'||String(adStoreId)!==String(store.id)||!isAdminRoute('ads'))return;
     adCampaigns=[];selectedCampaignId=null;adCampaign=null;adCreatingNew=false;adCampaignCount=0;adStoreLoading=false;adStoreError='店舗広告を読み込めませんでした。';renderAds();
   }
 }
@@ -2033,7 +2040,7 @@ async function publishGlobalAd(){
     }
     if(uploadFailed)return;
     const status=defaultAdStatus();
-    S.ad={...S.ad,status,store:'未設定',storeId:null,store_id:null,title:document.getElementById('aTitle').value,body:document.getElementById('aBody').value,start:document.getElementById('aStart').value,end:document.getElementById('aEnd').value,link:document.getElementById('aLink').value,media,mediaMobile,published:status==='active'};const saved=await save({preserveFormOnFailure:true});if(saved){resetAdEditorBaseline();clearAdLocalPreviewUrls();}else{S.ad=savedAd;}if(location.hash==='#ads')updateAdEditorPreview();
+    S.ad={...S.ad,status,store:'未設定',storeId:null,store_id:null,title:document.getElementById('aTitle').value,body:document.getElementById('aBody').value,start:document.getElementById('aStart').value,end:document.getElementById('aEnd').value,link:document.getElementById('aLink').value,media,mediaMobile,published:status==='active'};const saved=await save({preserveFormOnFailure:true});if(saved){resetAdEditorBaseline();clearAdLocalPreviewUrls();}else{S.ad=savedAd;}if(isAdminRoute('ads'))updateAdEditorPreview();
   }finally{adSaving=false;updateAdSavingUI();}
 }
 async function publishStoreAd(){
@@ -2066,7 +2073,7 @@ async function publishStoreAd(){
   adSaveError='';setAdSaveFeedback('');adSaving=true;updateAdSavingUI();
   let mutationSucceeded=false,mutationResult=null,postAttemptStarted=false;
   const operationSeq=++adStoreRequestSeq;
-  const isCurrent=()=>adTarget==='store'&&String(adStoreId)===storeId&&adStoreRequestSeq===operationSeq&&location.hash==='#ads';
+  const isCurrent=()=>adTarget==='store'&&String(adStoreId)===storeId&&adStoreRequestSeq===operationSeq&&isAdminRoute('ads');
   const feedbackIfCurrent=message=>{if(isCurrent())setAdSaveFeedback(message);};
   const recoverSuccessfulMutation=message=>{
     if(!isCurrent())return;
@@ -2179,14 +2186,14 @@ async function reloadCampaignAfterStatus(campaignId,target,storeId){
     const state=await response.json();
     if(!state||typeof state!=='object'||!state.ad)return false;
     S=state;
-    if(location.hash==='#ads')renderCurrentPage();
+    if(isAdminRoute('ads'))renderCurrentPage();
     return true;
   }
   const response=await apiFetch(`/api/admin/stores/${encodeURIComponent(storeId)}/campaigns`);
   if(!response.ok)return false;
   const payload=await response.json();
   if(!Array.isArray(payload.campaigns))return false;
-  if(location.hash==='#ads'&&adTarget==='store'&&String(adStoreId)===String(storeId)){
+  if(isAdminRoute('ads')&&adTarget==='store'&&String(adStoreId)===String(storeId)){
     if(!payload.campaigns.some(item=>item?.campaignId===campaignId))return false;
     clearAdLocalPreviewUrls();
     applyStoreCampaigns(payload.campaigns,campaignId);adStoreLoading=false;adStoreError='';adSaveError='';
@@ -2229,7 +2236,7 @@ async function changeCampaignStatus(campaignId,nextStatus){
   const successMessage={active:current==='draft'?'広告を公開しました':'広告を再開しました',paused:'広告を停止しました',archived:'広告をアーカイブしました'}[nextStatus];
   toast(successMessage||'広告状態を更新しました',{type:'success'});
 }
-function setCouponFormError(message){couponFormError=message;const error=document.getElementById('couponFormError');if(error){error.textContent=message;error.hidden=!message}}function clearCouponFormError(){if(couponFormError)setCouponFormError('')}function couponManager(){couponFormError='';S.coupons=S.coupons||[];shell('<span class="coupon-management-title">COUPON MANAGEMENT</span><span class="coupon-management-title-ja">クーポン管理</span>','クーポンを登録して一覧を確認できます。',`<div class="coupon-management-view"><div class="coupon-system-status"><div><div class="coupon-console-name">COUPON DISTRIBUTION CONTROL</div><div class="coupon-console-message">Managing registered coupon offers and availability.</div></div><span class="coupon-ready"><i></i> READY</span></div><div class="layout coupon-management-layout"><section class="card coupon-panel coupon-registration-panel"><div class="coupon-panel-heading"><span class="coupon-terminal-label">COUPON REGISTRATION TERMINAL</span><div class="section">クーポンを登録</div></div><div class="field"><label>クーポン名 <span class="required-label">必須</span></label><input id="cTitle" required placeholder="例：ドリンク1杯無料"></div><div class="field"><label>クーポンコード <span class="required-label">必須</span></label><input id="cCode" required placeholder="例：WELCOME10"></div><div class="field"><label>説明</label><textarea id="cDescription" placeholder="特典の内容"></textarea></div><div class="twocol"><div class="field"><label>割引種別</label><select id="cDiscountType"><option value="text">特典内容</option><option value="percent">割引率</option><option value="amount">割引額</option></select></div><div class="field"><label>割引値 / 特典表記</label><input id="cDiscountValue" placeholder="例：10 または ドリンク1杯"></div></div><div class="field"><label>利用店舗</label><select id="cStore"><option value="">指定なし</option>${S.stores.filter(x=>!isArchivedStore(x)).map(x=>`<option value="${esc(x.id)}">${esc(x.name)}</option>`).join('')}</select></div><div class="twocol"><div class="field"><label>開始日</label><input id="cStart" type="date"></div><div class="field"><label>終了日</label><input id="cEnd" type="date"></div></div><div class="field"><label>利用条件</label><textarea id="cTerms" placeholder="例：1会計につき1回"></textarea></div><div class="field"><label>状態</label><select id="cStatus"><option value="draft">下書き</option><option value="active">公開中</option></select></div><p id="couponFormError" class="form-save-error" role="alert" hidden></p><button class="coupon-primary" onclick="addCoupon()">クーポンを登録</button></section><section class="card coupon-panel coupon-list-panel"><div class="coupon-panel-heading"><span class="coupon-terminal-label">REGISTERED COUPONS</span><div class="section">登録済みクーポン</div></div><div class="coupon-table-scroll">${S.coupons.length?`<table class="coupon-data-table"><thead><tr><th>クーポン</th><th>コード</th><th>特典内容</th><th>店舗</th><th>期間</th><th>状態</th><th>操作</th></tr></thead><tbody>${S.coupons.map(c=>{const store=S.stores.find(x=>String(x.id)===String(c.storeId))||S.stores.find(x=>x.name===c.store);return `<tr><td><b>${esc(c.title||'クーポン')}</b>${c.description?`<br><small>${esc(c.description)}</small>`:''}</td><td>${esc(c.code||'')}</td><td>${esc(c.discountValue||c.description||'')}</td><td>${esc(store?.name||'指定なし')}</td><td>${esc(c.start||'—')} 〜 ${esc(c.end||'—')}</td><td><span class="badge coupon-status ${c.status==='active'?'is-active':'is-draft'}"><i></i>${c.status==='active'?'公開中':'下書き'}</span></td><td>${c.status==='draft'?`<button class="secondary coupon-delete" onclick="deleteCoupon('${esc(c.id)}')">削除</button>`:'公開中のため削除不可'}</td></tr>`}).join('')}</tbody></table>`:'<p class="sub coupon-empty">クーポンはまだ登録されていません。</p>'}</div></section></div></div>`);document.querySelector('.coupon-registration-panel')?.addEventListener('input',clearCouponFormError)}async function deleteCoupon(id){const coupon=S.coupons.find(c=>String(c.id)===String(id));if(!coupon||coupon.status!=='draft')return;if(!confirm(`下書きクーポン「${coupon.title||'クーポン'}」を削除しますか？\n利用履歴は保持されます。`))return;const r=await apiFetch(`/api/coupons/${encodeURIComponent(id)}`,{method:'DELETE'});const result=await r.json();if(!r.ok){alert(result.error||'削除できませんでした。');return}S=await apiFetch('/api/state').then(r=>r.json());couponManager();toast('下書きクーポンを削除しました',{type:'success'})}
+function setCouponFormError(message){couponFormError=message;const error=document.getElementById('couponFormError');if(error){error.textContent=message;error.hidden=!message}}function clearCouponFormError(){if(couponFormError)setCouponFormError('')}function couponManager(){couponFormError='';S.coupons=S.coupons||[];shell('<span class="coupon-management-title">COUPON MANAGEMENT</span><span class="coupon-management-title-ja">クーポン管理</span>','クーポンを登録して一覧を確認できます。',`<div class="coupon-management-view"><div class="coupon-system-status"><div><div class="coupon-console-name">COUPON DISTRIBUTION CONTROL</div><div class="coupon-console-message">Managing registered coupon offers and availability.</div></div><span class="coupon-ready"><i></i> READY</span></div><div class="layout coupon-management-layout"><section class="card coupon-panel coupon-registration-panel"><div class="coupon-panel-heading"><span class="coupon-terminal-label">COUPON REGISTRATION TERMINAL</span><div class="section">クーポンを登録</div></div><div class="field"><label>クーポン名 <span class="required-label">必須</span></label><input id="cTitle" required placeholder="例：ドリンク1杯無料"></div><div class="field"><label>クーポンコード <span class="required-label">必須</span></label><input id="cCode" required placeholder="例：WELCOME10"></div><div class="field"><label>説明</label><textarea id="cDescription" placeholder="特典の内容"></textarea></div><div class="twocol"><div class="field"><label>割引種別</label><select id="cDiscountType"><option value="text">特典内容</option><option value="percent">割引率</option><option value="amount">割引額</option></select></div><div class="field"><label>割引値 / 特典表記</label><input id="cDiscountValue" placeholder="例：10 または ドリンク1杯"></div></div><div class="field"><label>利用店舗</label><select id="cStore"><option value="">指定なし</option>${S.stores.filter(x=>!isArchivedStore(x)).map(x=>`<option value="${esc(x.id)}">${esc(x.name)}</option>`).join('')}</select></div><div class="twocol"><div class="field"><label>開始日</label><input id="cStart" type="date"></div><div class="field"><label>終了日</label><input id="cEnd" type="date"></div></div><div class="field"><label>利用条件</label><textarea id="cTerms" placeholder="例：1会計につき1回"></textarea></div><div class="field"><label>状態</label><select id="cStatus"><option value="draft">下書き</option><option value="active">公開中</option></select></div><p id="couponFormError" class="form-save-error" role="alert" hidden></p><button class="coupon-primary" onclick="addCoupon()">クーポンを登録</button></section><section class="card coupon-panel coupon-list-panel"><div class="coupon-panel-heading"><span class="coupon-terminal-label">REGISTERED COUPONS</span><div class="section">登録済みクーポン</div></div><div class="coupon-table-scroll">${S.coupons.length?`<table class="coupon-data-table"><thead><tr><th>クーポン</th><th>コード</th><th>特典内容</th><th>店舗</th><th>期間</th><th>状態</th><th>操作</th></tr></thead><tbody>${S.coupons.map(c=>{const store=S.stores.find(x=>String(x.id)===String(c.storeId))||S.stores.find(x=>x.name===c.store);return `<tr><td><b>${esc(c.title||'クーポン')}</b>${c.description?`<br><small>${esc(c.description)}</small>`:''}</td><td>${esc(c.code||'')}</td><td>${esc(c.discountValue||c.description||'')}</td><td>${esc(store?.name||'指定なし')}</td><td>${esc(c.start||'—')} 〜 ${esc(c.end||'—')}</td><td><span class="badge coupon-status ${c.status==='active'?'is-active':'is-draft'}"><i></i>${c.status==='active'?'公開中':'下書き'}</span></td><td>${c.status==='draft'?`<button class="secondary coupon-delete" onclick="deleteCoupon('${esc(c.id)}')">削除</button>`:'公開中のため削除不可'}</td></tr>`}).join('')}</tbody></table>`:'<p class="sub coupon-empty">クーポンはまだ登録されていません。</p>'}</div></section></div></div>`);const requestedStoreId=parseAdminRoute().params.get('store');if(requestedStoreId){const targetStore=S.stores.find(store=>String(store.id)===String(requestedStoreId));if(targetStore&&!isArchivedStore(targetStore)){const storeSelect=document.getElementById('cStore');if(storeSelect)storeSelect.value=String(targetStore.id)}else{setAdminRouteHash('#coupons');toast(targetStore?'アーカイブ済み店舗は利用店舗に指定できません。':'指定された店舗が見つかりません。',{type:'info'})}}document.querySelector('.coupon-registration-panel')?.addEventListener('input',clearCouponFormError)}async function deleteCoupon(id){const coupon=S.coupons.find(c=>String(c.id)===String(id));if(!coupon||coupon.status!=='draft')return;if(!confirm(`下書きクーポン「${coupon.title||'クーポン'}」を削除しますか？\n利用履歴は保持されます。`))return;const r=await apiFetch(`/api/coupons/${encodeURIComponent(id)}`,{method:'DELETE'});const result=await r.json();if(!r.ok){alert(result.error||'削除できませんでした。');return}S=await apiFetch('/api/state').then(r=>r.json());couponManager();toast('下書きクーポンを削除しました',{type:'success'})}
 async function addCoupon(){clearCouponFormError();const title=document.getElementById('cTitle').value.trim(),code=document.getElementById('cCode').value.trim();if(!title||!code){setCouponFormError('クーポン名とクーポンコードを入力してください。');return}S.coupons=S.coupons||[];const previousCoupons=S.coupons.slice();const storeId=document.getElementById('cStore').value;if(storeId&&isArchivedStore(S.stores.find(store=>String(store.id)===String(storeId)))){setCouponFormError('アーカイブ済み店舗は新しいクーポンの対象にできません。');return}S.coupons.push({id:Date.now().toString(),adId:S.ad.id||'main',storeId:storeId||null,title,code,description:document.getElementById('cDescription').value.trim(),discountType:document.getElementById('cDiscountType').value,discountValue:document.getElementById('cDiscountValue').value.trim(),terms:document.getElementById('cTerms').value.trim(),start:document.getElementById('cStart').value,end:document.getElementById('cEnd').value,status:document.getElementById('cStatus').value});const saved=await save({preserveFormOnFailure:true,onFailure:setCouponFormError});if(!saved){S.coupons=previousCoupons;return}couponFormError='';couponManager()}async function companyManagement(){
   const seq=++companyRequestSeq;
   companyLoadError='';
@@ -2660,10 +2667,19 @@ async function loadAnalyticsCompanies(){
   }
   return analyticsCompaniesPromise;
 }
-function analyticsScopeMarkup(companies,selectedId,companyError=''){
-  const selected=selectedId===null?'':String(selectedId);
-  const options=(companies||[]).map(company=>`<option value="${esc(company.id)}" ${selected===String(company.id)?'selected':''}>${esc(company.name||company.id)}${company.status==='inactive'?'（停止中）':''}</option>`).join('');
-  return `<div class="analytics-scope-toolbar"><label for="analyticsCompanyScope">表示対象</label><select id="analyticsCompanyScope" onchange="selectAnalyticsCompany(this.value)"><option value="" ${selected===''?'selected':''}>全体</option>${options}</select>${companyError?`<span class="analytics-scope-error" role="status">${esc(companyError)}</span>`:''}</div>`;
+function analyticsScopeValue(){
+  if(analyticsSelectedStoreId!==null)return `store:${analyticsSelectedStoreId}`;
+  if(analyticsSelectedCompanyId!==null)return `company:${analyticsSelectedCompanyId}`;
+  return 'all';
+}
+function analyticsScopeMarkup(companies,stores,selectedValue,scopeError=''){
+  const companyOptions=(companies||[]).map(company=>`<option value="company:${esc(company.id)}" ${selectedValue===`company:${company.id}`?'selected':''}>${esc(company.name||company.id)}${company.status==='inactive'?'（停止中）':''}</option>`).join('');
+  const storeOptions=(stores||[]).filter(store=>store&&store.id!==null&&store.id!==undefined&&String(store.id)!=='').map(store=>{
+    const storeId=String(store.id),archived=isArchivedStore(store),inactive=store.status==='停止中';
+    const suffix=archived?'（アーカイブ済み）':inactive?'（停止中）':'';
+    return `<option value="store:${esc(storeId)}" ${selectedValue===`store:${storeId}`?'selected':''}>${esc(store.name||storeId)}${suffix}</option>`;
+  }).join('');
+  return `<div class="analytics-scope-toolbar"><label for="analyticsScopeSelect">表示対象</label><select id="analyticsScopeSelect" onchange="selectAnalyticsScope(this.value)"><option value="all" ${selectedValue==='all'?'selected':''}>全体</option><optgroup label="企業">${companyOptions||'<option value="" disabled>企業がありません</option>'}</optgroup><optgroup label="店舗">${storeOptions||'<option value="" disabled>店舗がありません</option>'}</optgroup></select>${scopeError?`<span class="analytics-scope-error" role="status">${esc(scopeError)}</span>`:''}</div>`;
 }
 function analyticsPeriodControlsMarkup(selectedPeriod,mode='combined'){
   const periods=[['yesterday','昨日'],['7d','1週間'],['30d','1ヶ月'],['12m','1年']];
@@ -2673,8 +2689,8 @@ function analyticsPeriodControlsMarkup(selectedPeriod,mode='combined'){
   if(mode==='legend')return `<div class="analytics-trend-toolbar">${legend}</div>`;
   return `<div class="analytics-trend-toolbar">${tabs}${legend}</div>`;
 }
-function analyticsConditionsMarkup(companies,selectedId,selectedPeriod,companyError=''){
-  return `<section class="analytics-conditions-panel" aria-labelledby="analyticsConditionsTitle"><div class="analytics-conditions-heading"><span id="analyticsConditionsTitle" class="analytics-terminal-label">ANALYSIS CONDITIONS</span><span class="analytics-conditions-ja">分析条件</span></div>${analyticsScopeMarkup(companies,selectedId,companyError)}<div class="analytics-condition-period"><span class="analytics-condition-label">期間</span>${analyticsPeriodControlsMarkup(selectedPeriod,'tabs')}</div></section>`;
+function analyticsConditionsMarkup(companies,stores,selectedValue,selectedPeriod,scopeError=''){
+  return `<section class="analytics-conditions-panel" aria-labelledby="analyticsConditionsTitle"><div class="analytics-conditions-heading"><span id="analyticsConditionsTitle" class="analytics-terminal-label">ANALYSIS CONDITIONS</span><span class="analytics-conditions-ja">分析条件</span></div>${analyticsScopeMarkup(companies,stores,selectedValue,scopeError)}<div class="analytics-condition-period"><span class="analytics-condition-label">期間</span>${analyticsPeriodControlsMarkup(selectedPeriod,'tabs')}</div></section>`;
 }
 function analyticsComparisonData(currentTrend,previousTrend){
   const normalize=trend=>Array.isArray(trend?.points)?trend.points.map(point=>{const safeCount=value=>{const count=Number(value);return Number.isFinite(count)?Math.max(0,count):0;};return {label:String(point?.label??''),impressions:safeCount(point?.impressions),clicks:safeCount(point?.clicks)};}):[];
@@ -2749,22 +2765,33 @@ function selectAnalyticsPeriod(period){
   analyticsSelectedPeriod=period;
   return reports();
 }
-function renderAnalyticsLoadError(companies,selectedId,selectedPeriod,message,companyError=''){
+function renderAnalyticsLoadError(companies,stores,selectedValue,selectedPeriod,message,scopeError=''){
   shell('<span class="analytics-title">ANALYTICS</span><span class="analytics-title-ja">効果測定</span>','PostgreSQLに記録された実測値です。月の区切りは日本時間です.',
-    `<div class="analytics-view">${analyticsConditionsMarkup(companies,selectedId,selectedPeriod,companyError)}<div class="analytics-system-status"><div><div class="analytics-console-name">ANALYTICS MONITOR</div><div class="analytics-console-message">Reading measured delivery and interaction data.</div></div><span class="analytics-live"><i></i> LIVE DATA</span></div><section class="card analytics-panel analytics-trend-panel"><div class="analytics-load-error" role="alert">${esc(message)}</div></section></div>`);
+    `<div class="analytics-view">${analyticsConditionsMarkup(companies,stores,selectedValue,selectedPeriod,scopeError)}<div class="analytics-system-status"><div><div class="analytics-console-name">ANALYTICS MONITOR</div><div class="analytics-console-message">Reading measured delivery and interaction data.</div></div><span class="analytics-live"><i></i> LIVE DATA</span></div><section class="card analytics-panel analytics-trend-panel"><div class="analytics-load-error" role="alert">${esc(message)}</div></section></div>`);
 }
-function selectAnalyticsCompany(companyId){
-  const selected=String(companyId||'');
-  if(selected&&Array.isArray(analyticsCompanies)&&!analyticsCompanies.some(company=>String(company.id)===selected))return;
-  analyticsSelectedCompanyId=selected||null;
+function selectAnalyticsScope(scopeValue){
+  const selected=String(scopeValue||'all');
+  if(selected==='all'){
+    analyticsSelectedCompanyId=null;analyticsSelectedStoreId=null;setAdminRouteHash(buildAdminHash('analytics'));
+  }else if(selected.startsWith('company:')){
+    const id=selected.slice(8);
+    if(!Array.isArray(analyticsCompanies)||!analyticsCompanies.some(company=>String(company.id)===id))return;
+    analyticsSelectedCompanyId=id;analyticsSelectedStoreId=null;setAdminRouteHash(buildAdminHash('analytics'));
+  }else if(selected.startsWith('store:')){
+    const id=selected.slice(6);
+    if(!Array.isArray(S?.stores)||!S.stores.some(store=>String(store.id)===id))return;
+    analyticsSelectedCompanyId=null;analyticsSelectedStoreId=id;setAdminRouteHash(buildAdminHash('analytics',{store:id}));
+  }else return;
   return reports();
 }
-async function fetchAnalyticsScope(companyId,period){
+async function fetchAnalyticsScope(companyId,storeId,period){
   const analyticsParams=new URLSearchParams();
   if(companyId!==null)analyticsParams.set('companyId',String(companyId));
+  if(storeId!==null)analyticsParams.set('storeId',String(storeId));
   analyticsParams.set('period',period);
   const couponParams=new URLSearchParams();
   if(companyId!==null)couponParams.set('companyId',String(companyId));
+  if(storeId!==null)couponParams.set('storeId',String(storeId));
   couponParams.set('period',period);
   const analyticsQuery=`?${analyticsParams.toString()}`;
   const couponQuery=couponParams.toString()?`?${couponParams.toString()}`:'';
@@ -2772,9 +2799,13 @@ async function fetchAnalyticsScope(companyId,period){
     apiFetch(`/api/analytics${analyticsQuery}`),
     apiFetch(`/api/coupon_analytics${couponQuery}`),
   ]);
-  if(!analyticsResponse.ok)throw new Error(analyticsResponse.status===404?'選択した企業が見つかりません。企業一覧を更新してから再度お試しください。':'効果測定データを読み込めませんでした。時間をおいて再度お試しください。');
+  if(!analyticsResponse.ok){
+    if(storeId!==null&&analyticsResponse.status===404)throw new Error('指定された店舗が見つかりません。表示対象を選び直してください。');
+    if(companyId!==null&&analyticsResponse.status===404)throw new Error('選択した企業が見つかりません。表示対象を選び直してください。');
+    throw new Error('効果測定データを読み込めませんでした。表示対象を確認し、時間をおいて再度お試しください。');
+  }
   const a=await analyticsResponse.json();
-  const couponAnalytics=couponResponse.ok?await couponResponse.json():{total:0,byType:{},byCoupon:[],unavailable:true};
+  const couponAnalytics=couponResponse.ok?await couponResponse.json():{total:0,byType:{},byCoupon:[],unavailable:true,errorMessage:'クーポン集計を読み込めませんでした。表示対象を確認してください。'};
   return {a,couponAnalytics};
 }
 function analyticsStoreRankingRowsMarkup(details){
@@ -2855,18 +2886,34 @@ function analyticsCouponRankingRowsMarkup(details){
   return rows.length?rows.map((item,index)=>`<tr class="analytics-store-ranking-row${index===0?' is-top':''}"><td><span class="analytics-store-rank${index===0?' is-top':''}">${index+1}</span></td><td><span class="analytics-coupon-ranking-name" title="${esc(item.couponName)}">${esc(item.couponName)}</span></td><td>${item.views.toLocaleString()}</td><td>${item.copies.toLocaleString()}</td><td>${item.redeems.toLocaleString()}</td><td>${item.redeemRate.toFixed(2)}%</td></tr>`).join(''):'<tr><td colspan="6" class="analytics-store-ranking-empty">選択期間のクーポンデータがありません。</td></tr>';
 }
 async function reports(){
+  const route=parseAdminRoute();
+  const stores=Array.isArray(S?.stores)?S.stores:[];
+  const requestedStoreId=route.params.get('store');
+  if(requestedStoreId!==null){
+    if(!requestedStoreId||!stores.some(store=>String(store.id)===requestedStoreId)){
+      analyticsSelectedCompanyId=null;analyticsSelectedStoreId=null;
+      setAdminRouteHash(buildAdminHash('analytics'));
+      toast('指定された店舗が見つかりません。全体の効果測定を表示します。',{type:'info'});
+    }else{
+      analyticsSelectedCompanyId=null;analyticsSelectedStoreId=requestedStoreId;
+    }
+  }else{
+    analyticsSelectedStoreId=null;
+  }
   const requestSeq=++analyticsRequestSeq;
-  const selectedId=analyticsSelectedCompanyId;
+  const selectedCompanyId=analyticsSelectedCompanyId;
+  const selectedStoreId=analyticsSelectedStoreId;
+  const selectedValue=analyticsScopeValue();
   const selectedPeriod=analyticsSelectedPeriod;
   const [companiesResult,analyticsResult]=await Promise.allSettled([
     loadAnalyticsCompanies(),
-    fetchAnalyticsScope(selectedId,selectedPeriod),
+    fetchAnalyticsScope(selectedCompanyId,selectedStoreId,selectedPeriod),
   ]);
-  if(requestSeq!==analyticsRequestSeq||location.hash!=='#analytics')return;
+  if(requestSeq!==analyticsRequestSeq||!isAdminRoute('analytics'))return;
   const companies=companiesResult.status==='fulfilled'?companiesResult.value:[];
-  const companyError=companiesResult.status==='rejected'?'企業一覧を読み込めませんでした。': '';
+  const scopeError=companiesResult.status==='rejected'?'企業一覧を読み込めませんでした。': '';
   if(analyticsResult.status==='rejected'){
-    renderAnalyticsLoadError(companies,selectedId,selectedPeriod,analyticsResult.reason?.message||'効果測定データを読み込めませんでした。',companyError);
+    renderAnalyticsLoadError(companies,stores,selectedValue,selectedPeriod,analyticsResult.reason?.message||'効果測定データを読み込めませんでした。',scopeError);
     return;
   }
   const {a,couponAnalytics}=analyticsResult.value;
@@ -2877,7 +2924,7 @@ async function reports(){
   const storeCampaignRows=a.storeCampaignAds||[];
 
   shell('<span class="analytics-title">ANALYTICS</span><span class="analytics-title-ja">効果測定</span>','PostgreSQLに記録された実測値です。月の区切りは日本時間です.',
-  `<div class="analytics-view">${analyticsConditionsMarkup(companies,selectedId,selectedPeriod,companyError)}<div class="analytics-system-status"><div><div class="analytics-console-name">ANALYTICS MONITOR</div><div class="analytics-console-message">Reading measured delivery and interaction data.</div></div><span class="analytics-live"><i></i> LIVE DATA</span></div><div class="analytics-all-time-scope"><span class="analytics-scope-tag">ALL TIME · 全期間</span></div><div class="grid analytics-summary analytics-summary-primary">
+  `<div class="analytics-view">${analyticsConditionsMarkup(companies,stores,selectedValue,selectedPeriod,scopeError)}<div class="analytics-system-status"><div><div class="analytics-console-name">ANALYTICS MONITOR</div><div class="analytics-console-message">Reading measured delivery and interaction data.</div></div><span class="analytics-live"><i></i> LIVE DATA</span></div><div class="analytics-all-time-scope"><span class="analytics-scope-tag">ALL TIME · 全期間</span></div><div class="grid analytics-summary analytics-summary-primary">
     <div class="card analytics-metric-impressions"><div class="label">累計表示回数</div><div class="metric impression">${a.impressions.toLocaleString()}</div></div>
     <div class="card analytics-metric-clicks"><div class="label">累計クリック</div><div class="metric click">${a.clicks.toLocaleString()}</div></div>
     <div class="card analytics-metric-ctr"><div class="label">実測CTR</div><div class="metric ctr">${a.ctr}%</div></div>
@@ -2931,7 +2978,8 @@ async function reports(){
 
     <section class="card analytics-panel analytics-coupons">
       <div class="analytics-section-heading analytics-scoped-heading"><div><span class="analytics-terminal-label">COUPON ANALYTICS</span><div class="section">クーポン効果測定</div></div><span class="analytics-scope-tag">ALL TIME · 全期間</span></div>
-      ${couponAnalytics.unavailable?'<p style="color:#777">クーポン集計を読み込めませんでした。時間をおいて再度ご確認ください。</p>':`
+      ${selectedStoreId!==null?'<p class="analytics-store-coupon-note">店舗別クーポン分析は、店舗情報が記録されているイベントのみ集計しています。</p>':''}
+      ${couponAnalytics.unavailable?`<p style="color:#777">${esc(couponAnalytics.errorMessage||'クーポン集計を読み込めませんでした。時間をおいて再度ご確認ください。')}</p>`:`
         <div class="grid">
           <div class="card analytics-coupon-total"><div class="label">クーポン関連イベント</div><div class="metric coupon-total">${(couponAnalytics.total||0).toLocaleString()}</div></div>
           <div class="card analytics-coupon-view"><div class="label">表示</div><div class="metric coupon-view">${(couponAnalytics.byType?.view||0).toLocaleString()}</div></div>

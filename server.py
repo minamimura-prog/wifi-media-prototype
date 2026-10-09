@@ -1294,10 +1294,39 @@ def _analytics_company_filter(query):
     return company_id, None
 
 
+def _analytics_scope_filter(query):
+    """Validate one optional companyId or storeId analytics scope."""
+    if set(query) - {"companyId", "storeId"} or any(
+        len(values) != 1 for values in query.values()
+    ):
+        return None, None, ("invalid_scope", 400)
+    if "companyId" in query and "storeId" in query:
+        return None, None, ("invalid_scope", 400)
+    company_id, error = _analytics_company_filter(
+        {"companyId": query["companyId"]} if "companyId" in query else {}
+    )
+    if error:
+        return None, None, error
+    store_id = query["storeId"][0] if "storeId" in query else None
+    if store_id is not None and (
+        not store_id.strip() or len(store_id) > 256
+        or any(ord(char) < 32 or ord(char) == 127 for char in store_id)
+    ):
+        return None, None, ("invalid_store_id", 400)
+    return company_id, store_id, None
+
+
 def _company_exists_in_state(data, company_id):
     return any(
         isinstance(company, dict) and str(company.get("id", "")) == company_id
         for company in data.get("companies", [])
+    )
+
+
+def _store_exists_in_state(data, store_id):
+    return any(
+        isinstance(store, dict) and str(store.get("id", "")) == store_id
+        for store in data.get("stores", [])
     )
 
 
@@ -1310,6 +1339,17 @@ def _events_for_company(events, company_id):
         if str(event.get("companyId")) == company_id
         and event.get("companyAttributionStatus") == "captured"
     ]
+
+
+def _events_for_store(events, store_id):
+    """Filter by an explicitly recorded store ID; never infer from a name."""
+    if store_id is None:
+        return events
+    return [
+        event for event in events
+        if str(event.get("storeId", event.get("store_id")) or "") == store_id
+    ]
+
 
 class Handler(BaseHTTPRequestHandler):
     server_version = "WiFiMedia/2.0"
@@ -1625,10 +1665,11 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/coupon_analytics":
             if not self.require_admin_session(): return
             query = parse_qs(urlparse(self.path).query, keep_blank_values=True)
-            if set(query) - {"companyId", "period"} or any(len(values) != 1 for values in query.values()):
+            scope_query = {key: value for key, value in query.items() if key != "period"}
+            if (set(query) - {"companyId", "storeId", "period"}
+                    or any(len(values) != 1 for values in query.values())):
                 return self.send_json({"ok": False, "error": "invalid_scope"}, 400)
-            company_query = {"companyId": query["companyId"]} if "companyId" in query else {}
-            company_id, error = _analytics_company_filter(company_query)
+            company_id, store_id, error = _analytics_scope_filter(scope_query)
             if error:
                 return self.send_json({"ok": False, "error": error[0]}, error[1])
             period = query["period"][0] if "period" in query else None
@@ -1638,11 +1679,16 @@ class Handler(BaseHTTPRequestHandler):
                 if database.database_enabled():
                     if company_id is not None and not database.get_company(company_id):
                         return self.send_json({"ok": False, "error": "company_not_found"}, 404)
-                    return self.send_json(database.coupon_analytics(company_id, period))
+                    if store_id is not None and not database.get_store_by_id(store_id):
+                        return self.send_json({"ok": False, "error": "store_not_found"}, 404)
+                    return self.send_json(database.coupon_analytics(company_id, period, store_id))
                 data = load_state()
                 if company_id is not None and not _company_exists_in_state(data, company_id):
                     return self.send_json({"ok": False, "error": "company_not_found"}, 404)
+                if store_id is not None and not _store_exists_in_state(data, store_id):
+                    return self.send_json({"ok": False, "error": "store_not_found"}, 404)
                 events = _events_for_company(data.get("coupon_events", []), company_id)
+                events = _events_for_store(events, store_id)
                 coupon_names = {
                     str(coupon.get("id")): coupon.get("title", "")
                     for coupon in data.get("coupons", [])
@@ -1687,10 +1733,11 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/analytics":
             if not self.require_admin_session(): return
             query = parse_qs(urlparse(self.path).query, keep_blank_values=True)
-            if set(query) - {"companyId", "period"} or any(len(values) != 1 for values in query.values()):
+            scope_query = {key: value for key, value in query.items() if key != "period"}
+            if (set(query) - {"companyId", "storeId", "period"}
+                    or any(len(values) != 1 for values in query.values())):
                 return self.send_json({"ok": False, "error": "invalid_scope"}, 400)
-            company_query = {"companyId": query["companyId"]} if "companyId" in query else {}
-            company_id, error = _analytics_company_filter(company_query)
+            company_id, store_id, error = _analytics_scope_filter(scope_query)
             if error:
                 return self.send_json({"ok": False, "error": error[0]}, error[1])
             period = query["period"][0] if "period" in query else None
@@ -1700,11 +1747,16 @@ class Handler(BaseHTTPRequestHandler):
                 if database.database_enabled():
                     if company_id is not None and not database.get_company(company_id):
                         return self.send_json({"ok": False, "error": "company_not_found"}, 404)
-                    return self.send_json(database.analytics(company_id, period))
+                    if store_id is not None and not database.get_store_by_id(store_id):
+                        return self.send_json({"ok": False, "error": "store_not_found"}, 404)
+                    return self.send_json(database.analytics(company_id, period, store_id))
                 data = load_state()
                 if company_id is not None and not _company_exists_in_state(data, company_id):
                     return self.send_json({"ok": False, "error": "company_not_found"}, 404)
+                if store_id is not None and not _store_exists_in_state(data, store_id):
+                    return self.send_json({"ok": False, "error": "store_not_found"}, 404)
                 events = _events_for_company(data.get("events", []), company_id)
+                events = _events_for_store(events, store_id)
                 ad_names = {}
                 current_ad = data.get("ad") or {}
                 if isinstance(current_ad, dict):

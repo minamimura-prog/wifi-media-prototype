@@ -1697,7 +1697,23 @@ def shape_performance_trend(spec, rows):
     }
 
 
-def _performance_trend_rows(conn, spec, company_id=None):
+def _analytics_event_scope(company_id=None, store_id=None, table_alias=None):
+    """Return the event predicate and parameters for one analytics scope."""
+    if company_id is not None and store_id is not None:
+        raise ValueError("company_id and store_id are mutually exclusive")
+    column_prefix = f"{table_alias}." if table_alias else ""
+    if store_id is not None:
+        return f"{column_prefix}store_id = %s", (str(store_id),)
+    if company_id is not None:
+        return (
+            f"{column_prefix}company_id = %s AND "
+            f"{column_prefix}company_attribution_status = 'captured'",
+            (str(company_id),),
+        )
+    return "", ()
+
+
+def _performance_trend_rows(conn, spec, company_id=None, store_id=None):
     bucket_format = {
         "hour": 'YYYY-MM-DD"T"HH24',
         "day": "YYYY-MM-DD",
@@ -1710,14 +1726,15 @@ def _performance_trend_rows(conn, spec, company_id=None):
         "FROM ad_events WHERE occurred_at >= %s AND occurred_at < %s"
     )
     params = [bucket_format, spec["start"], spec["end"]]
-    if company_id is not None:
-        query += " AND company_id = %s AND company_attribution_status = 'captured'"
-        params.append(str(company_id))
+    scope_sql, scope_params = _analytics_event_scope(company_id, store_id)
+    if scope_sql:
+        query += " AND " + scope_sql
+        params.extend(scope_params)
     query += " GROUP BY bucket ORDER BY bucket"
     return conn.execute(query, tuple(params)).fetchall()
 
 
-def _period_store_detail_rows(conn, spec, company_id=None):
+def _period_store_detail_rows(conn, spec, company_id=None, store_id=None):
     """Aggregate the selected period by known store ID inside PostgreSQL."""
     query = (
         "SELECT store_id, COALESCE(MIN(NULLIF(store_name, '')), '未設定') AS store_name, "
@@ -1727,9 +1744,10 @@ def _period_store_detail_rows(conn, spec, company_id=None):
         "AND store_id IS NOT NULL AND event_type IN ('impression', 'click')"
     )
     params = [spec["start"], spec["end"]]
-    if company_id is not None:
-        query += " AND company_id = %s AND company_attribution_status = 'captured'"
-        params.append(str(company_id))
+    scope_sql, scope_params = _analytics_event_scope(company_id, store_id)
+    if scope_sql:
+        query += " AND " + scope_sql
+        params.extend(scope_params)
     # CTR cannot break a tie once both clicks and impressions are tied.
     query += " GROUP BY store_id ORDER BY clicks DESC, impressions DESC, store_name ASC, store_id ASC"
     return conn.execute(query, tuple(params)).fetchall()
@@ -1753,7 +1771,7 @@ def _shape_period_store_details(rows):
     return details
 
 
-def _period_ad_detail_rows(conn, spec, company_id=None):
+def _period_ad_detail_rows(conn, spec, company_id=None, store_id=None):
     """Aggregate selected-period ad events by ad ID inside PostgreSQL."""
     query = (
         "SELECT e.ad_id, COALESCE(NULLIF(a.title, ''), e.ad_id) AS ad_name, "
@@ -1765,9 +1783,10 @@ def _period_ad_detail_rows(conn, spec, company_id=None):
         "AND e.event_type IN ('impression', 'click')"
     )
     params = [spec["start"], spec["end"]]
-    if company_id is not None:
-        query += " AND e.company_id = %s AND e.company_attribution_status = 'captured'"
-        params.append(str(company_id))
+    scope_sql, scope_params = _analytics_event_scope(company_id, store_id, "e")
+    if scope_sql:
+        query += " AND " + scope_sql
+        params.extend(scope_params)
     query += " GROUP BY e.ad_id, a.title"
     return conn.execute(query, tuple(params)).fetchall()
 
@@ -1794,15 +1813,15 @@ def _shape_period_ad_details(rows):
     return details
 
 
-def analytics(company_id=None, period=None):
+def analytics(company_id=None, period=None, store_id=None):
     """Aggregate all ad events and optionally add a bounded performance trend."""
     trend_spec = performance_period_spec(period) if period is not None else None
     previous_trend_spec = previous_performance_period_spec(trend_spec) if trend_spec else None
-    event_filter = ""
-    filter_params = ()
-    if company_id is not None:
-        event_filter = " WHERE company_id = %s AND company_attribution_status = 'captured'"
-        filter_params = (str(company_id),)
+    scope_sql, filter_params = _analytics_event_scope(company_id, store_id)
+    event_filter = " WHERE " + scope_sql if scope_sql else ""
+    qualified_scope_sql, qualified_filter_params = _analytics_event_scope(
+        company_id, store_id, "e"
+    )
     with pool().connection() as conn:
         totals = conn.execute(
             "SELECT count(*) FILTER (WHERE event_type = 'impression') AS impressions, "
@@ -1820,9 +1839,9 @@ def analytics(company_id=None, period=None):
             "count(*) FILTER (WHERE e.event_type = 'impression') AS impressions, "
             "count(*) FILTER (WHERE e.event_type = 'click') AS clicks "
             "FROM ad_events e LEFT JOIN ads a ON a.id = e.ad_id "
-            + ("WHERE e.company_id = %s AND e.company_attribution_status = 'captured' " if company_id is not None else "")
+            + ("WHERE " + qualified_scope_sql + " " if qualified_scope_sql else "")
             + "GROUP BY e.ad_id, a.title ORDER BY ad_name, e.ad_id",
-            filter_params,
+            qualified_filter_params,
         ).fetchall()
         store_campaign_ads = conn.execute(
             "SELECT e.store_id, e.store_name, e.campaign_id, c.name AS campaign_name, "
@@ -1833,7 +1852,7 @@ def analytics(company_id=None, period=None):
             "JOIN campaigns c ON c.id = e.campaign_id "
             "JOIN ads a ON a.id = e.ad_id "
             "WHERE e.campaign_id IS NOT NULL AND e.campaign_id <> 'default' "
-            + ("AND e.company_id = %s AND e.company_attribution_status = 'captured' " if company_id is not None else "")
+            + ("AND " + qualified_scope_sql + " " if qualified_scope_sql else "")
             + "GROUP BY e.store_id, e.store_name, e.campaign_id, c.name, e.ad_id, a.title "
             "ORDER BY e.store_name, a.title, e.campaign_id, e.ad_id",
             filter_params,
@@ -1852,17 +1871,17 @@ def analytics(company_id=None, period=None):
             + event_filter + " GROUP BY month ORDER BY month",
             filter_params,
         ).fetchall()
-        trend_rows = _performance_trend_rows(conn, trend_spec, company_id) if trend_spec else None
+        trend_rows = _performance_trend_rows(conn, trend_spec, company_id, store_id) if trend_spec else None
         previous_trend_rows = (
-            _performance_trend_rows(conn, previous_trend_spec, company_id)
+            _performance_trend_rows(conn, previous_trend_spec, company_id, store_id)
             if previous_trend_spec else None
         )
         period_store_rows = (
-            _period_store_detail_rows(conn, trend_spec, company_id)
+            _period_store_detail_rows(conn, trend_spec, company_id, store_id)
             if trend_spec else None
         )
         period_ad_rows = (
-            _period_ad_detail_rows(conn, trend_spec, company_id)
+            _period_ad_detail_rows(conn, trend_spec, company_id, store_id)
             if trend_spec else None
         )
     impressions, clicks = totals["impressions"], totals["clicks"]
@@ -2323,7 +2342,7 @@ def _shape_period_coupon_details(rows):
     return details
 
 
-def _period_coupon_detail_rows(conn, spec, company_id=None):
+def _period_coupon_detail_rows(conn, spec, company_id=None, store_id=None):
     query = (
         "SELECT e.coupon_id, "
         "COALESCE(NULLIF(c.title, ''), e.coupon_id) AS coupon_name, "
@@ -2337,21 +2356,19 @@ def _period_coupon_detail_rows(conn, spec, company_id=None):
         "AND e.event_type IN ('view', 'copy', 'redeem')"
     )
     params = [spec["start"], spec["end"]]
-    if company_id is not None:
-        query += " AND e.company_id = %s AND e.company_attribution_status = 'captured'"
-        params.append(str(company_id))
+    scope_sql, scope_params = _analytics_event_scope(company_id, store_id, "e")
+    if scope_sql:
+        query += " AND " + scope_sql
+        params.extend(scope_params)
     query += " GROUP BY e.coupon_id, c.title"
     return conn.execute(query, tuple(params)).fetchall()
 
 
-def coupon_analytics(company_id=None, period=None):
+def coupon_analytics(company_id=None, period=None, store_id=None):
     """Return coupon event totals and optional selected-period ranking details."""
     trend_spec = performance_period_spec(period) if period is not None else None
-    event_filter = ""
-    filter_params = ()
-    if company_id is not None:
-        event_filter = " WHERE company_id = %s AND company_attribution_status = 'captured'"
-        filter_params = (str(company_id),)
+    scope_sql, filter_params = _analytics_event_scope(company_id, store_id)
+    event_filter = " WHERE " + scope_sql if scope_sql else ""
     with pool().connection() as conn:
         rows = conn.execute(
             "SELECT coupon_id, coupon_code, event_type, count(*) AS total "
@@ -2360,7 +2377,7 @@ def coupon_analytics(company_id=None, period=None):
             filter_params,
         ).fetchall()
         period_rows = (
-            _period_coupon_detail_rows(conn, trend_spec, company_id)
+            _period_coupon_detail_rows(conn, trend_spec, company_id, store_id)
             if trend_spec else None
         )
     result = build_coupon_analytics(rows)
