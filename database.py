@@ -660,7 +660,7 @@ def list_companies():
     """Return company records for authenticated administration tools."""
     with pool().connection() as conn:
         rows = conn.execute(
-            "SELECT id, name, code, business_type, status, created_at, updated_at "
+            "SELECT id, name, code, business_type, status, archived_at, created_at, updated_at "
             "FROM companies ORDER BY created_at, id"
         ).fetchall()
     return [dict(row) for row in rows]
@@ -672,11 +672,51 @@ def get_company(company_id):
         return None
     with pool().connection() as conn:
         row = conn.execute(
-            "SELECT id, name, code, business_type, status, created_at, updated_at "
+            "SELECT id, name, code, business_type, status, archived_at, created_at, updated_at "
             "FROM companies WHERE id = %s",
             (str(company_id),),
         ).fetchone()
     return dict(row) if row else None
+
+
+def archive_company(company_id):
+    """Archive one company without changing its status, stores, or event history."""
+    with pool().connection() as conn:
+        with conn.transaction():
+            row = conn.execute(
+                "SELECT id FROM companies WHERE id = %s FOR UPDATE",
+                (str(company_id),),
+            ).fetchone()
+            if not row:
+                return None
+            updated = conn.execute(
+                "UPDATE companies SET archived_at = COALESCE(archived_at, now()), "
+                "updated_at = CASE WHEN archived_at IS NULL THEN now() ELSE updated_at END "
+                "WHERE id = %s "
+                "RETURNING id, name, code, business_type, status, archived_at, created_at, updated_at",
+                (str(company_id),),
+            ).fetchone()
+    return dict(updated)
+
+
+def restore_company(company_id):
+    """Restore one company without changing its status, stores, or event history."""
+    with pool().connection() as conn:
+        with conn.transaction():
+            row = conn.execute(
+                "SELECT id FROM companies WHERE id = %s FOR UPDATE",
+                (str(company_id),),
+            ).fetchone()
+            if not row:
+                return None
+            updated = conn.execute(
+                "UPDATE companies SET archived_at = NULL, "
+                "updated_at = CASE WHEN archived_at IS NOT NULL THEN now() ELSE updated_at END "
+                "WHERE id = %s "
+                "RETURNING id, name, code, business_type, status, archived_at, created_at, updated_at",
+                (str(company_id),),
+            ).fetchone()
+    return dict(updated)
 
 
 def save_company(company):

@@ -60,6 +60,15 @@ def _admin_store_lifecycle_route(path):
     return (store_id, parts[5]) if store_id is not None else None
 
 
+def _admin_company_lifecycle_route(path):
+    parts = path.split("/")
+    if (len(parts) != 6 or parts[:4] != ["", "api", "admin", "companies"]
+            or parts[5] not in {"archive", "restore"}):
+        return None
+    company_id = _safe_admin_route_id(parts[4])
+    return (company_id, parts[5]) if company_id is not None else None
+
+
 def _admin_campaign_status_route(path):
     parts = path.split("/")
     if (len(parts) != 6 or parts[:4] != ["", "api", "admin", "campaigns"]
@@ -1599,7 +1608,8 @@ class Handler(BaseHTTPRequestHandler):
                 companies = database.list_companies()
                 return self.send_json({"companies": [
                     {"id": row["id"], "name": row["name"], "code": row["code"],
-                     "businessType": row["business_type"], "status": row["status"]}
+                     "businessType": row["business_type"], "status": row["status"],
+                     "archivedAt": row["archived_at"].isoformat() if row.get("archived_at") else None}
                     for row in companies
                 ]})
             except Exception:
@@ -1870,6 +1880,30 @@ class Handler(BaseHTTPRequestHandler):
         path = urlparse(self.path).path
         if path == "/api/admin/login": return self.handle_admin_login()
         if path == "/api/admin/logout": return self.handle_admin_logout()
+        company_lifecycle_route = _admin_company_lifecycle_route(path)
+        if company_lifecycle_route:
+            if not self.require_admin_session(): return
+            if not self.require_same_origin(): return
+            if not database.database_enabled():
+                return self.send_json({"ok": False, "error": "admin_data_unavailable"}, 503)
+            payload, error_status = self.read_admin_json_payload()
+            if error_status:
+                return self.send_json({"ok": False, "error": "invalid_request"}, error_status)
+            if payload != {}:
+                return self.send_json({"ok": False, "error": "invalid_request"}, 400)
+            company_id, action = company_lifecycle_route
+            try:
+                company = (database.archive_company(company_id) if action == "archive"
+                           else database.restore_company(company_id))
+            except Exception:
+                return self.send_json({"ok": False}, 503)
+            if company is None:
+                return self.send_json({"ok": False, "error": "company_not_found"}, 404)
+            return self.send_json({"ok": True, "company": {
+                "id": company["id"], "name": company["name"], "code": company["code"],
+                "businessType": company["business_type"], "status": company["status"],
+                "archivedAt": company["archived_at"].isoformat() if company.get("archived_at") else None,
+            }})
         lifecycle_route = _admin_store_lifecycle_route(path)
         if lifecycle_route:
             if not self.require_admin_session(): return

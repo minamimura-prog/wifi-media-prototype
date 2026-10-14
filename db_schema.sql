@@ -8,6 +8,9 @@ CREATE TABLE IF NOT EXISTS companies (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- Safe additive migration for existing installations; existing companies stay active.
+ALTER TABLE companies ADD COLUMN IF NOT EXISTS archived_at TIMESTAMPTZ;
+
 CREATE TABLE IF NOT EXISTS stores (
     id TEXT PRIMARY KEY,
     company_id TEXT REFERENCES companies(id),

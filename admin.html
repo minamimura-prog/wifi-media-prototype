@@ -1323,6 +1323,14 @@ body:has(.ad-management-view){background-color:#070b0d;background-image:radial-g
 .company-management-view .company-store-controls{gap:8px;min-width:290px}
 .company-management-view .company-store-controls select{flex:1 1 155px;min-width:155px}
 .company-management-view .company-store-controls .company-row-save{white-space:nowrap}
+.company-management-view .company-archived-toggle{display:inline-flex;align-items:center;gap:8px;margin:0;color:var(--admin-control-muted);font-size:12px;font-weight:700;cursor:pointer}
+.company-management-view .company-archived-toggle input{width:16px;min-height:16px;height:16px;margin:0;accent-color:var(--admin-control-cyan);box-shadow:none;cursor:pointer}
+.company-management-view .company-lifecycle-button{min-height:34px;padding:7px 11px;white-space:nowrap}
+.company-management-view .company-lifecycle-button.is-archive{color:#e7c58f;background:linear-gradient(180deg,rgba(89,66,39,.72),rgba(58,45,31,.88));border-color:#806a4a}
+.company-management-view .company-lifecycle-button.is-archive:hover:not(:disabled){color:#fff1d7;background:linear-gradient(180deg,#755632,#51402d);border-color:#c49b61;box-shadow:0 0 12px rgba(230,166,75,.15)}
+.company-management-view .company-lifecycle-button.is-restore{color:#d9fbff}
+.company-management-view .company-data-table th:last-child,.company-management-view .company-data-table td:last-child{white-space:nowrap}
+.company-management-view .company-company-actions{display:flex;align-items:center;gap:7px}
 @media(max-width:700px){.company-management-view .company-store-controls{flex-wrap:wrap;min-width:0}.company-management-view .company-store-controls select{flex:1 1 100%;min-width:0}.company-management-view .company-store-controls .company-row-save{margin-left:auto}.company-management-view .company-status.is-archived{margin:6px 0 0}}
 
 
@@ -1429,7 +1437,7 @@ let adEditorBaseline=null, adEditorBaselineKey=null;
 let adLocalPreviewUrls={pc:'',mobile:''};
 let adPcPreviewObserver=null;
 let adCreateIdempotencyKey=null, adCreateAttempt=null, adCreateUncertain=false, adCreateBlocked=false, adCreateStoreId=null;
-let companyAdminData={companies:[],stores:[]}, companyDataLoaded=false, companyDirectoryLoaded=false, companyRequestSeq=0, companyCreateSaving=false, companyAssignSaving=new Set(), companyFormNotice='', companyFormNoticeType='', companyLoadError='', companyStoreNotices={}, companyFormValues={name:'',code:'',businessType:'',status:'active'};
+let companyAdminData={companies:[],stores:[]}, companyDataLoaded=false, companyDirectoryLoaded=false, companyRequestSeq=0, companyCreateSaving=false, companyAssignSaving=new Set(), companyLifecycleSaving=new Set(), companyShowArchived=false, companyFormNotice='', companyFormNoticeType='', companyLoadError='', companyStoreNotices={}, companyFormValues={name:'',code:'',businessType:'',status:'active'};
 let storeCompanyOptionsData=[], storeCompanyOptionsError='', storeSavePending=false, storeSaveFeedback='', storeSaveFeedbackType='';
 let storePublicCodes=new Map(), storePublicCodeSeq=0, storePublicCodeLoading=false, storePublicCodeError='', storeSearchQuery='', storeListView='normal', storeEditInitialValues=null;
 let couponFormError='', designSaveError='';
@@ -2340,8 +2348,19 @@ function companyApiError(error,fallback){
   if(status===400)return '入力内容を確認してください';
   if(status===401||status===403)return 'ログイン状態または権限を確認してください';
   if(status===409)return 'この企業コードはすでに使用されています';
+  if(status===404)return '企業が見つかりません。一覧を更新してください';
   if(status===503)return '現在データベースに接続できません';
   return fallback;
+}
+function captureCompanyCreateFormValues(){
+  const name=document.getElementById('companyName'),code=document.getElementById('companyCode');
+  const businessType=document.getElementById('companyBusinessType'),status=document.getElementById('companyStatus');
+  if(name&&code&&businessType&&status)companyFormValues={name:name.value,code:code.value,businessType:businessType.value,status:status.value};
+}
+function setCompanyArchivedVisible(visible){
+  captureCompanyCreateFormValues();
+  companyShowArchived=Boolean(visible);
+  renderCompanyManagement();
 }
 function companyCountById(companyId){
   if(companyId===null||companyId===undefined)return 0;
@@ -2349,7 +2368,8 @@ function companyCountById(companyId){
 }
 function renderCompanyManagement(){
   const companies=companyAdminData.companies;
-  const companyRows=companies.length?`<div class="company-table-scroll"><table class="company-data-table"><thead><tr><th>企業名</th><th>企業コード</th><th>業種</th><th>状態</th><th>店舗数</th></tr></thead><tbody>${companies.map(company=>`<tr><td><b>${esc(company.name||'')}</b></td><td><span class="company-code">${esc(company.code||'')}</span></td><td><span class="company-business-type">${esc(company.businessType||'—')}</span></td><td><span class="company-status ${company.status==='active'?'is-active':'is-inactive'}"><i></i>${company.status==='active'?'ACTIVE':'INACTIVE'}</span></td><td>${companyCountById(company.id).toLocaleString()}</td></tr>`).join('')}</tbody></table></div>`:companyDataLoaded?'<div class="company-empty">企業がまだ登録されていません。</div>':'<div class="company-loading">企業一覧を読み込んでいます…</div>';
+  const visibleCompanies=companies.filter(company=>companyShowArchived||!company.archivedAt);
+  const companyRows=visibleCompanies.length?`<div class="company-table-scroll"><table class="company-data-table"><thead><tr><th>企業名</th><th>企業コード</th><th>業種</th><th>状態</th><th>店舗数</th><th>操作</th></tr></thead><tbody>${visibleCompanies.map(company=>{const archived=Boolean(company.archivedAt),busy=companyLifecycleSaving.has(String(company.id));return `<tr><td><b>${esc(company.name||'')}</b></td><td><span class="company-code">${esc(company.code||'')}</span></td><td><span class="company-business-type">${esc(company.businessType||'—')}</span></td><td>${archived?'<span class="company-status is-archived"><i></i>アーカイブ済み</span>':''}<span class="company-status ${company.status==='active'?'is-active':'is-inactive'}"><i></i>${company.status==='active'?'ACTIVE':'INACTIVE'}</span></td><td>${companyCountById(company.id).toLocaleString()}</td><td><div class="company-company-actions">${archived?`<button class="company-lifecycle-button is-restore" type="button" data-company-restore="${esc(company.id)}" ${busy?'disabled':''}>${busy?'処理中…':'復元'}</button>`:`<button class="company-lifecycle-button is-archive" type="button" data-company-archive="${esc(company.id)}" ${busy?'disabled':''}>${busy?'処理中…':'アーカイブ'}</button>`}</div></td></tr>`}).join('')}</tbody></table></div>`:companyDataLoaded?`<div class="company-empty">${companies.length?'表示する企業はありません。':'企業がまだ登録されていません。'}</div>`:'<div class="company-loading">企業一覧を読み込んでいます…</div>';
   const storeRows=companyAdminData.stores.length?`<div class="company-table-scroll"><table class="company-data-table company-store-table"><thead><tr><th>店舗</th><th>現在の所属</th><th>企業所属を変更</th></tr></thead><tbody>${companyAdminData.stores.map(store=>{
     const current=companies.find(company=>store.companyId!==null&&store.companyId!==undefined&&String(company.id)===String(store.companyId));
     const currentValue=current?String(current.id):'';
@@ -2359,8 +2379,32 @@ function renderCompanyManagement(){
     const selectOptions=`<option value="" ${currentValue===''?'selected':''}>未所属</option>${companies.map(company=>`<option value="${esc(company.id)}" ${currentValue===String(company.id)?'selected':''}>${esc(company.name||'')}</option>`).join('')}`;
     return `<tr><td><span class="company-store-name">${esc(store.name||'')}</span><span class="company-store-code">${esc(store.publicCode||'public code未設定')}</span>${archived?'<span class="company-status is-archived"><i></i>アーカイブ済み</span>':''}</td><td>${current?esc(current.name):'<span class="company-business-type">未所属</span>'}</td><td><div class="company-store-controls"><select data-company-select="${esc(store.id)}" aria-label="${esc(store.name||'店舗')}の所属企業" ${busy||archived?'disabled':''}>${selectOptions}</select><button class="company-row-save" type="button" data-company-assign="${esc(store.id)}" ${busy||archived?'disabled':''}>${busy?'保存中…':archived?'アーカイブ済み（変更不可）':'変更を保存'}</button></div>${notice?`<span class="company-row-notice ${notice.startsWith('企業所属を更新しました')?'':'is-error'}" role="status">${esc(notice)}</span>`:''}</td></tr>`;
   }).join('')}</tbody></table></div>`:companyDataLoaded?'<div class="company-empty">店舗がまだ登録されていません。</div>':'<div class="company-loading">店舗一覧を読み込んでいます…</div>';
-  shell('<span class="company-management-title">COMPANY MANAGEMENT</span><span class="company-management-title-ja">企業管理</span>','企業情報を登録し、店舗の所属企業を管理します。',`<div class="company-management-view"><div class="company-system-status"><div><div class="company-console-name">ORGANIZATION CONTROL</div><div class="company-console-message">Manage companies and store assignments.</div></div><span class="company-ready">READY</span></div>${companyLoadError?`<div class="company-notice is-error" role="alert">${esc(companyLoadError)}</div>`:''}<div class="company-layout"><section class="card company-panel"><form id="companyCreateForm" onsubmit="createCompany(event)"><div class="company-panel-heading company-create-heading"><div class="company-create-heading-copy"><span class="company-terminal-label">COMPANY MANAGEMENT</span><div class="section">企業管理</div></div><button class="company-primary" type="submit" ${companyCreateSaving?'disabled':''}>${companyCreateSaving?'登録中…':'企業を登録'}</button></div><div class="field"><label for="companyName">企業名 <span class="required-label">必須</span></label><input id="companyName" name="name" maxlength="200" required value="${esc(companyFormValues.name)}" placeholder="例：どうとんぼり神座" ${companyCreateSaving?'disabled':''}></div><div class="field"><label for="companyCode">企業コード <span class="required-label">必須</span></label><input id="companyCode" name="code" maxlength="100" pattern="[a-z0-9]+(-[a-z0-9]+)*" required value="${esc(companyFormValues.code)}" placeholder="例：kamukura" ${companyCreateSaving?'disabled':''}><small>英小文字・数字・ハイフンで入力してください。</small></div><div class="field"><label for="companyBusinessType">業種</label><input id="companyBusinessType" name="businessType" maxlength="100" value="${esc(companyFormValues.businessType)}" placeholder="例：飲食、ホテル、タクシー、小売" ${companyCreateSaving?'disabled':''}></div><div class="field"><label for="companyStatus">ステータス</label><select id="companyStatus" name="status" ${companyCreateSaving?'disabled':''}><option value="active" ${companyFormValues.status==='active'?'selected':''}>active（有効）</option><option value="inactive" ${companyFormValues.status==='inactive'?'selected':''}>inactive（停止）</option></select></div><div id="companyFormFeedback" class="company-notice ${companyFormNoticeType==='error'?'is-error':''}" role="status" ${companyFormNotice?'':'hidden'}>${esc(companyFormNotice)}</div></form></section><section class="card company-panel"><div class="company-panel-heading"><span class="company-terminal-label">REGISTERED COMPANIES</span><div class="section">企業一覧</div></div>${companyRows}</section></div><section class="card company-panel" style="margin-top:16px"><div class="company-panel-heading"><span class="company-terminal-label">STORE ASSIGNMENT</span><div class="section">店舗の企業所属</div></div>${storeRows}</section></div>`);
+  shell('<span class="company-management-title">COMPANY MANAGEMENT</span><span class="company-management-title-ja">企業管理</span>','企業情報を登録し、店舗の所属企業を管理します。',`<div class="company-management-view"><div class="company-system-status"><div><div class="company-console-name">ORGANIZATION CONTROL</div><div class="company-console-message">Manage companies and store assignments.</div></div><span class="company-ready">READY</span></div>${companyLoadError?`<div class="company-notice is-error" role="alert">${esc(companyLoadError)}</div>`:''}<div class="company-layout"><section class="card company-panel"><form id="companyCreateForm" onsubmit="createCompany(event)"><div class="company-panel-heading company-create-heading"><div class="company-create-heading-copy"><span class="company-terminal-label">COMPANY MANAGEMENT</span><div class="section">企業管理</div></div><button class="company-primary" type="submit" ${companyCreateSaving?'disabled':''}>${companyCreateSaving?'登録中…':'企業を登録'}</button></div><div class="field"><label for="companyName">企業名 <span class="required-label">必須</span></label><input id="companyName" name="name" maxlength="200" required value="${esc(companyFormValues.name)}" placeholder="例：どうとんぼり神座" ${companyCreateSaving?'disabled':''}></div><div class="field"><label for="companyCode">企業コード <span class="required-label">必須</span></label><input id="companyCode" name="code" maxlength="100" pattern="[a-z0-9]+(-[a-z0-9]+)*" required value="${esc(companyFormValues.code)}" placeholder="例：kamukura" ${companyCreateSaving?'disabled':''}><small>英小文字・数字・ハイフンで入力してください。</small></div><div class="field"><label for="companyBusinessType">業種</label><input id="companyBusinessType" name="businessType" maxlength="100" value="${esc(companyFormValues.businessType)}" placeholder="例：飲食、ホテル、タクシー、小売" ${companyCreateSaving?'disabled':''}></div><div class="field"><label for="companyStatus">ステータス</label><select id="companyStatus" name="status" ${companyCreateSaving?'disabled':''}><option value="active" ${companyFormValues.status==='active'?'selected':''}>active（有効）</option><option value="inactive" ${companyFormValues.status==='inactive'?'selected':''}>inactive（停止）</option></select></div><div id="companyFormFeedback" class="company-notice ${companyFormNoticeType==='error'?'is-error':''}" role="status" ${companyFormNotice?'':'hidden'}>${esc(companyFormNotice)}</div></form></section><section class="card company-panel"><div class="company-panel-heading"><span class="company-terminal-label">REGISTERED COMPANIES</span><div class="section">企業一覧</div><label class="company-archived-toggle"><input type="checkbox" ${companyShowArchived?'checked':''} onchange="setCompanyArchivedVisible(this.checked)">アーカイブ済みを表示</label></div>${companyRows}</section></div><section class="card company-panel" style="margin-top:16px"><div class="company-panel-heading"><span class="company-terminal-label">STORE ASSIGNMENT</span><div class="section">店舗の企業所属</div></div>${storeRows}</section></div>`);
   document.querySelectorAll('[data-company-assign]').forEach(button=>button.addEventListener('click',()=>saveStoreCompany(button.dataset.companyAssign)));
+  document.querySelectorAll('[data-company-archive]').forEach(button=>button.addEventListener('click',()=>changeCompanyArchive(button.dataset.companyArchive,'archive')));
+  document.querySelectorAll('[data-company-restore]').forEach(button=>button.addEventListener('click',()=>changeCompanyArchive(button.dataset.companyRestore,'restore')));
+}
+async function changeCompanyArchive(companyId,action){
+  const id=String(companyId),company=companyAdminData.companies.find(item=>String(item.id)===id);
+  if(!company||companyLifecycleSaving.has(id))return;
+  const archived=Boolean(company.archivedAt);
+  if(action==='archive'&&archived||action==='restore'&&!archived)return;
+  const message=action==='archive'?'この企業をアーカイブしますか？\n過去の店舗・広告・分析データは保持されます。\nこの操作だけでは店舗の配信状態は変更されません。':'この企業を復元しますか？';
+  if(!window.confirm(message))return;
+  captureCompanyCreateFormValues();
+  companyLifecycleSaving.add(id);
+  const button=document.querySelector(`[data-company-${action}="${CSS.escape(id)}"]`);
+  if(button){button.disabled=true;button.textContent='処理中…';}
+  try{
+    const response=await companyApiFetch(`/api/admin/companies/${encodeURIComponent(id)}/${action}`,{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
+    if(!response.ok)throw new Error(String(response.status));
+    const payload=await response.json();
+    const updated=payload.company;
+    if(!updated||String(updated.id)!==id)throw new Error('invalid_response');
+    companyAdminData.companies=companyAdminData.companies.map(item=>String(item.id)===id?updated:item);
+    toast(action==='archive'?'企業をアーカイブしました':'企業を復元しました',{type:'success'});
+  }catch(error){toast(companyApiError(error,action==='archive'?'企業をアーカイブできませんでした':'企業を復元できませんでした'),{type:'error'});}
+  finally{companyLifecycleSaving.delete(id);if(location.hash==='#companies')renderCompanyManagement();}
 }
 async function refreshCompanyAdminData(){
   const seq=++companyRequestSeq;
