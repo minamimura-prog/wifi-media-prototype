@@ -719,6 +719,66 @@ def restore_company(company_id):
     return dict(updated)
 
 
+def _company_reference_counts(conn, company_id):
+    row = conn.execute(
+        "SELECT EXISTS (SELECT 1 FROM companies WHERE id = %s) AS company_exists, "
+        "(SELECT COUNT(*) FROM stores WHERE company_id = %s) AS stores, "
+        "(SELECT COUNT(*) FROM ad_events WHERE company_id = %s) AS ad_events, "
+        "(SELECT COUNT(*) FROM coupon_events WHERE company_id = %s) AS coupon_events",
+        (str(company_id), str(company_id), str(company_id), str(company_id)),
+    ).fetchone()
+    if not row or not row["company_exists"]:
+        return None
+    return {
+        "stores": row["stores"],
+        "adEvents": row["ad_events"],
+        "couponEvents": row["coupon_events"],
+    }
+
+
+def get_company_reference_counts(company_id):
+    """Return counts of stores and analytics events referencing a company, or None."""
+    if company_id is None:
+        return None
+    with pool().connection() as conn:
+        return _company_reference_counts(conn, company_id)
+
+
+def delete_company(company_id):
+    """Delete a company only when no stores or analytics events reference it.
+
+    Returns None for a missing company, otherwise a result with ``deleted`` and,
+    when blocked, the three reference counts. The parent row is locked while
+    checking and deleting so concurrent foreign-key inserts cannot pass the
+    check unnoticed. Existing constraints remain the final concurrency guard.
+    """
+    if company_id is None:
+        return None
+    company_id = str(company_id)
+    try:
+        with pool().connection() as conn:
+            with conn.transaction():
+                company = conn.execute(
+                    "SELECT id FROM companies WHERE id = %s FOR UPDATE",
+                    (company_id,),
+                ).fetchone()
+                if not company:
+                    return None
+                references = _company_reference_counts(conn, company_id)
+                if any(references.values()):
+                    return {"deleted": False, "references": references}
+                conn.execute("DELETE FROM companies WHERE id = %s", (company_id,))
+        return {"deleted": True, "companyId": company_id}
+    except psycopg.errors.ForeignKeyViolation:
+        # A reference may have appeared through another path or an additional
+        # existing FK. The DELETE rolled back; report a conflict, never success.
+        references = get_company_reference_counts(company_id)
+        return {
+            "deleted": False,
+            "references": references or {"stores": 0, "adEvents": 0, "couponEvents": 0},
+        }
+
+
 def save_company(company):
     """Insert or update one company record; store assignments are not changed."""
     if not isinstance(company, dict):

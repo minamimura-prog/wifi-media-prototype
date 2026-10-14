@@ -69,6 +69,13 @@ def _admin_company_lifecycle_route(path):
     return (company_id, parts[5]) if company_id is not None else None
 
 
+def _admin_company_delete_route(path):
+    parts = path.split("/")
+    if len(parts) != 5 or parts[:4] != ["", "api", "admin", "companies"]:
+        return None
+    return _safe_admin_route_id(parts[4])
+
+
 def _admin_campaign_status_route(path):
     parts = path.split("/")
     if (len(parts) != 6 or parts[:4] != ["", "api", "admin", "campaigns"]
@@ -1846,6 +1853,24 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_DELETE(self):
         path = urlparse(self.path).path
+        company_id = _admin_company_delete_route(path)
+        if company_id is not None:
+            if not self.require_admin_session(): return
+            if not self.require_same_origin(): return
+            if not database.database_enabled():
+                return self.send_json({"ok": False, "error": "admin_data_unavailable"}, 503)
+            try:
+                result = database.delete_company(company_id)
+            except Exception:
+                return self.send_json({"ok": False, "error": "admin_data_unavailable"}, 503)
+            if result is None:
+                return self.send_json({"detail": "company_not_found"}, 404)
+            if not result["deleted"]:
+                return self.send_json({
+                    "detail": "company_in_use",
+                    "references": result["references"],
+                }, 409)
+            return self.send_json({"ok": True, "deletedCompanyId": company_id})
         prefix = "/api/coupons/"
         if path.startswith(prefix):
             if not self.require_admin_session(): return

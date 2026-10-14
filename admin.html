@@ -1332,6 +1332,8 @@ body:has(.ad-management-view){background-color:#070b0d;background-image:radial-g
 .company-management-view .company-lifecycle-button.is-archive{color:#e7c58f;background:linear-gradient(180deg,rgba(89,66,39,.72),rgba(58,45,31,.88));border-color:#806a4a}
 .company-management-view .company-lifecycle-button.is-archive:hover:not(:disabled){color:#fff1d7;background:linear-gradient(180deg,#755632,#51402d);border-color:#c49b61;box-shadow:0 0 12px rgba(230,166,75,.15)}
 .company-management-view .company-lifecycle-button.is-restore{color:#d9fbff}
+.company-management-view .company-lifecycle-button.is-delete{color:#f0b6ba;background:linear-gradient(180deg,rgba(91,45,51,.72),rgba(58,31,36,.88));border-color:#81515a}
+.company-management-view .company-lifecycle-button.is-delete:hover:not(:disabled){color:#ffe4e6;background:linear-gradient(180deg,#70434a,#51343a);border-color:#b8757e;box-shadow:0 0 10px rgba(255,112,123,.13)}
 .company-management-view .company-data-table th:last-child,.company-management-view .company-data-table td:last-child{white-space:nowrap}
 .company-management-view .company-company-actions{display:flex;align-items:center;gap:7px}
 @media(max-width:700px){.company-management-view .company-store-controls{flex-wrap:wrap;min-width:0}.company-management-view .company-store-controls select{flex:1 1 100%;min-width:0}.company-management-view .company-store-controls .company-row-save{margin-left:auto}.company-management-view .company-status.is-archived{margin:6px 0 0}.company-management-view .company-list-heading{align-items:flex-start}.company-management-view .company-list-heading .company-archived-toggle{margin-left:0}}
@@ -1440,7 +1442,7 @@ let adEditorBaseline=null, adEditorBaselineKey=null;
 let adLocalPreviewUrls={pc:'',mobile:''};
 let adPcPreviewObserver=null;
 let adCreateIdempotencyKey=null, adCreateAttempt=null, adCreateUncertain=false, adCreateBlocked=false, adCreateStoreId=null;
-let companyAdminData={companies:[],stores:[]}, companyDataLoaded=false, companyDirectoryLoaded=false, companyRequestSeq=0, companyCreateSaving=false, companyAssignSaving=new Set(), companyLifecycleSaving=new Set(), companyShowArchived=false, companyFormNotice='', companyFormNoticeType='', companyLoadError='', companyStoreNotices={}, companyFormValues={name:'',code:'',businessType:'',status:'active'};
+let companyAdminData={companies:[],stores:[]}, companyDataLoaded=false, companyDirectoryLoaded=false, companyRequestSeq=0, companyCreateSaving=false, companyAssignSaving=new Set(), companyLifecycleSaving=new Set(), companyDeleting=new Set(), companyShowArchived=false, companyFormNotice='', companyFormNoticeType='', companyLoadError='', companyStoreNotices={}, companyFormValues={name:'',code:'',businessType:'',status:'active'};
 let storeCompanyOptionsData=[], storeCompanyOptionsError='', storeSavePending=false, storeSaveFeedback='', storeSaveFeedbackType='';
 let storePublicCodes=new Map(), storePublicCodeSeq=0, storePublicCodeLoading=false, storePublicCodeError='', storeSearchQuery='', storeListView='normal', storeEditInitialValues=null;
 let couponFormError='', designSaveError='';
@@ -2372,7 +2374,7 @@ function companyCountById(companyId){
 function renderCompanyManagement(){
   const companies=companyAdminData.companies;
   const visibleCompanies=companies.filter(company=>companyShowArchived||!company.archivedAt);
-  const companyRows=visibleCompanies.length?`<div class="company-table-scroll"><table class="company-data-table"><thead><tr><th>企業名</th><th>企業コード</th><th>業種</th><th>状態</th><th>店舗数</th><th>操作</th></tr></thead><tbody>${visibleCompanies.map(company=>{const archived=Boolean(company.archivedAt),busy=companyLifecycleSaving.has(String(company.id));return `<tr><td><b>${esc(company.name||'')}</b></td><td><span class="company-code">${esc(company.code||'')}</span></td><td><span class="company-business-type">${esc(company.businessType||'—')}</span></td><td>${archived?'<span class="company-status is-archived"><i></i>アーカイブ済み</span>':''}<span class="company-status ${company.status==='active'?'is-active':'is-inactive'}"><i></i>${company.status==='active'?'ACTIVE':'INACTIVE'}</span></td><td>${companyCountById(company.id).toLocaleString()}</td><td><div class="company-company-actions">${archived?`<button class="company-lifecycle-button is-restore" type="button" data-company-restore="${esc(company.id)}" ${busy?'disabled':''}>${busy?'処理中…':'復元'}</button>`:`<button class="company-lifecycle-button is-archive" type="button" data-company-archive="${esc(company.id)}" ${busy?'disabled':''}>${busy?'処理中…':'アーカイブ'}</button>`}</div></td></tr>`}).join('')}</tbody></table></div>`:companyDataLoaded?`<div class="company-empty">${companies.length?'表示する企業はありません。':'企業がまだ登録されていません。'}</div>`:'<div class="company-loading">企業一覧を読み込んでいます…</div>';
+  const companyRows=visibleCompanies.length?`<div class="company-table-scroll"><table class="company-data-table"><thead><tr><th>企業名</th><th>企業コード</th><th>業種</th><th>状態</th><th>店舗数</th><th>操作</th></tr></thead><tbody>${visibleCompanies.map(company=>{const archived=Boolean(company.archivedAt),busy=companyLifecycleSaving.has(String(company.id)),deleting=companyDeleting.has(String(company.id));return `<tr><td><b>${esc(company.name||'')}</b></td><td><span class="company-code">${esc(company.code||'')}</span></td><td><span class="company-business-type">${esc(company.businessType||'—')}</span></td><td>${archived?'<span class="company-status is-archived"><i></i>アーカイブ済み</span>':''}<span class="company-status ${company.status==='active'?'is-active':'is-inactive'}"><i></i>${company.status==='active'?'ACTIVE':'INACTIVE'}</span></td><td>${companyCountById(company.id).toLocaleString()}</td><td><div class="company-company-actions">${archived?`<button class="company-lifecycle-button is-restore" type="button" data-company-restore="${esc(company.id)}" ${busy||deleting?'disabled':''}>${busy?'処理中…':'復元'}</button><button class="company-lifecycle-button is-delete" type="button" data-company-delete="${esc(company.id)}" ${busy||deleting?'disabled':''}>${deleting?'削除中…':'削除'}</button>`:`<button class="company-lifecycle-button is-archive" type="button" data-company-archive="${esc(company.id)}" ${busy||deleting?'disabled':''}>${busy?'処理中…':'アーカイブ'}</button>`}</div></td></tr>`}).join('')}</tbody></table></div>`:companyDataLoaded?`<div class="company-empty">${companies.length?'表示する企業はありません。':'企業がまだ登録されていません。'}</div>`:'<div class="company-loading">企業一覧を読み込んでいます…</div>';
   const storeRows=companyAdminData.stores.length?`<div class="company-table-scroll"><table class="company-data-table company-store-table"><thead><tr><th>店舗</th><th>現在の所属</th><th>企業所属を変更</th></tr></thead><tbody>${companyAdminData.stores.map(store=>{
     const current=companies.find(company=>store.companyId!==null&&store.companyId!==undefined&&String(company.id)===String(store.companyId));
     const currentValue=current?String(current.id):'';
@@ -2386,6 +2388,7 @@ function renderCompanyManagement(){
   document.querySelectorAll('[data-company-assign]').forEach(button=>button.addEventListener('click',()=>saveStoreCompany(button.dataset.companyAssign)));
   document.querySelectorAll('[data-company-archive]').forEach(button=>button.addEventListener('click',()=>changeCompanyArchive(button.dataset.companyArchive,'archive')));
   document.querySelectorAll('[data-company-restore]').forEach(button=>button.addEventListener('click',()=>changeCompanyArchive(button.dataset.companyRestore,'restore')));
+  document.querySelectorAll('[data-company-delete]').forEach(button=>button.addEventListener('click',()=>deleteCompany(button.dataset.companyDelete)));
 }
 async function changeCompanyArchive(companyId,action){
   const id=String(companyId),company=companyAdminData.companies.find(item=>String(item.id)===id);
@@ -2408,6 +2411,36 @@ async function changeCompanyArchive(companyId,action){
     toast(action==='archive'?'企業をアーカイブしました':'企業を復元しました',{type:'success'});
   }catch(error){toast(companyApiError(error,action==='archive'?'企業をアーカイブできませんでした':'企業を復元できませんでした'),{type:'error'});}
   finally{companyLifecycleSaving.delete(id);if(location.hash==='#companies')renderCompanyManagement();}
+}
+async function deleteCompany(companyId){
+  const id=String(companyId),company=companyAdminData.companies.find(item=>String(item.id)===id);
+  if(!company||!company.archivedAt||companyLifecycleSaving.has(id)||companyDeleting.has(id))return;
+  const name=String(company.name||'').trim();
+  const message=`${name?`企業「${name}」を完全に削除します。`:'この企業を完全に削除します。'}\nこの操作は元に戻せません。`;
+  if(!window.confirm(message))return;
+  captureCompanyCreateFormValues();
+  companyLifecycleSaving.add(id);companyDeleting.add(id);
+  const button=document.querySelector(`[data-company-delete="${CSS.escape(id)}"]`);
+  if(button){button.disabled=true;button.textContent='削除中…';}
+  try{
+    const response=await companyApiFetch(`/api/admin/companies/${encodeURIComponent(id)}`,{method:'DELETE'});
+    let payload={};try{payload=await response.json()}catch(_){}
+    if(response.status===409&&payload.detail==='company_in_use'){
+      const refs=payload.references||{},counts=[['店舗',Number(refs.stores)||0],['広告履歴',Number(refs.adEvents)||0],['クーポン履歴',Number(refs.couponEvents)||0]].filter(([,count])=>count>0).map(([label,count])=>`${label} ${count}件`);
+      const reason=counts.length?`紐づき: ${counts.join('、')}があります。`:'関連データを参照する制約が残っています。';
+      toast(`この企業は削除できません。${reason} 契約終了の場合は、アーカイブ状態のまま保持してください。`,{type:'error'});
+      return;
+    }
+    if(response.status===404&&payload.detail==='company_not_found'){
+      try{await refreshCompanyAdminData()}catch(_){}
+      toast('企業が見つかりませんでした。一覧を更新してください。',{type:'error'});
+      return;
+    }
+    if(!response.ok)throw new Error(String(response.status));
+    companyAdminData.companies=companyAdminData.companies.filter(item=>String(item.id)!==id);
+    toast('企業を削除しました',{type:'success'});
+  }catch(error){toast(companyApiError(error,'企業を削除できませんでした。通信状態を確認して再度お試しください。'),{type:'error'});}
+  finally{companyLifecycleSaving.delete(id);companyDeleting.delete(id);if(location.hash==='#companies')renderCompanyManagement();}
 }
 async function refreshCompanyAdminData(){
   const seq=++companyRequestSeq;
