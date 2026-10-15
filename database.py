@@ -666,6 +666,35 @@ def list_companies():
     return [dict(row) for row in rows]
 
 
+def list_company_delete_eligibility():
+    """Return exact company reference counts in one grouped query."""
+    with pool().connection() as conn:
+        rows = conn.execute(
+            "SELECT c.id, "
+            "COALESCE(s.reference_count, 0) AS stores, "
+            "COALESCE(a.reference_count, 0) AS ad_events, "
+            "COALESCE(q.reference_count, 0) AS coupon_events "
+            "FROM companies c "
+            "LEFT JOIN (SELECT company_id, COUNT(*) AS reference_count "
+            "FROM stores WHERE company_id IS NOT NULL GROUP BY company_id) s "
+            "ON s.company_id = c.id "
+            "LEFT JOIN (SELECT company_id, COUNT(*) AS reference_count "
+            "FROM ad_events WHERE company_id IS NOT NULL GROUP BY company_id) a "
+            "ON a.company_id = c.id "
+            "LEFT JOIN (SELECT company_id, COUNT(*) AS reference_count "
+            "FROM coupon_events WHERE company_id IS NOT NULL GROUP BY company_id) q "
+            "ON q.company_id = c.id",
+        ).fetchall()
+    return {
+        str(row["id"]): {
+            "stores": int(row["stores"]),
+            "adEvents": int(row["ad_events"]),
+            "couponEvents": int(row["coupon_events"]),
+        }
+        for row in rows
+    }
+
+
 def get_company(company_id):
     """Return one company by its internal ID, or None if it does not exist."""
     if company_id is None:

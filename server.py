@@ -1613,10 +1613,25 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send_json({"ok": False, "error": "admin_data_unavailable"}, 503)
             try:
                 companies = database.list_companies()
+                try:
+                    delete_eligibility = database.list_company_delete_eligibility()
+                except Exception:
+                    # Keep the directory available, but fail closed in the UI
+                    # when eligibility could not be verified.
+                    delete_eligibility = {}
                 return self.send_json({"companies": [
-                    {"id": row["id"], "name": row["name"], "code": row["code"],
-                     "businessType": row["business_type"], "status": row["status"],
-                     "archivedAt": row["archived_at"].isoformat() if row.get("archived_at") else None}
+                    {
+                        "id": row["id"], "name": row["name"], "code": row["code"],
+                        "businessType": row["business_type"], "status": row["status"],
+                        "archivedAt": row["archived_at"].isoformat() if row.get("archived_at") else None,
+                        "deleteEligibility": {
+                            "canDelete": (
+                                str(row["id"]) in delete_eligibility
+                                and not any(delete_eligibility[str(row["id"])].values())
+                            ),
+                            "references": delete_eligibility.get(str(row["id"])),
+                        },
+                    }
                     for row in companies
                 ]})
             except Exception:

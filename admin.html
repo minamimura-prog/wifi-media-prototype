@@ -1334,6 +1334,7 @@ body:has(.ad-management-view){background-color:#070b0d;background-image:radial-g
 .company-management-view .company-lifecycle-button.is-restore{color:#d9fbff}
 .company-management-view .company-lifecycle-button.is-delete{color:#f0b6ba;background:linear-gradient(180deg,rgba(91,45,51,.72),rgba(58,31,36,.88));border-color:#81515a}
 .company-management-view .company-lifecycle-button.is-delete:hover:not(:disabled){color:#ffe4e6;background:linear-gradient(180deg,#70434a,#51343a);border-color:#b8757e;box-shadow:0 0 10px rgba(255,112,123,.13)}
+.company-management-view .company-lifecycle-button.is-unavailable{color:#849197;background:rgba(37,48,53,.45);border-color:#465156;cursor:not-allowed;opacity:.72}
 .company-management-view .company-data-table th:last-child,.company-management-view .company-data-table td:last-child{white-space:nowrap}
 .company-management-view .company-company-actions{display:flex;align-items:center;gap:7px}
 @media(max-width:700px){.company-management-view .company-store-controls{flex-wrap:wrap;min-width:0}.company-management-view .company-store-controls select{flex:1 1 100%;min-width:0}.company-management-view .company-store-controls .company-row-save{margin-left:auto}.company-management-view .company-status.is-archived{margin:6px 0 0}.company-management-view .company-list-heading{align-items:flex-start}.company-management-view .company-list-heading .company-archived-toggle{margin-left:0}}
@@ -2374,7 +2375,7 @@ function companyCountById(companyId){
 function renderCompanyManagement(){
   const companies=companyAdminData.companies;
   const visibleCompanies=companies.filter(company=>companyShowArchived||!company.archivedAt);
-  const companyRows=visibleCompanies.length?`<div class="company-table-scroll"><table class="company-data-table"><thead><tr><th>企業名</th><th>企業コード</th><th>業種</th><th>状態</th><th>店舗数</th><th>操作</th></tr></thead><tbody>${visibleCompanies.map(company=>{const archived=Boolean(company.archivedAt),busy=companyLifecycleSaving.has(String(company.id)),deleting=companyDeleting.has(String(company.id));return `<tr><td><b>${esc(company.name||'')}</b></td><td><span class="company-code">${esc(company.code||'')}</span></td><td><span class="company-business-type">${esc(company.businessType||'—')}</span></td><td>${archived?'<span class="company-status is-archived"><i></i>アーカイブ済み</span>':''}<span class="company-status ${company.status==='active'?'is-active':'is-inactive'}"><i></i>${company.status==='active'?'ACTIVE':'INACTIVE'}</span></td><td>${companyCountById(company.id).toLocaleString()}</td><td><div class="company-company-actions">${archived?`<button class="company-lifecycle-button is-restore" type="button" data-company-restore="${esc(company.id)}" ${busy||deleting?'disabled':''}>${busy?'処理中…':'復元'}</button><button class="company-lifecycle-button is-delete" type="button" data-company-delete="${esc(company.id)}" ${busy||deleting?'disabled':''}>${deleting?'削除中…':'削除'}</button>`:`<button class="company-lifecycle-button is-archive" type="button" data-company-archive="${esc(company.id)}" ${busy||deleting?'disabled':''}>${busy?'処理中…':'アーカイブ'}</button>`}</div></td></tr>`}).join('')}</tbody></table></div>`:companyDataLoaded?`<div class="company-empty">${companies.length?'表示する企業はありません。':'企業がまだ登録されていません。'}</div>`:'<div class="company-loading">企業一覧を読み込んでいます…</div>';
+  const companyRows=visibleCompanies.length?`<div class="company-table-scroll"><table class="company-data-table"><thead><tr><th>企業名</th><th>企業コード</th><th>業種</th><th>状態</th><th>店舗数</th><th>操作</th></tr></thead><tbody>${visibleCompanies.map(company=>{const archived=Boolean(company.archivedAt),busy=companyLifecycleSaving.has(String(company.id)),deleting=companyDeleting.has(String(company.id)),eligibility=company.deleteEligibility,references=eligibility&&eligibility.references||{},canDelete=eligibility&&eligibility.canDelete===true,referenceTitle=[['店舗',references.stores],['広告履歴',references.adEvents],['クーポン履歴',references.couponEvents]].filter(([,count])=>Number(count)>0).map(([label,count])=>`${label} ${Number(count)}件`).join(' / '),eligibilityTitle=referenceTitle||'削除可否を確認できませんでした';return `<tr><td><b>${esc(company.name||'')}</b></td><td><span class="company-code">${esc(company.code||'')}</span></td><td><span class="company-business-type">${esc(company.businessType||'—')}</span></td><td>${archived?'<span class="company-status is-archived"><i></i>アーカイブ済み</span>':''}<span class="company-status ${company.status==='active'?'is-active':'is-inactive'}"><i></i>${company.status==='active'?'ACTIVE':'INACTIVE'}</span></td><td>${companyCountById(company.id).toLocaleString()}</td><td><div class="company-company-actions">${archived?`<button class="company-lifecycle-button is-restore" type="button" data-company-restore="${esc(company.id)}" ${busy||deleting?'disabled':''}>${busy?'処理中…':'復元'}</button>${canDelete?`<button class="company-lifecycle-button is-delete" type="button" data-company-delete="${esc(company.id)}" ${busy||deleting?'disabled':''} title="削除可能">${deleting?'削除中…':'削除'}</button>`:`<button class="company-lifecycle-button is-unavailable" type="button" disabled title="${esc(eligibilityTitle)}">削除不可</button>`}`:`<button class="company-lifecycle-button is-archive" type="button" data-company-archive="${esc(company.id)}" ${busy||deleting?'disabled':''}>${busy?'処理中…':'アーカイブ'}</button>`}</div></td></tr>`}).join('')}</tbody></table></div>`:companyDataLoaded?`<div class="company-empty">${companies.length?'表示する企業はありません。':'企業がまだ登録されていません。'}</div>`:'<div class="company-loading">企業一覧を読み込んでいます…</div>';
   const storeRows=companyAdminData.stores.length?`<div class="company-table-scroll"><table class="company-data-table company-store-table"><thead><tr><th>店舗</th><th>現在の所属</th><th>企業所属を変更</th></tr></thead><tbody>${companyAdminData.stores.map(store=>{
     const current=companies.find(company=>store.companyId!==null&&store.companyId!==undefined&&String(company.id)===String(store.companyId));
     const currentValue=current?String(current.id):'';
@@ -2407,8 +2408,17 @@ async function changeCompanyArchive(companyId,action){
     const payload=await response.json();
     const updated=payload.company;
     if(!updated||String(updated.id)!==id)throw new Error('invalid_response');
-    companyAdminData.companies=companyAdminData.companies.map(item=>String(item.id)===id?updated:item);
-    toast(action==='archive'?'企業をアーカイブしました':'企業を復元しました',{type:'success'});
+    let eligibilityRefreshed=false;
+    try{eligibilityRefreshed=await refreshCompanyAdminData()}catch(_){}
+    if(!eligibilityRefreshed){
+      companyAdminData.companies=companyAdminData.companies.map(item=>{
+        const current=String(item.id)===id?updated:item;
+        return current.archivedAt?{...current,deleteEligibility:{canDelete:false,references:null}}:current;
+      });
+      toast(`${action==='archive'?'企業をアーカイブしました':'企業を復元しました'}。削除可否を更新できないため、確認できるまでアーカイブ済み企業の削除を無効にしています。`,{type:'error'});
+    }else{
+      toast(action==='archive'?'企業をアーカイブしました':'企業を復元しました',{type:'success'});
+    }
   }catch(error){toast(companyApiError(error,action==='archive'?'企業をアーカイブできませんでした':'企業を復元できませんでした'),{type:'error'});}
   finally{companyLifecycleSaving.delete(id);if(location.hash==='#companies')renderCompanyManagement();}
 }
@@ -2428,6 +2438,7 @@ async function deleteCompany(companyId){
     if(response.status===409&&payload.detail==='company_in_use'){
       const refs=payload.references||{},counts=[['店舗',Number(refs.stores)||0],['広告履歴',Number(refs.adEvents)||0],['クーポン履歴',Number(refs.couponEvents)||0]].filter(([,count])=>count>0).map(([label,count])=>`${label} ${count}件`);
       const reason=counts.length?`紐づき: ${counts.join('、')}があります。`:'関連データを参照する制約が残っています。';
+      companyAdminData.companies=companyAdminData.companies.map(item=>String(item.id)===id?{...item,deleteEligibility:{canDelete:false,references:refs}}:item);
       toast(`この企業は削除できません。${reason} 契約終了の場合は、アーカイブ状態のまま保持してください。`,{type:'error'});
       return;
     }
