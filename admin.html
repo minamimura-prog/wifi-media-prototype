@@ -1762,7 +1762,7 @@ function adEditorIsReadOnly(){
     if(!company||company.archivedAt!=null||adCompaniesLoading||adCompanyLoading||!!adCompaniesError||!!adCompanyError)return true;
     if(adCreatingNew)return false;
     const campaign=adCompanyCampaigns.find(item=>String(item.campaignId)===String(selectedCampaignId));
-    return !campaign||!['draft','active','paused'].includes(campaign.status);
+    return !campaign||!['draft','active','paused'].includes(normalizeCampaignStatus(campaign.status));
   }
   if(adTarget==='global')return !['draft','active','paused'].includes(defaultAdStatus())||defaultAdLinkedToArchivedStore();
   const store=adStores?.find(item=>String(item.id)===String(adStoreId));
@@ -1833,7 +1833,7 @@ function selectCompanyCampaign(campaignId){
   if(adTarget!=='company'||adSaving||adStatusSaving||adCompanyLoading||adCompanyError)return;
   const selected=adCompanyCampaigns.find(item=>String(item.campaignId)===String(campaignId)&&String(item.companyId)===String(adCompanyId));
   if(!selected||String(selected.companyId)!==String(adCompanyId))return;
-  if(!adCreatingNew&&String(selectedCampaignId)===String(selected.campaignId))return;
+  if(!adCreatingNew&&String(selectedCampaignId)===String(selected.campaignId)&&adCampaign===selected)return;
   if(!confirmDiscardAdChanges())return;
   clearAdLocalPreviewUrls();adCreatingNew=false;selectedCampaignId=String(selected.campaignId);adCampaign=selected;adSaveError='';renderAds();
 }
@@ -1878,13 +1878,14 @@ function isValidCampaignDate(value){
   return parsed.getUTCFullYear()===year&&parsed.getUTCMonth()===month-1&&parsed.getUTCDate()===day;
 }
 function campaignLifecycleStatus(campaign){
-  const status=campaign?.status;
+  const status=normalizeCampaignStatus(campaign?.status);
   if(status==='draft')return {status,label:'下書き',className:'is-draft'};
   if(status==='active')return {status,label:'公開中',className:'is-active'};
   if(status==='paused')return {status,label:'停止中',className:'is-paused'};
   if(status==='archived')return {status,label:'アーカイブ済み',className:'is-archived'};
   return {status:null,label:'状態不明',className:'is-unknown'};
 }
+function normalizeCampaignStatus(status){return String(status??'').trim().toLowerCase()}
 function defaultAdStatus(ad=S.ad){
   if(ad&&Object.prototype.hasOwnProperty.call(ad,'status'))return ['draft','active','paused','archived'].includes(ad.status)?ad.status:null;
   return ad?.published===true?'active':'draft';
@@ -1913,7 +1914,7 @@ function campaignStatusActions(campaignId,status,{isDefault=false,readOnly=false
   return `<div class="ad-status-actions" aria-label="広告の状態操作">${actions.map(([next,label])=>`<button type="button" class="${next==='archived'?'secondary ad-status-archive':'secondary ad-status-button'}" data-ad-status-campaign="${esc(campaignId)}" data-ad-status-next="${next}" data-ad-status-label="${label}" ${adStatusSaving||adSaving?'disabled':''}>${adStatusSaving?'処理中…':label}</button>`).join('')}</div>`;
 }
 function companyCampaignStatusActions(campaign,company,{compact=false}={}){
-  const status=campaign?.status;
+  const status=normalizeCampaignStatus(campaign?.status);
   if(!campaign?.campaignId||String(campaign.companyId)!==String(adCompanyId)||!['draft','active','paused'].includes(status))return '';
   const companyArchived=company?.archivedAt!=null;
   const actions=status==='draft'?[...(!companyArchived?[['active','公開']]:[])]:status==='active'?[['paused','停止']]:[...(!companyArchived?[['active','再開']]:[])];
@@ -1949,7 +1950,7 @@ function renderAds(){
   const campaign=adCampaign||{};
   const campaignLifecycle=campaignLifecycleStatus(campaign);
   const campaignArchived=campaignLifecycle.status==='archived';
-  const campaignStatusUnknown=!['draft','active','paused','archived'].includes(campaign.status);
+  const campaignStatusUnknown=!['draft','active','paused','archived'].includes(normalizeCampaignStatus(campaign.status));
   const globalStatus=defaultAdStatus();
   const globalLifecycle=campaignLifecycleStatus({status:globalStatus});
   const globalArchivedStore=defaultAdLinkedToArchivedStore();
@@ -2120,7 +2121,7 @@ async function loadAdCompanyCampaigns(companyId){
     if(!Array.isArray(payload.campaigns))throw new Error('企業広告を読み込めませんでした。');
     const responseCompany=payload.company;if(responseCompany&&String(responseCompany.id)!==id)throw new Error('企業広告を読み込めませんでした。');
     if(responseCompany&&responseCompany.archivedAt!=null){adCompanyId=null;adCompanyCampaigns=[];adCompanyLoading=false;adTarget='global';setAdminRouteHash('#ads');renderAds();toast('アーカイブ済み企業は広告の配信対象にできません。',{type:'info'});return;}
-    adCompanyCampaigns=payload.campaigns.filter(item=>item&&item.scope==='company'&&String(item.companyId)===id);adCompanyLoading=false;adCompanyError='';renderAds();
+    adCompanyCampaigns=payload.campaigns.filter(item=>item&&item.scope==='company'&&String(item.companyId)===id).map(item=>({...item,status:normalizeCampaignStatus(item.status)}));adCompanyLoading=false;adCompanyError='';renderAds();
   }catch(error){
     if(seq!==adCompanyRequestSeq||adTarget!=='company'||String(adCompanyId)!==id||!isAdminRoute('ads'))return;
     adCompanyCampaigns=[];adCompanyLoading=false;adCompanyError=error.message||'企業広告を読み込めませんでした。';renderAds();toast(adCompanyError,{type:'error'});
@@ -2228,7 +2229,7 @@ function updateAdSavingUI(){
   const selectedCampaign=(adTarget==='company'?adCompanyCampaigns:adCampaigns).find(item=>String(item?.campaignId)===String(selectedCampaignId));
   const selectedCompany=adCompanies.find(item=>String(item.id)===String(adCompanyId));
   const globalReadOnly=adTarget==='global'&&(!['draft','active','paused'].includes(defaultAdStatus())||defaultAdLinkedToArchivedStore());
-  const companyReadOnly=adTarget==='company'&&(!selectedCompany||selectedCompany.archivedAt!=null||adCompaniesLoading||!adCompaniesLoaded||!!adCompaniesError||adCompanyLoading||!!adCompanyError||(!adCreatingNew&&(!selectedCampaignId||!['draft','active','paused'].includes(selectedCampaign?.status))));
+  const companyReadOnly=adTarget==='company'&&(!selectedCompany||selectedCompany.archivedAt!=null||adCompaniesLoading||!adCompaniesLoaded||!!adCompaniesError||adCompanyLoading||!!adCompanyError||(!adCreatingNew&&(!selectedCampaignId||!['draft','active','paused'].includes(normalizeCampaignStatus(selectedCampaign?.status)))));
   const storeReadOnly=adTarget==='store'&&(isArchivedStore(currentStore)||!adCreatingNew&&!['draft','active','paused','archived'].includes(selectedCampaign?.status)||selectedCampaign?.status==='archived'||adStoreLoading||!!adStoreError||(!adCreatingNew&&!selectedCampaignId));
   const editorReadOnly=companyReadOnly||storeReadOnly;
   if(selector)selector.disabled=adSaving||adStatusSaving||(adCreatingNew&&adCreateUncertain);
@@ -2355,7 +2356,7 @@ async function publishCompanyAd(){
     let refreshedData;try{refreshedData=await refreshed.json();}catch(_){applyLocalCompanySave();return;}
     if(!Array.isArray(refreshedData.campaigns)){applyLocalCompanySave();return;}
     if(!isCurrent())return;
-    adCompanyCampaigns=refreshedData.campaigns.filter(item=>item&&item.scope==='company'&&String(item.companyId)===companyId);
+    adCompanyCampaigns=refreshedData.campaigns.filter(item=>item&&item.scope==='company'&&String(item.companyId)===companyId).map(item=>({...item,status:normalizeCampaignStatus(item.status)}));
     if(!adCompanyCampaigns.some(item=>String(item.campaignId)===savedCampaignId)){adCompanyCampaigns.push(localSavedCampaign);}
     clearAdLocalPreviewUrls();adCreatingNew=false;selectedCampaignId=savedCampaignId;adCampaign=adCompanyCampaigns.find(item=>String(item.campaignId)===savedCampaignId)||null;adCompanyError='';adSaveError='';setAdminRouteHash(buildAdminHash('ads',{company:companyId}));renderAds();resetAdEditorBaseline();toast('保存しました',{type:'success'});
   }catch(_){if(isCurrent())setAdSaveFeedback('保存できませんでした。入力内容を保持しています。時間をおいて再度お試しください。');}
@@ -2533,7 +2534,7 @@ async function reloadCompanyCampaignAfterStatus(companyId,campaignId){
   if(!response.ok)return false;
   const payload=await response.json();
   if(!Array.isArray(payload.campaigns))return false;
-  const campaigns=payload.campaigns.filter(item=>item&&item.scope==='company'&&String(item.companyId)===id);
+  const campaigns=payload.campaigns.filter(item=>item&&item.scope==='company'&&String(item.companyId)===id).map(item=>({...item,status:normalizeCampaignStatus(item.status)}));
   const campaign=campaigns.find(item=>String(item.campaignId)===campaignKey);
   if(!campaign)return false;
   if(isAdminRoute('ads')&&adTarget==='company'&&String(adCompanyId)===id){
