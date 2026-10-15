@@ -1821,6 +1821,10 @@ function selectCompanyCampaign(campaignId){
 }
 function setCompanyAdArchivedVisible(visible){
   adCompanyShowArchived=visible===true;
+  const selected=adCompanyCampaigns.find(item=>String(item.campaignId)===String(selectedCampaignId));
+  if(!adCompanyShowArchived&&String(selected?.status||'').toLowerCase()==='archived'){
+    selectedCampaignId=null;adCampaign=null;adCreatingNew=false;adSaveError='';clearAdLocalPreviewUrls();renderAds();resetAdEditorBaseline();return;
+  }
   const rows=[...document.querySelectorAll('.ad-company-campaign-row')];
   let visibleCount=0;
   rows.forEach(row=>{const show=adCompanyShowArchived||row.dataset.companyCampaignStatus!=='archived';row.hidden=!show;row.classList.toggle('is-filtered',!show);row.setAttribute('aria-hidden',String(!show));if(show)visibleCount++;});
@@ -2213,7 +2217,10 @@ function updateAdSavingUI(){
   if(companySelector)companySelector.disabled=adSaving||adStatusSaving||adCompaniesLoading||!adCompaniesLoaded;
   if(storeSelector)storeSelector.disabled=adSaving||adStatusSaving||adStoresLoading||(adCreatingNew&&adCreateUncertain);
   if(publicPageButton)publicPageButton.disabled=adSaving||adStatusSaving;
-  document.querySelectorAll('.store-campaign-row,.store-campaign-add').forEach(el=>{el.disabled=adSaving||adStatusSaving||(adCreatingNew&&adCreateUncertain)||el.classList.contains('store-campaign-add')&&(adStoreLoading||!!adStoreError||isArchivedStore(currentStore)||currentStore?.status!=='稼働中');});
+  document.querySelectorAll('.store-campaign-row').forEach(el=>{el.disabled=adSaving||adStatusSaving||(adCreatingNew&&adCreateUncertain);});
+  const companyAddBlocked=!selectedCompany||selectedCompany.archivedAt!=null||adCompaniesLoading||!adCompaniesLoaded||!!adCompaniesError||adCompanyLoading||!!adCompanyError||adCreatingNew;
+  const storeAddBlocked=adStoreLoading||!!adStoreError||isArchivedStore(currentStore)||currentStore?.status!=='稼働中'||adCreatingNew;
+  document.querySelectorAll('.store-campaign-add').forEach(el=>{el.disabled=adSaving||adStatusSaving||(adTarget==='company'?companyAddBlocked:storeAddBlocked);});
   document.querySelectorAll('[data-ad-status-campaign],[data-company-ad-status-campaign]').forEach(el=>{el.disabled=adSaving||adStatusSaving||el.hasAttribute('data-ad-status-campaign')&&(globalReadOnly||storeReadOnly);el.textContent=adStatusSaving?'処理中…':el.dataset.adStatusLabel||'';});
   if(button){
     button.disabled=adSaving||adStatusSaving||editorReadOnly||globalReadOnly||(adTarget==='store'&&adCreatingNew&&adCreateBlocked);
@@ -2512,7 +2519,9 @@ async function reloadCompanyCampaignAfterStatus(companyId,campaignId){
   const campaign=campaigns.find(item=>String(item.campaignId)===campaignKey);
   if(!campaign)return false;
   if(isAdminRoute('ads')&&adTarget==='company'&&String(adCompanyId)===id){
-    adCompanyCampaigns=campaigns;adCreatingNew=false;selectedCampaignId=campaignKey;adCampaign=campaign;adCompanyLoading=false;adCompanyError='';adSaveError='';
+    adCompanyCampaigns=campaigns;adCreatingNew=false;adCompanyLoading=false;adCompanyError='';adSaveError='';
+    const archivedHidden=String(campaign.status||'').toLowerCase()==='archived'&&!adCompanyShowArchived;
+    selectedCampaignId=archivedHidden?null:campaignKey;adCampaign=archivedHidden?null:campaign;
     clearAdLocalPreviewUrls();renderAds();resetAdEditorBaseline();
   }
   return true;
