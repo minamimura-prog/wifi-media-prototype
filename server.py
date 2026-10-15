@@ -85,6 +85,26 @@ def _admin_campaign_status_route(path):
     return campaign_id if campaign_id is not None else None
 
 
+def _admin_company_campaign_route(path, include_campaign=False, include_status=False):
+    parts = path.split("/")
+    if include_status:
+        if (len(parts) != 8 or parts[:4] != ["", "api", "admin", "companies"]
+                or parts[5] != "campaigns" or parts[7] != "status"):
+            return None
+    elif include_campaign:
+        if (len(parts) != 7 or parts[:4] != ["", "api", "admin", "companies"]
+                or parts[5] != "campaigns"):
+            return None
+    elif (len(parts) != 6 or parts[:4] != ["", "api", "admin", "companies"]
+          or parts[5] != "campaigns"):
+        return None
+    company_id = _safe_admin_route_id(parts[4])
+    campaign_id = _safe_admin_route_id(parts[6]) if include_campaign or include_status else None
+    if company_id is None or ((include_campaign or include_status) and campaign_id is None):
+        return None
+    return company_id, campaign_id
+
+
 def _validate_admin_company(payload):
     if not isinstance(payload, dict):
         raise ValueError("invalid payload")
@@ -214,6 +234,8 @@ def _admin_campaign_json(row):
         "landingUrl": row["landing_url"],
         "mediaUrl": row["media_url"],
         "mediaUrlMobile": row.get("media_url_mobile") or "",
+        "scope": row.get("scope"),
+        "companyId": row.get("company_id"),
         "published": row["published"],
         "createdAt": iso(row.get("campaign_created_at")),
         "updatedAt": iso(row.get("campaign_updated_at")),
@@ -861,9 +883,20 @@ def list_available_coupons(data=None, *, global_only=False):
         available.append(coupon)
     return available
 
+def _public_config_payload(data, ad):
+    design = data.get("design") or {}
+    return {
+        "design": {key: design.get(key) for key in (
+            "background", "textColor", "radius", "heroHeight", "pageTitle",
+            "brand", "buttonText", "buttonColor", "buttonTextColor",
+            "showBrand", "showBody", "showButton",
+        )},
+        "ad": ad,
+    }
+
+
 def public_config():
     data = load_state()
-    design = data.get("design") or {}
     ad = data.get("ad") or {}
     if database.database_enabled():
         delivery = database.get_default_ad_delivery_state()
@@ -871,23 +904,20 @@ def public_config():
         target_is_available = bool(
             delivery
             and delivery.get("is_global") is True
+            and delivery.get("scope") == "global"
+            and delivery.get("company_id") is None
             and _campaign_is_deliverable(delivery, today)
         )
     else:
         target_is_available = _json_default_ad_is_deliverable(data, ad)
     if not target_is_available:
         ad = {}
-    return {
-        "design": {key: design.get(key) for key in (
-            "background", "textColor", "radius", "heroHeight", "pageTitle",
-            "brand", "buttonText", "buttonColor", "buttonTextColor",
-            "showBrand", "showBody", "showButton",
-        )},
-        "ad": {key: (ad.get(key) or "") if key == "mediaMobile" else ad.get(key)
-               for key in (
-                   "title", "body", "link", "media", "store", "id", "mediaMobile",
-               )},
-    }
+    return _public_config_payload(data, {
+        key: (ad.get(key) or "") if key == "mediaMobile" else ad.get(key)
+        for key in (
+            "title", "body", "link", "media", "store", "id", "mediaMobile",
+        )
+    })
 
 def _campaign_date(value):
     """Parse a PostgreSQL DATE or ISO date string without timezone conversion."""
@@ -967,29 +997,20 @@ def _resolve_json_ad_event_target(ad, stores):
     return ("store", matches[0]) if len(matches) == 1 else ("invalid", None)
 
 def public_config_for_store(public_code):
-    """Build public config for one PostgreSQL-resolved store, without global ad fallback."""
-    store = database.get_store_by_public_code(public_code)
-    if not store:
+    """Return the highest-priority eligible ad for a verified public store."""
+    today = datetime.now(ZoneInfo("Asia/Tokyo")).date()
+    delivery = database.get_public_ad_for_store(public_code, today)
+    if delivery is None:
         return None
-
-    # Reuse the established global design settings; only replace its ad with a
-    # campaign assigned through campaign_stores for this exact store.
-    result = public_config()
+    store = delivery["store"]
+    result = _public_config_payload(load_state(), None)
     result["storeStatus"] = store.get("status")
     if _store_is_unavailable(store):
-        result["ad"] = None
         return result
 
-    # Campaign columns are DATE values; use the current service market's date.
-    # This can later be replaced with a store-specific timezone.
-    today = datetime.now(ZoneInfo("Asia/Tokyo")).date()
-    campaigns = database.get_campaigns_for_store(store["id"])
-    eligible = [item for item in campaigns if _campaign_is_deliverable(item, today)]
-    if len(eligible) != 1:
-        result["ad"] = None
+    campaign = delivery.get("campaign")
+    if campaign is None:
         return result
-
-    campaign = eligible[0]
     result["ad"] = {
         "title": campaign.get("title"),
         "body": campaign.get("body"),
@@ -998,8 +1019,9 @@ def public_config_for_store(public_code):
         "mediaMobile": campaign.get("media_url_mobile") or "",
         "store": store.get("name") or "未設定",
         "id": campaign.get("ad_id"),
-        # Public opaque identifier used only to validate event attribution.
         "campaignId": campaign.get("campaign_id"),
+        "scope": campaign.get("scope"),
+        "companyId": campaign.get("company_id"),
     }
     return result
 
@@ -1636,6 +1658,27 @@ class Handler(BaseHTTPRequestHandler):
                 ]})
             except Exception:
                 return self.send_json({"ok": False}, 503)
+        company_campaign_route = _admin_company_campaign_route(path)
+        if company_campaign_route:
+            if not self.require_admin_session(): return
+            if not database.database_enabled():
+                return self.send_json({"ok": False, "error": "admin_data_unavailable"}, 503)
+            company_id, _ = company_campaign_route
+            try:
+                company = database.get_company(company_id)
+                if not company:
+                    return self.send_json({"ok": False, "error": "company_not_found"}, 404)
+                campaigns = database.get_campaigns_for_company(company_id)
+                return self.send_json({
+                    "company": {
+                        "id": company["id"], "name": company["name"],
+                        "archivedAt": company["archived_at"].isoformat()
+                        if company.get("archived_at") else None,
+                    },
+                    "campaigns": [_admin_campaign_json(row) for row in campaigns],
+                })
+            except Exception:
+                return self.send_json({"ok": False}, 503)
         store_route = _admin_store_campaign_route(path)
         if store_route:
             if not self.require_admin_session(): return
@@ -1837,6 +1880,35 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send_json({"ok": False, "error": "company_not_found"}, 404)
             return self.send_json({"ok": True, "storeId": company_store_id,
                                    "companyId": requested_company_id})
+        company_campaign_route = _admin_company_campaign_route(path, include_campaign=True)
+        if company_campaign_route:
+            if not self.require_admin_session(): return
+            if not self.require_same_origin(): return
+            if not database.database_enabled():
+                return self.send_json({"ok": False, "error": "admin_data_unavailable"}, 503)
+            company_id, campaign_id = company_campaign_route
+            campaign, error_status = self.read_admin_campaign_payload()
+            if error_status:
+                return self.send_json({"ok": False, "error": "invalid_request"}, error_status)
+            try:
+                updated = database.update_company_campaign(company_id, campaign_id, campaign)
+            except database.CompanyCampaignActiveConflictError as exc:
+                return self.send_json({
+                    "ok": False, "error": "company_campaign_active_conflict",
+                    "detail": "company_campaign_active_conflict",
+                    "activeCampaignId": exc.active_campaign_id,
+                }, 409)
+            except database.CompanyArchivedError:
+                return self.send_json({"ok": False, "error": "company_archived"}, 409)
+            except database.CampaignArchivedError:
+                return self.send_json({"ok": False, "error": "campaign_archived"}, 409)
+            except database.CampaignStatusTransitionError:
+                return self.send_json({"ok": False, "error": "campaign_status_conflict"}, 409)
+            except Exception:
+                return self.send_json({"ok": False}, 503)
+            if updated is None:
+                return self.send_json({"ok": False, "error": "not_found"}, 404)
+            return self.send_json({"campaign": _admin_campaign_json(updated)})
         store_route = _admin_store_campaign_route(path, include_campaign=True)
         if not store_route:
             return self.send_json({"ok": False, "error": "not found"}, 404)
@@ -1965,6 +2037,73 @@ class Handler(BaseHTTPRequestHandler):
             if not found:
                 return self.send_json({"ok": False, "error": "store_not_found"}, 404)
             return self.send_json({"ok": True, "storeId": store_id})
+        company_campaign_status_route = _admin_company_campaign_route(
+            path, include_campaign=True, include_status=True
+        )
+        if company_campaign_status_route:
+            if not self.require_admin_session(): return
+            if not self.require_same_origin(): return
+            if not database.database_enabled():
+                return self.send_json({"ok": False, "error": "admin_data_unavailable"}, 503)
+            company_id, campaign_id = company_campaign_status_route
+            payload, error_status = self.read_admin_json_payload()
+            if error_status:
+                return self.send_json({"ok": False, "error": "invalid_request"}, error_status)
+            if not isinstance(payload, dict) or set(payload) != {"status"}:
+                return self.send_json({"ok": False, "error": "invalid_request"}, 400)
+            try:
+                result = database.change_company_campaign_status(
+                    company_id, campaign_id, payload["status"]
+                )
+            except database.CompanyCampaignActiveConflictError as exc:
+                return self.send_json({
+                    "ok": False, "error": "company_campaign_active_conflict",
+                    "detail": "company_campaign_active_conflict",
+                    "activeCampaignId": exc.active_campaign_id,
+                }, 409)
+            except database.CompanyArchivedError:
+                return self.send_json({"ok": False, "error": "company_archived"}, 409)
+            except database.CampaignStatusTransitionError:
+                return self.send_json({"ok": False, "error": "campaign_status_conflict"}, 409)
+            except database.InvalidCampaignStatusError:
+                return self.send_json({"ok": False, "error": "invalid_status"}, 400)
+            except Exception:
+                return self.send_json({"ok": False}, 503)
+            if result is None:
+                return self.send_json({"ok": False, "error": "not_found"}, 404)
+            return self.send_json({
+                "ok": True, "campaignId": result["campaign_id"],
+                "status": result["status"], "published": result["published"],
+                "scope": result["scope"], "companyId": result["company_id"],
+            })
+        company_campaign_route = _admin_company_campaign_route(path)
+        if company_campaign_route:
+            if not self.require_admin_session(): return
+            if not self.require_same_origin(): return
+            if not database.database_enabled():
+                return self.send_json({"ok": False, "error": "admin_data_unavailable"}, 503)
+            company_id, _ = company_campaign_route
+            payload, error_status = self.read_admin_campaign_payload()
+            if error_status:
+                return self.send_json({"ok": False, "error": "invalid_request"}, error_status)
+            campaign_id, ad_id = "campaign-" + uuid.uuid4().hex, "ad-" + uuid.uuid4().hex
+            try:
+                created = database.create_company_campaign(
+                    company_id, campaign_id, ad_id, payload
+                )
+            except database.CompanyCampaignActiveConflictError as exc:
+                return self.send_json({
+                    "ok": False, "error": "company_campaign_active_conflict",
+                    "detail": "company_campaign_active_conflict",
+                    "activeCampaignId": exc.active_campaign_id,
+                }, 409)
+            except database.CompanyArchivedError:
+                return self.send_json({"ok": False, "error": "company_archived"}, 409)
+            except Exception:
+                return self.send_json({"ok": False}, 503)
+            if created is None:
+                return self.send_json({"ok": False, "error": "company_not_found"}, 404)
+            return self.send_json({"campaign": _admin_campaign_json(created)}, 201)
         campaign_status_id = _admin_campaign_status_route(path)
         if campaign_status_id is not None:
             if not self.require_admin_session(): return

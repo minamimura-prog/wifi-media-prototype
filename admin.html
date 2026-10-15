@@ -1437,8 +1437,22 @@ body:has(.ad-management-view){background-color:#070b0d;background-image:radial-g
 .admin-toast-error{color:#ffd1d3;border-color:rgba(255,112,123,.48);border-left-color:#ff707b;box-shadow:0 0 14px rgba(255,112,123,.1),0 8px 24px rgba(0,0,0,.34)}
 .admin-toast-info{color:#c9f8ff;border-color:rgba(76,229,255,.44);border-left-color:#4ce5ff;box-shadow:0 0 14px rgba(76,229,255,.1),0 8px 24px rgba(0,0,0,.34)}
 @media(max-width:600px){.admin-toast-region{right:12px;bottom:12px;width:calc(100vw - 24px)}.admin-toast{padding:11px 13px;font-size:12px}}
+
+.ad-target-dependent{display:grid;gap:5px;min-width:0}.ad-management-view .ad-target-dependent>label{color:#9edee0;font-size:11px;font-weight:600}.ad-management-view .ad-target-dependent select{width:100%;max-width:none}.ad-management-view .ad-company-mode-note{margin:8px 0 0;padding:8px 0;border-top:1px solid rgba(76,229,255,.1);color:#a7bdc0;font-size:12px;line-height:1.6}.ad-management-view .ad-company-campaign-list{display:grid;gap:8px}.ad-management-view .ad-company-campaign-row{display:grid;width:100%;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr) auto;gap:8px 14px;align-items:center;padding:10px 12px;border:1px solid rgba(76,229,255,.13);border-radius:5px;background:rgba(5,17,21,.52);color:#d8edef;text-align:left;cursor:pointer}.ad-management-view .ad-company-campaign-row:hover,.ad-management-view .ad-company-campaign-row.is-selected{border-color:rgba(76,229,255,.42);background:rgba(10,36,42,.72)}.ad-management-view .ad-company-campaign-row:focus-visible{outline:2px solid #4ce5ff;outline-offset:2px}.ad-management-view .ad-company-campaign-title{min-width:0;font-weight:700;overflow-wrap:anywhere}.ad-management-view .ad-company-campaign-meta{color:#93abb0;font-size:11px;line-height:1.5}.ad-management-view .ad-company-campaign-status{white-space:nowrap;color:#b7ff56;font-size:11px;font-weight:700}.ad-management-view .ad-company-campaign-status.is-paused{color:#ffc477}.ad-management-view .ad-company-campaign-status.is-draft{color:#7deaff}.ad-management-view .ad-company-campaign-status.is-archived{color:#9aa8ab}
+@media(max-width:700px){.ad-management-view .ad-target-dependent select{max-width:none;width:100%}.ad-management-view .ad-company-campaign-row{grid-template-columns:minmax(0,1fr) auto}.ad-management-view .ad-company-campaign-meta{grid-column:1/-1}}
+.ad-management-view .ad-company-campaign-actions{display:flex;align-items:center;justify-content:flex-end;flex-wrap:wrap;gap:10px;margin-left:auto;visibility:visible;opacity:1}
+.ad-management-view .ad-company-campaigns-head{flex-wrap:wrap;align-items:center}
+.ad-management-view .ad-company-campaigns-head .ad-campaigns-head-title{flex:1 1 180px}
+.ad-management-view .ad-company-campaigns-head .ad-company-campaign-actions{flex:0 1 auto;max-width:100%}
+.ad-management-view .ad-company-archived-toggle{display:inline-flex;flex:0 0 auto;align-items:center;gap:6px;margin:0;color:#a9dce1;font-size:11px;font-weight:600;line-height:1.4;white-space:nowrap;cursor:pointer;visibility:visible;opacity:1}
+.ad-management-view .ad-company-archived-toggle input{display:inline-block;width:16px;min-width:16px;min-height:16px;height:16px;margin:0;padding:0;border:1px solid #568b94;border-radius:3px;background:#081216;box-shadow:none;accent-color:var(--signal-cyan);appearance:auto;cursor:pointer}
+.ad-management-view .ad-company-campaign-row[hidden],.ad-management-view .ad-company-campaign-empty[hidden]{display:none!important}
+.ad-management-view .ad-company-campaign-row.is-filtered,.ad-management-view .ad-company-campaign-list.is-empty{display:none}
+@media(max-width:700px){.ad-management-view .ad-company-campaign-actions{flex-wrap:wrap}.ad-management-view .ad-company-archived-toggle{white-space:normal}}
 </style></head><body><div class="app"><aside class="side"><div class="logo">Wi-Fi MEDIA<small>広告・店舗・効果測定</small></div><div class="nav active" data-page="dashboard" onclick="navigateTo('dashboard')">ダッシュボード</div><div class="nav" data-page="ads" onclick="navigateTo('ads')">広告管理</div><div class="nav" data-page="stores" onclick="navigateTo('stores')">店舗管理</div><div class="nav" data-page="companies" onclick="navigateTo('companies')">企業管理</div><div class="nav" data-page="analytics" onclick="navigateTo('analytics')">効果測定</div><div class="nav" data-page="coupons" onclick="navigateTo('coupons')">クーポン管理</div><div class="nav" data-page="design" onclick="navigateTo('design')">Webデザイン</div><div class="side-logout"><button class="logout-button" id="logout-button" type="button" onclick="logout()">LOGOUT</button></div></aside><main class="main" id="main"></main></div><div class="modalbg" id="modal"><div class="modal"><button class="close" onclick="closeModal()">閉じる</button><h2 id="modalTitle">編集</h2><div id="modalBody"></div></div></div><script src="/static/qrcode-generator-2.0.4.js"></script><script>let S=null;
-let adTarget='global', adStores=null, adStoreId=null, adCampaigns=[], selectedCampaignId=null, adCampaign=null, adCreatingNew=false, adCampaignCount=0, adStoreLoading=false, adStoreError='', adStoreRequestSeq=0, adStoresLoading=false, adStoresRequestSeq=0, adSaving=false, adStatusSaving=false, adSaveError='';
+let adTarget='global', adStores=null, adStoreId=null, adCampaigns=[], selectedCampaignId=null, adCampaign=null, adCreatingNew=false, adCampaignCount=0, adStoreLoading=false, adStoreError='', adStoreRequestSeq=0, adStoresLoading=false, adStoresRequestSeq=0, adCompanies=[], adCompaniesLoading=false, adCompaniesLoaded=false, adCompaniesError='', adCompanyId=null, adCompanyCampaigns=[], adCompanyShowArchived=false, adCompanyLoading=false, adCompanyError='', adCompanyRequestSeq=0, adCompaniesRequestSeq=0, adSaving=false, adStatusSaving=false, adSaveError='';
+const AD_COMPANY_TARGET_VALUE='__company_scope__';
+const AD_STORE_TARGET_VALUE='__store_scope__';
 let adEditorBaseline=null, adEditorBaselineKey=null;
 let adLocalPreviewUrls={pc:'',mobile:''};
 let adPcPreviewObserver=null;
@@ -1459,7 +1473,7 @@ async function apiFetch(url, options){
   return response;
 }
 const ADMIN_PAGE_HISTORY_KEY='__wifiMediaAdminPageHistory';let adminPageHistoryPosition=null,adminPageHistoryChain=null,adminPageHistoryHash=location.hash,pendingAdminHistoryRestore=null;const suppressedAdminHashChanges=new Set();function createAdminPageHistoryChain(){return typeof crypto?.randomUUID==='function'?crypto.randomUUID():`admin-${Date.now()}-${Math.random().toString(36).slice(2)}`}function makeAdminPageHistoryState(position,chain=adminPageHistoryChain,baseState=history.state){const current=baseState&&typeof baseState==='object'?{...baseState}:{};current[ADMIN_PAGE_HISTORY_KEY]={version:2,position,chain};return current}function readAdminPageHistoryEntry(state){const value=state&&typeof state==='object'?state[ADMIN_PAGE_HISTORY_KEY]:null;return value&&value.version===2&&Number.isInteger(value.position)&&typeof value.chain==='string'&&value.chain?{position:value.position,chain:value.chain}:null}function initializeAdminPageHistory(){const entry=readAdminPageHistoryEntry(history.state);if(entry){adminPageHistoryPosition=entry.position;adminPageHistoryChain=entry.chain}else{adminPageHistoryPosition=0;adminPageHistoryChain=createAdminPageHistoryChain();history.replaceState(makeAdminPageHistoryState(0,adminPageHistoryChain),'',location.href)}adminPageHistoryHash=location.hash}function ensureAdminPageHistoryEntry(){if(Number.isInteger(adminPageHistoryPosition)&&adminPageHistoryChain)return;adminPageHistoryPosition=0;adminPageHistoryChain=createAdminPageHistoryChain();history.replaceState(makeAdminPageHistoryState(0,adminPageHistoryChain),'',location.href)}function historyUrlHash(url){try{return new URL(url,location.href).hash}catch(_){return ''}}function suppressAdminHashChange(url){const hash=historyUrlHash(url);if(hash)suppressedAdminHashChanges.add(hash)}function rebaseAdminPageHistoryEntry(){adminPageHistoryPosition=0;adminPageHistoryChain=createAdminPageHistoryChain();history.replaceState(makeAdminPageHistoryState(0,adminPageHistoryChain),'',location.href)}function restoreUnknownAdminHistoryTarget(previousHash){const state=history.state&&typeof history.state==='object'?{...history.state}:{};delete state[ADMIN_PAGE_HISTORY_KEY];const url=location.pathname+location.search+previousHash;history.replaceState(state,'',url);adminPageHistoryPosition=null;adminPageHistoryChain=null;adminPageHistoryHash=previousHash}
-const PAGE_RENDERERS={dashboard:()=>dashboard(),ads:()=>ads(),stores:()=>stores(),companies:()=>companyManagement(),analytics:()=>reports(),coupons:()=>couponManager(),design:()=>design()};function navigateToStoreCoupons(storeId){const id=String(storeId??'');if(!id)return;const current=parseAdminRoute();if(current.page==='coupons'&&current.params.get('store')===id)return;ensureAdminPageHistoryEntry();adminPageHistoryPosition++;const targetHash=buildAdminHash('coupons',{store:id});history.pushState(makeAdminPageHistoryState(adminPageHistoryPosition,adminPageHistoryChain),'',targetHash);if(S)renderCurrentPage()}function navigateToStoreAnalytics(storeId){const id=String(storeId??'');if(!id)return;const current=parseAdminRoute();if(current.page==='analytics'&&current.params.get('store')===id)return;ensureAdminPageHistoryEntry();adminPageHistoryPosition++;const targetHash=buildAdminHash('analytics',{store:id});history.pushState(makeAdminPageHistoryState(adminPageHistoryPosition,adminPageHistoryChain),'',targetHash);if(S)renderCurrentPage()}function setActivePage(page){document.querySelectorAll('.side .nav').forEach(item=>item.classList.toggle('active',item.dataset.page===page))}function parseAdminRoute(hash=location.hash){const route=String(hash||'').replace(/^#/,'');const queryIndex=route.indexOf('?');return {page:queryIndex<0?route:route.slice(0,queryIndex),params:new URLSearchParams(queryIndex<0?'':route.slice(queryIndex+1))}}function isAdminRoute(page,hash=location.hash){return parseAdminRoute(hash).page===page}function buildAdminHash(page,params){const query=params instanceof URLSearchParams?params.toString():new URLSearchParams(params||{}).toString();return '#'+page+(query?'?'+query:'')}function setAdminRouteHash(hash){if(location.hash===hash)return;history.replaceState(makeAdminPageHistoryState(adminPageHistoryPosition,adminPageHistoryChain),'',location.pathname+location.search+hash);adminPageHistoryHash=hash}function resolvePage(){const page=parseAdminRoute().page;if(Object.prototype.hasOwnProperty.call(PAGE_RENDERERS,page))return page;history.replaceState(makeAdminPageHistoryState(adminPageHistoryPosition,adminPageHistoryChain),'',location.pathname+location.search+'#dashboard');return 'dashboard'}function renderCurrentPage(){if(!S)return;const page=resolvePage();adminPageHistoryHash=location.hash;if(page!=='ads')clearAdLocalPreviewUrls();if(page!=='dashboard')disposeDashboardPcPreviewScale();document.body.classList.toggle('dashboard-layout-active',page==='dashboard');document.querySelector('.app')?.classList.toggle('dashboard-layout-active',page==='dashboard');setActivePage(page);PAGE_RENDERERS[page]()}function navigateTo(page){if(adSaving&&adTarget==='store'&&adCreatingNew)return;if(!Object.prototype.hasOwnProperty.call(PAGE_RENDERERS,page))return;if(isAdminRoute(page))return;if(isAdminRoute('ads')&&!confirmDiscardAdChanges())return;const targetHash='#'+page;ensureAdminPageHistoryEntry();adminPageHistoryPosition++;history.pushState(makeAdminPageHistoryState(adminPageHistoryPosition,adminPageHistoryChain),'',targetHash);if(S)renderCurrentPage()}function navigateToStoreAds(storeId){const id=String(storeId??'');if(!id)return;if(adSaving&&adTarget==='store'&&adCreatingNew)return;const current=parseAdminRoute();if(current.page==='ads'&&current.params.get('store')===id)return;if(current.page==='ads'&&!confirmDiscardAdChanges())return;ensureAdminPageHistoryEntry();adminPageHistoryPosition++;const targetHash=buildAdminHash('ads',{store:id});history.pushState(makeAdminPageHistoryState(adminPageHistoryPosition,adminPageHistoryChain),'',targetHash);if(S)renderCurrentPage()}function getDashboardQuickActionStoreId(){
+const PAGE_RENDERERS={dashboard:()=>dashboard(),ads:()=>ads(),stores:()=>stores(),companies:()=>companyManagement(),analytics:()=>reports(),coupons:()=>couponManager(),design:()=>design()};function navigateToStoreCoupons(storeId){const id=String(storeId??'');if(!id)return;const current=parseAdminRoute();if(current.page==='coupons'&&current.params.get('store')===id)return;ensureAdminPageHistoryEntry();adminPageHistoryPosition++;const targetHash=buildAdminHash('coupons',{store:id});history.pushState(makeAdminPageHistoryState(adminPageHistoryPosition,adminPageHistoryChain),'',targetHash);if(S)renderCurrentPage()}function navigateToStoreAnalytics(storeId){const id=String(storeId??'');if(!id)return;const current=parseAdminRoute();if(current.page==='analytics'&&current.params.get('store')===id)return;ensureAdminPageHistoryEntry();adminPageHistoryPosition++;const targetHash=buildAdminHash('analytics',{store:id});history.pushState(makeAdminPageHistoryState(adminPageHistoryPosition,adminPageHistoryChain),'',targetHash);if(S)renderCurrentPage()}function setActivePage(page){document.querySelectorAll('.side .nav').forEach(item=>item.classList.toggle('active',item.dataset.page===page))}function parseAdminRoute(hash=location.hash){const route=String(hash||'').replace(/^#/,'');const queryIndex=route.indexOf('?');return {page:queryIndex<0?route:route.slice(0,queryIndex),params:new URLSearchParams(queryIndex<0?'':route.slice(queryIndex+1))}}function isAdminRoute(page,hash=location.hash){return parseAdminRoute(hash).page===page}function buildAdminHash(page,params){const query=params instanceof URLSearchParams?params.toString():new URLSearchParams(params||{}).toString();return '#'+page+(query?'?'+query:'')}function setAdminRouteHash(hash){if(location.hash===hash)return;history.replaceState(makeAdminPageHistoryState(adminPageHistoryPosition,adminPageHistoryChain),'',location.pathname+location.search+hash);adminPageHistoryHash=hash}function resolvePage(){const page=parseAdminRoute().page;if(Object.prototype.hasOwnProperty.call(PAGE_RENDERERS,page))return page;history.replaceState(makeAdminPageHistoryState(adminPageHistoryPosition,adminPageHistoryChain),'',location.pathname+location.search+'#dashboard');return 'dashboard'}function renderCurrentPage(){if(!S)return;const page=resolvePage();adminPageHistoryHash=location.hash;if(page!=='ads')clearAdLocalPreviewUrls();if(page!=='dashboard')disposeDashboardPcPreviewScale();document.body.classList.toggle('dashboard-layout-active',page==='dashboard');document.querySelector('.app')?.classList.toggle('dashboard-layout-active',page==='dashboard');setActivePage(page);PAGE_RENDERERS[page]()}function navigateTo(page){if(adSaving&&(adTarget==='company'||adTarget==='store'&&adCreatingNew))return;if(!Object.prototype.hasOwnProperty.call(PAGE_RENDERERS,page))return;if(isAdminRoute(page))return;if(isAdminRoute('ads')&&!confirmDiscardAdChanges())return;const targetHash='#'+page;ensureAdminPageHistoryEntry();adminPageHistoryPosition++;history.pushState(makeAdminPageHistoryState(adminPageHistoryPosition,adminPageHistoryChain),'',targetHash);if(S)renderCurrentPage()}function navigateToStoreAds(storeId){const id=String(storeId??'');if(!id)return;if(adSaving&&(adTarget==='company'||adTarget==='store'&&adCreatingNew))return;const current=parseAdminRoute();if(current.page==='ads'&&current.params.get('store')===id)return;if(current.page==='ads'&&!confirmDiscardAdChanges())return;ensureAdminPageHistoryEntry();adminPageHistoryPosition++;const targetHash=buildAdminHash('ads',{store:id});history.pushState(makeAdminPageHistoryState(adminPageHistoryPosition,adminPageHistoryChain),'',targetHash);if(S)renderCurrentPage()}function getDashboardQuickActionStoreId(){
   if(!dashboardSelectedStoreId)return null;
   const id=String(dashboardSelectedStoreId);
   return dashboardStoresForView().some(store=>String(store.id)===id)?id:null;
@@ -1480,7 +1494,7 @@ function navigateToAdminHash(targetHash){
   history.pushState(makeAdminPageHistoryState(adminPageHistoryPosition,adminPageHistoryChain),'',targetHash);
   if(S)renderCurrentPage();
 }
-window.addEventListener('popstate',event=>{const target=readAdminPageHistoryEntry(event.state);const targetHash=location.hash;if(pendingAdminHistoryRestore){const pending=pendingAdminHistoryRestore;if(target&&target.chain===pending.chain&&target.position===pending.position&&targetHash===pending.hash){adminPageHistoryPosition=target.position;adminPageHistoryChain=target.chain;adminPageHistoryHash=targetHash;suppressAdminHashChange(location.href);pendingAdminHistoryRestore=null;return}pendingAdminHistoryRestore=null}const previousPosition=adminPageHistoryPosition,previousChain=adminPageHistoryChain,previousHash=adminPageHistoryHash;const previousRoute=parseAdminRoute(previousHash),targetRoute=parseAdminRoute(targetHash);const leavesAds=previousRoute.page==='ads'&&(targetRoute.page!=='ads'||previousRoute.params.get('store')!==targetRoute.params.get('store')||previousRoute.params.get('new')!==targetRoute.params.get('new'));const hasChanges=leavesAds&&hasUnsavedAdChanges({allowDuringHistoryNavigation:true});if(hasChanges&&!confirmDiscardAdChanges({allowDuringHistoryNavigation:true})){suppressAdminHashChange(location.href);if(target&&previousChain&&target.chain===previousChain&&Number.isInteger(previousPosition)){const delta=previousPosition-target.position;if(delta!==0){pendingAdminHistoryRestore={chain:previousChain,position:previousPosition,hash:previousHash};history.go(delta);return}}restoreUnknownAdminHistoryTarget(previousHash);return}if(target){adminPageHistoryPosition=target.position;adminPageHistoryChain=target.chain}else{rebaseAdminPageHistoryEntry()}adminPageHistoryHash=location.hash});window.addEventListener('hashchange',event=>{if(suppressedAdminHashChanges.delete(historyUrlHash(event.newURL)))return;if(adSaving&&adTarget==='store'&&adCreatingNew){const previousHash=isAdminRoute('ads',adminPageHistoryHash)?adminPageHistoryHash:'#ads';history.replaceState(makeAdminPageHistoryState(adminPageHistoryPosition,adminPageHistoryChain),'',location.pathname+location.search+previousHash);adminPageHistoryHash=previousHash;return}if(S){const entry=readAdminPageHistoryEntry(history.state);if(entry){adminPageHistoryPosition=entry.position;adminPageHistoryChain=entry.chain}else{adminPageHistoryPosition=null;adminPageHistoryChain=null}renderCurrentPage()}});async function load(){S=await apiFetch('/api/state').then(r=>r.json());renderCurrentPage()}async function save(options={}){let response;try{response=await apiFetch('/api/state',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(S)})}catch(error){if(!options.preserveFormOnFailure)throw error;const message='保存できませんでした。';if(options.onFailure)options.onFailure(message);else toast(message,{type:'error'});return false}if(!response.ok){let result={};try{result=await response.json()}catch(_){}if(!options.preserveFormOnFailure)await load();const message=result.error==='store_inactive'?'停止中店舗は新しい広告の指定先にできません。':'保存できませんでした。';if(options.onFailure)options.onFailure(message);else toast(message,{type:'error'});return false}await load();toast('保存しました',{type:'success'});return true}function shell(t,s,c){document.getElementById('main').innerHTML=`<div class="pagehead"><div><h1>${t}</h1><div class="sub">${s}</div></div></div>${c}`}async function ensureDashboardCompanyData(){
+window.addEventListener('popstate',event=>{const target=readAdminPageHistoryEntry(event.state);const targetHash=location.hash;if(pendingAdminHistoryRestore){const pending=pendingAdminHistoryRestore;if(target&&target.chain===pending.chain&&target.position===pending.position&&targetHash===pending.hash){adminPageHistoryPosition=target.position;adminPageHistoryChain=target.chain;adminPageHistoryHash=targetHash;suppressAdminHashChange(location.href);pendingAdminHistoryRestore=null;return}pendingAdminHistoryRestore=null}const previousPosition=adminPageHistoryPosition,previousChain=adminPageHistoryChain,previousHash=adminPageHistoryHash;const previousRoute=parseAdminRoute(previousHash),targetRoute=parseAdminRoute(targetHash);const leavesAds=previousRoute.page==='ads'&&(targetRoute.page!=='ads'||previousRoute.params.get('store')!==targetRoute.params.get('store')||previousRoute.params.get('company')!==targetRoute.params.get('company')||previousRoute.params.get('new')!==targetRoute.params.get('new'));const hasChanges=leavesAds&&hasUnsavedAdChanges({allowDuringHistoryNavigation:true});if(hasChanges&&!confirmDiscardAdChanges({allowDuringHistoryNavigation:true})){suppressAdminHashChange(location.href);if(target&&previousChain&&target.chain===previousChain&&Number.isInteger(previousPosition)){const delta=previousPosition-target.position;if(delta!==0){pendingAdminHistoryRestore={chain:previousChain,position:previousPosition,hash:previousHash};history.go(delta);return}}restoreUnknownAdminHistoryTarget(previousHash);return}if(target){adminPageHistoryPosition=target.position;adminPageHistoryChain=target.chain}else{rebaseAdminPageHistoryEntry()}adminPageHistoryHash=location.hash});window.addEventListener('hashchange',event=>{if(suppressedAdminHashChanges.delete(historyUrlHash(event.newURL)))return;if(adSaving&&(adTarget==='company'||adTarget==='store'&&adCreatingNew)){const previousHash=isAdminRoute('ads',adminPageHistoryHash)?adminPageHistoryHash:'#ads';history.replaceState(makeAdminPageHistoryState(adminPageHistoryPosition,adminPageHistoryChain),'',location.pathname+location.search+previousHash);adminPageHistoryHash=previousHash;return}if(S){const entry=readAdminPageHistoryEntry(history.state);if(entry){adminPageHistoryPosition=entry.position;adminPageHistoryChain=entry.chain}else{adminPageHistoryPosition=null;adminPageHistoryChain=null}renderCurrentPage()}});async function load(){S=await apiFetch('/api/state').then(r=>r.json());renderCurrentPage()}async function save(options={}){let response;try{response=await apiFetch('/api/state',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(S)})}catch(error){if(!options.preserveFormOnFailure)throw error;const message='保存できませんでした。';if(options.onFailure)options.onFailure(message);else toast(message,{type:'error'});return false}if(!response.ok){let result={};try{result=await response.json()}catch(_){}if(!options.preserveFormOnFailure)await load();const message=result.error==='store_inactive'?'停止中店舗は新しい広告の指定先にできません。':'保存できませんでした。';if(options.onFailure)options.onFailure(message);else toast(message,{type:'error'});return false}await load();toast('保存しました',{type:'success'});return true}function shell(t,s,c){document.getElementById('main').innerHTML=`<div class="pagehead"><div><h1>${t}</h1><div class="sub">${s}</div></div></div>${c}`}async function ensureDashboardCompanyData(){
   if(companyDirectoryLoaded)return;
   const [companyResponse,storeResponse]=await Promise.all([companyApiFetch('/api/admin/companies'),companyApiFetch('/api/admin/stores')]);
   if(!companyResponse.ok||!storeResponse.ok)throw new Error('企業・店舗一覧を取得できませんでした。');
@@ -1661,22 +1675,37 @@ async function dashboard(){
 }
 function ads(){
   clearAdLocalPreviewUrls();
-  if(adCreatingNew&&adCreateUncertain&&adCreateStoreId){adTarget='store';adStoreId=adCreateStoreId;adStoreLoading=false;adStoreError='';adSaveError=adSaveError||'前回の保存結果を確認できません。同じ内容で再試行するか、画面を再読み込みして登録状況を確認してください。';renderAds();return;}
+  if(adCreatingNew&&adCreateUncertain&&adCreateStoreId){adTarget='store';adStoreId=adCreateStoreId;adCompanyId=null;adStoreLoading=false;adStoreError='';adSaveError=adSaveError||'前回の保存結果を確認できません。同じ内容で再試行するか、画面を再読み込みして登録状況を確認してください。';renderAds();return;}
   const routeParams=parseAdminRoute().params;
-  const requestedStoreId=routeParams.get('store');
+  let requestedCompanyId=routeParams.get('company');
+  let requestedStoreId=routeParams.get('store');
   const requestNewAd=routeParams.get('new')==='1';
-  if(requestNewAd&&!requestedStoreId){
+  if(requestedCompanyId==='')requestedCompanyId=null;
+  if(requestedCompanyId){
+    requestedStoreId=null;
+    const canonicalHash=buildAdminHash('ads',{company:requestedCompanyId,...(requestNewAd?{new:'1'}:{})});
+    if(location.hash!==canonicalHash)setAdminRouteHash(canonicalHash);
+  }else if(requestedStoreId){
+    const canonicalHash=buildAdminHash('ads',{store:requestedStoreId,...(requestNewAd?{new:'1'}:{})});
+    if(location.hash!==canonicalHash)setAdminRouteHash(canonicalHash);
+  }
+  if(requestNewAd&&!requestedStoreId&&!requestedCompanyId){
     setAdminRouteHash('#ads');
     toast('新しい店舗別広告を作成するには、配信対象の店舗を選択してください。',{type:'info'});
   }
-  resetAdCreateIdempotency();adTarget=requestedStoreId?'store':'global';adStoreId=requestedStoreId||null;adCampaigns=[];selectedCampaignId=null;adCampaign=null;adCreatingNew=false;adCampaignCount=0;adStoreLoading=!!requestedStoreId;adStoreError='';adSaveError='';adStoreRequestSeq++;
+  resetAdCreateIdempotency();adTarget=requestedCompanyId?'company':requestedStoreId?'store':'global';adStoreId=requestedStoreId||null;adCompanyId=requestedCompanyId||null;adCampaigns=[];selectedCampaignId=null;adCampaign=null;adCompanyCampaigns=[];adCreatingNew=false;adCampaignCount=0;adStoreLoading=!!requestedStoreId;adStoreError='';adCompanyLoading=!!requestedCompanyId;adCompanyError='';adSaveError='';adStoreRequestSeq++;adCompanyRequestSeq++;adCompaniesRequestSeq++;
   renderAds();
   loadAdStores(requestedStoreId).then(()=>{
     const current=parseAdminRoute();
-    if(!requestNewAd||current.page!=='ads'||current.params.get('new')!=='1'||current.params.get('store')!==requestedStoreId)return;
+    if(!requestNewAd||requestedCompanyId||current.page!=='ads'||current.params.get('new')!=='1'||current.params.get('store')!==requestedStoreId)return;
     if(adTarget==='store'&&String(adStoreId)===String(requestedStoreId)&&!adStoreLoading&&!adStoreError)startNewStoreAd();
   });
+  if(requestedCompanyId)loadAdCompanies(requestedCompanyId).then(()=>{
+    const current=parseAdminRoute();
+    if(requestNewAd&&current.page==='ads'&&current.params.get('new')==='1'&&current.params.get('company')===requestedCompanyId&&adTarget==='company'&&String(adCompanyId)===String(requestedCompanyId)&&!adCompaniesLoading&&!adCompanyLoading&&!adCompanyError)startNewCompanyAd(true);
+  });
 }
+
 function isArchivedStore(store){return store?.archivedAt!==null&&store?.archivedAt!==undefined;}
 function resolveStoreCampaignSelection(campaigns, preferredId){
   const validCampaigns=Array.isArray(campaigns)?campaigns.filter(item=>item&&typeof item.campaignId==='string'&&item.campaignId):[];
@@ -1696,7 +1725,7 @@ function adEditorSnapshotFromModel(){
   const campaign=adCreatingNew?{}:(adCampaign||{});
   return {title:text(campaign.title),body:text(campaign.body),start:text(campaign.startsOn??campaign.start),end:text(campaign.endsOn??campaign.end),link:text(campaign.landingUrl??campaign.link),pcImage:text(campaign.mediaUrl),mobileImage:text(campaign.mediaUrlMobile)};
 }
-function adEditorContextKey(){return adTarget==='global'?'global':`store:${String(adStoreId??'')}:${adCreatingNew?'new':String(selectedCampaignId??'none')}`;}
+function adEditorContextKey(){return adTarget==='global'?'global':adTarget==='company'?`company:${String(adCompanyId??'')}:${adCreatingNew?'new':String(selectedCampaignId??'none')}`:`store:${String(adStoreId??'')}:${adCreatingNew?'new':String(selectedCampaignId??'none')}`;}
 function captureAdEditorBaseline(force=false){
   const key=adEditorContextKey();
   if(force||key!==adEditorBaselineKey){
@@ -1710,6 +1739,13 @@ function captureAdEditorBaseline(force=false){
 }
 function resetAdEditorBaseline(){captureAdEditorBaseline(true);}
 function adEditorIsReadOnly(){
+  if(adTarget==='company'){
+    const company=adCompanies.find(item=>String(item.id)===String(adCompanyId));
+    if(!company||company.archivedAt!=null||adCompaniesLoading||adCompanyLoading||!!adCompaniesError||!!adCompanyError)return true;
+    if(adCreatingNew)return false;
+    const campaign=adCompanyCampaigns.find(item=>String(item.campaignId)===String(selectedCampaignId));
+    return !campaign||!['draft','active','paused'].includes(campaign.status);
+  }
   if(adTarget==='global')return !['draft','active','paused'].includes(defaultAdStatus())||defaultAdLinkedToArchivedStore();
   const store=adStores?.find(item=>String(item.id)===String(adStoreId));
   if(!store||isArchivedStore(store)||adStoreLoading||adStoreError)return true;
@@ -1775,6 +1811,34 @@ function startNewStoreAd(){
   clearAdLocalPreviewUrls();
   adCreatingNew=true;selectedCampaignId=null;adCampaign=null;adSaveError='';renderAds();
 }
+function selectCompanyCampaign(campaignId){
+  if(adTarget!=='company'||adSaving||adStatusSaving||adCompanyLoading||adCompanyError)return;
+  const selected=adCompanyCampaigns.find(item=>String(item.campaignId)===String(campaignId)&&String(item.companyId)===String(adCompanyId));
+  if(!selected||String(selected.companyId)!==String(adCompanyId))return;
+  if(!adCreatingNew&&String(selectedCampaignId)===String(selected.campaignId))return;
+  if(!confirmDiscardAdChanges())return;
+  clearAdLocalPreviewUrls();adCreatingNew=false;selectedCampaignId=String(selected.campaignId);adCampaign=selected;adSaveError='';renderAds();
+}
+function setCompanyAdArchivedVisible(visible){
+  adCompanyShowArchived=visible===true;
+  const rows=[...document.querySelectorAll('.ad-company-campaign-row')];
+  let visibleCount=0;
+  rows.forEach(row=>{const show=adCompanyShowArchived||row.dataset.companyCampaignStatus!=='archived';row.hidden=!show;row.classList.toggle('is-filtered',!show);row.setAttribute('aria-hidden',String(!show));if(show)visibleCount++;});
+  const list=document.getElementById('adCompanyCampaignList');
+  if(list)list.classList.toggle('is-empty',visibleCount===0);
+  const empty=document.getElementById('adCompanyCampaignEmpty');
+  if(empty)empty.hidden=visibleCount!==0;
+  const count=document.getElementById('adCompanyCampaignCount');
+  if(count)count.textContent=`${visibleCount}件`;
+}
+function startNewCompanyAd(skipConfirm=false){
+  const company=adCompanies.find(item=>String(item.id)===String(adCompanyId));
+  if(adTarget!=='company'||adSaving||adStatusSaving||adCompanyLoading||adCompanyError||!company||company.archivedAt!=null)return;
+  if(adCreatingNew)return;
+  if(!skipConfirm&&!confirmDiscardAdChanges())return;
+  clearAdLocalPreviewUrls();selectedCampaignId=null;adCampaign=null;adCreatingNew=true;adSaveError='';
+  setAdminRouteHash(buildAdminHash('ads',{company:String(adCompanyId),new:'1'}));renderAds();
+}
 function displayCampaignDate(value){
   if(typeof value!=='string'||!(/^\d{4}-\d{2}-\d{2}$/).test(value))return '日付不明';
   return value.replace(/-/g,'/');
@@ -1826,6 +1890,14 @@ function campaignStatusActions(campaignId,status,{isDefault=false,readOnly=false
   if(!isDefault)actions.push(['archived','アーカイブ']);
   return `<div class="ad-status-actions" aria-label="広告の状態操作">${actions.map(([next,label])=>`<button type="button" class="${next==='archived'?'secondary ad-status-archive':'secondary ad-status-button'}" data-ad-status-campaign="${esc(campaignId)}" data-ad-status-next="${next}" data-ad-status-label="${label}" ${adStatusSaving||adSaving?'disabled':''}>${adStatusSaving?'処理中…':label}</button>`).join('')}</div>`;
 }
+function companyCampaignStatusActions(campaign,company){
+  const status=campaign?.status;
+  if(!campaign?.campaignId||String(campaign.companyId)!==String(adCompanyId)||!['draft','active','paused'].includes(status))return '';
+  const companyArchived=company?.archivedAt!=null;
+  const actions=status==='draft'?[...(!companyArchived?[['active','公開']]:[])]:status==='active'?[['paused','停止']]:[...(!companyArchived?[['active','再開']]:[])];
+  actions.push(['archived','アーカイブ']);
+  return `<div class="ad-status-actions" aria-label="企業広告の状態操作">${actions.map(([next,label])=>`<button type="button" class="${next==='archived'?'secondary ad-status-archive':'secondary ad-status-button'}" data-company-ad-status-campaign="${esc(campaign.campaignId)}" data-ad-status-next="${next}" data-ad-status-label="${label}" ${adStatusSaving||adSaving?'disabled':''}>${adStatusSaving?'処理中…':label}</button>`).join('')}</div>`;
+}
 function adSaveGuidanceMarkup(state){
   const guidance={
     new:{className:'is-draft',title:'保存後：下書き',message:'保存しただけでは公開されません。登録後に「公開」を実行すると配信されます。'},
@@ -1848,9 +1920,9 @@ function displayCampaignPeriod(campaign){
   return `${start} - ${end}`;
 }
 function renderAds(){
-  const isGlobal=adTarget==='global', store=adStores?.find(x=>String(x.id)===String(adStoreId));
+  const isGlobal=adTarget==='global', isCompany=adTarget==='company', isStore=adTarget==='store', store=adStores?.find(x=>String(x.id)===String(adStoreId)), company=adCompanies.find(x=>String(x.id)===String(adCompanyId));
   const archivedStore=isArchivedStore(store);
-  const selectedCampaign=selectedCampaignId===null?null:adCampaigns.find(item=>item.campaignId===selectedCampaignId)||null;
+  const selectedCampaign=selectedCampaignId===null?null:(isCompany?adCompanyCampaigns:adCampaigns).find(item=>item.campaignId===selectedCampaignId)||null;
   adCampaign=selectedCampaign;
   const campaign=adCampaign||{};
   const campaignLifecycle=campaignLifecycleStatus(campaign);
@@ -1860,17 +1932,19 @@ function renderAds(){
   const globalLifecycle=campaignLifecycleStatus({status:globalStatus});
   const globalArchivedStore=defaultAdLinkedToArchivedStore();
   const globalReadOnly=globalStatus==='archived'||!['draft','active','paused'].includes(globalStatus)||globalArchivedStore;
-  const headerStatusActions=isGlobal?campaignStatusActions('default',globalStatus,{isDefault:true,readOnly:globalReadOnly}):campaignStatusActions(campaign.campaignId,storeCampaignStatus(campaign).status,{readOnly:archivedStore||campaignArchived||campaignStatusUnknown||adStoreLoading||!!adStoreError});
+  const headerStatusActions=isCompany?companyCampaignStatusActions(campaign,company):isGlobal?campaignStatusActions('default',globalStatus,{isDefault:true,readOnly:globalReadOnly}):campaignStatusActions(campaign.campaignId,storeCampaignStatus(campaign).status,{readOnly:archivedStore||campaignArchived||campaignStatusUnknown||adStoreLoading||!!adStoreError});
   const selectedStoreStopped=store?.status==='停止中';
   const selectedStoreUnavailable=!store||store.status!=='稼働中';
-  const formData=isGlobal?{title:S.ad.title,body:S.ad.body,start:S.ad.start,end:S.ad.end,link:S.ad.link,media:S.ad.media}:adCreatingNew&&adCreateUncertain&&adCreateAttempt?{title:adCreateAttempt.payload.title,body:adCreateAttempt.payload.body,startsOn:adCreateAttempt.payload.startsOn,endsOn:adCreateAttempt.payload.endsOn,landingUrl:adCreateAttempt.payload.landingUrl}:adCreatingNew?{}:campaign;
-  const lockStore=!isGlobal;
+  const formData=isGlobal?{title:S.ad.title,body:S.ad.body,start:S.ad.start,end:S.ad.end,link:S.ad.link,media:S.ad.media}:adCreatingNew&&isStore&&adCreateUncertain&&adCreateAttempt?{title:adCreateAttempt.payload.title,body:adCreateAttempt.payload.body,startsOn:adCreateAttempt.payload.startsOn,endsOn:adCreateAttempt.payload.endsOn,landingUrl:adCreateAttempt.payload.landingUrl}:adCreatingNew?{}:campaign;
+  const lockStore=isStore;
+  const companyReadOnly=isCompany&&(!company||company.archivedAt!=null||adCompaniesLoading||!adCompaniesLoaded||!!adCompaniesError||adCompanyLoading||!!adCompanyError||(!adCreatingNew&&(!selectedCampaignId||campaignArchived||campaignStatusUnknown)));
   const storeReadOnly=lockStore&&(archivedStore||campaignArchived||(!adCreatingNew&&campaignStatusUnknown)||adStoreLoading||!!adStoreError||(!adCreatingNew&&!selectedCampaignId));
-  const storeSaveLocked=storeReadOnly||(lockStore&&!adCreatingNew&&!selectedCampaignId)||(lockStore&&adCreatingNew&&adCreateBlocked);
-  const formDisabled=adSaving||adStatusSaving||storeReadOnly||archivedStore||campaignArchived||(isGlobal&&globalReadOnly)||(lockStore&&adCreatingNew&&adCreateBlocked);
+  const storeSaveLocked=companyReadOnly||storeReadOnly||(lockStore&&!adCreatingNew&&!selectedCampaignId)||(lockStore&&adCreatingNew&&adCreateBlocked)||isCompany&&!adCreatingNew&&!selectedCampaignId;
+  const formDisabled=adSaving||adStatusSaving||companyReadOnly||storeReadOnly||archivedStore||campaignArchived||(isGlobal&&globalReadOnly)||(lockStore&&adCreatingNew&&adCreateBlocked);
   let notice='';
-  if(!isGlobal){
-    if(archivedStore)notice='<div class="ad-store-notice" role="status">アーカイブ済み店舗です。既存広告は確認できますが、新規作成・編集はできません。</div>';
+  if(isStore){
+    if(!adStoreId)notice='<div class="ad-store-notice" role="status">店舗を選択してください。</div>';
+    else if(archivedStore)notice='<div class="ad-store-notice" role="status">アーカイブ済み店舗です。既存広告は確認できますが、新規作成・編集はできません。</div>';
     else if(adStoreLoading)notice='<div class="ad-store-notice" role="status">店舗広告を読み込んでいます…</div>';
     else if(adStoreError)notice=`<div class="ad-store-notice ad-target-error" role="alert">${esc(adStoreError)}</div>`;
     else if(adCreatingNew)notice='<div class="ad-store-notice" role="status">新しい広告を作成しています。初期状態は非公開です。</div>';
@@ -1881,20 +1955,30 @@ function renderAds(){
   const globalPeriodNote=globalStatus==='active'?campaignPeriodNote(S.ad):'';
   const globalNotice=`<div class="ad-store-notice ad-selected-status" role="status">全店舗共通広告 <span class="ad-store-status ${globalLifecycle.className}">${globalLifecycle.label}</span>${globalPeriodNote?`<span class="ad-period-note">掲載条件：${esc(globalPeriodNote)}</span>`:''}</div>${globalArchivedStore?'<p class="ad-store-notice ad-archived-note" role="status">アーカイブ済み店舗に紐づく広告です。既存関連の確認のみ可能です。</p>':globalStatus==='archived'?'<p class="ad-store-notice ad-archived-note" role="status">この広告はアーカイブ済みです。履歴確認のため保存されています。</p>':globalStatus===null?'<p class="ad-store-notice ad-target-error" role="status">広告状態を確認できないため閲覧のみ可能です。</p>':''}`;
   const emptyStore=lockStore&&(adCreatingNew||adStoreLoading||!!adStoreError||!campaign.campaignId);
-  const fieldValue=(key)=>emptyStore?'':(formData[key]??'');
+  const emptyEditor=emptyStore||isCompany&&(adCreatingNew||!campaign.campaignId);
+  const fieldValue=(key)=>emptyEditor?'':(formData[key]??'');
   const showStoreMedia=lockStore&&!adStoreLoading&&!adStoreError&&!!campaign.campaignId;
   const mediaUrl=typeof campaign.mediaUrl==='string'?campaign.mediaUrl.trim():'';
   const mediaUrlMobile=typeof campaign.mediaUrlMobile==='string'?campaign.mediaUrlMobile.trim():'';
   const storeMediaReadout=showStoreMedia?`<div class="ad-current-media"><strong>現在の画像 / GIF</strong><span>PC用画像</span>${mediaUrl?`<code>${esc(mediaUrl)}</code>`:'<span>未設定</span>'}<span>スマホ用画像</span>${mediaUrlMobile?`<code>${esc(mediaUrlMobile)}</code>`:'<span>未設定</span>'}</div>`:'';
-  const storeOptions=(adStores||[]).filter(x=>!isArchivedStore(x)).map(x=>`<option value="${esc(x.id)}" ${!isGlobal&&String(x.id)===String(adStoreId)?'selected':''}>${esc(x.name)}${x.status==='停止中'?'（停止中・既存広告のみ）':x.status==='稼働中'?'':'（状態確認不可）'}</option>`).join('')+((adStores||[]).some(x=>isArchivedStore(x))?`<optgroup label="アーカイブ済み店舗・既存関連の確認のみ">${(adStores||[]).filter(x=>isArchivedStore(x)).map(x=>`<option value="${esc(x.id)}" ${!isGlobal&&String(x.id)===String(adStoreId)?'selected':''}>${esc(x.name)}</option>`).join('')}</optgroup>`:'');
+  const storeOptions=(adStores||[]).filter(x=>!isArchivedStore(x)).map(x=>`<option value="${esc(x.id)}" ${isStore&&String(x.id)===String(adStoreId)?'selected':''}>${esc(x.name)}${x.status==='停止中'?'（停止中・既存広告のみ）':x.status==='稼働中'?'':'（状態確認不可）'}</option>`).join('')+((adStores||[]).some(x=>isArchivedStore(x))?`<optgroup label="アーカイブ済み店舗・既存関連の確認のみ">${(adStores||[]).filter(x=>isArchivedStore(x)).map(x=>`<option value="${esc(x.id)}" ${isStore&&String(x.id)===String(adStoreId)?'selected':''}>${esc(x.name)}</option>`).join('')}</optgroup>`:'');
   const globalStoreOptions=S.stores.map(x=>{const selected=isGlobal&&String(x.name)===String(S.ad.store);const archived=isArchivedStore(x);const stopped=x.status==='停止中';return `<option value="${esc(x.name)}" ${selected?'selected':''} ${(archived||x.status!=='稼働中')&&!selected?'disabled':''}>${esc(x.name)}${archived?'（アーカイブ済み）':stopped?'（停止中）':x.status==='稼働中'?'':'（状態確認不可）'}</option>`}).join('');
+  const companyOptions=adCompanies.filter(item=>item&&item.id!==undefined&&item.archivedAt==null).map(item=>`<option value="${esc(item.id)}" ${String(item.id)===String(adCompanyId)?'selected':''}>${esc(item.name||item.code||item.id)}</option>`).join('');
+  const companySelector=isCompany?`<div class="ad-target-dependent"><label for="adCompanyTarget">企業</label><select id="adCompanyTarget" aria-label="企業" onchange="changeAdCompanyTarget(this.value)" ${adSaving||adStatusSaving||adCompaniesLoading||!adCompaniesLoaded||adCompanies.length===0?'disabled':''}>${companyOptions}</select></div>`:'';
+  const storeSelector=isStore?`<div class="ad-target-dependent"><label for="adStoreTarget">店舗</label><select id="adStoreTarget" aria-label="店舗" onchange="changeAdStoreTarget(this.value)" ${adSaving||adStatusSaving||adStoresLoading?'disabled':''}><option value="" ${adStoreId?'':'selected'}>${adStoresLoading?'店舗一覧を読み込んでいます…':'店舗を選択'}</option>${storeOptions}</select></div>`:'';
+  const companyModeNote=adCompaniesLoading?'<div class="ad-company-mode-note" role="status">企業一覧を読み込んでいます…</div>':adCompaniesError?`<div class="ad-company-mode-note ad-target-error" role="alert">${esc(adCompaniesError)}</div>`:adCompaniesLoaded&&adCompanies.length===0?'<div class="ad-company-mode-note" role="status">利用可能な企業がありません。</div>':!adCompanyId?'<div class="ad-company-mode-note" role="status">企業を選択してください。</div>':adCompanyLoading?'<div class="ad-company-mode-note" role="status">企業広告を読み込んでいます…</div>':adCompanyError?`<div class="ad-company-mode-note ad-target-error" role="alert">${esc(adCompanyError)}</div>`:adCreatingNew?'<div class="ad-company-mode-note" role="status">新しい企業広告を作成しています。初期状態は下書きです。</div>':selectedCampaignId?`<div class="ad-company-mode-note" role="status">企業広告を編集中です。保存後も現在の公開状態は変わりません。</div>`:'';
+  const companyCanEdit=!!company&&company.archivedAt==null&&!adCompaniesLoading&&adCompaniesLoaded&&!adCompaniesError&&!adCompanyLoading&&!adCompanyError;
+  const companyDisplayCampaigns=adCompanyCampaigns.filter(item=>['draft','active','paused','archived'].includes(String(item.status||'').toLowerCase()));
+  const companyVisibleCampaignCount=companyDisplayCampaigns.filter(item=>adCompanyShowArchived||String(item.status||'').toLowerCase()!=='archived').length;
+  const companyCampaignRowsMarkup=companyDisplayCampaigns.map(item=>{const status=String(item.status||'').toLowerCase();const statusLabel=({active:'公開中',paused:'停止中',draft:'下書き',archived:'アーカイブ済み'})[status];const statusClass=status==='active'?'':status==='paused'?'is-paused':status==='draft'?'is-draft':'is-archived';const hidden=status==='archived'&&!adCompanyShowArchived;const adName=item.name||item.title||'無題の広告';return `<button type="button" class="ad-company-campaign-row ${String(item.campaignId)===String(selectedCampaignId)&&!adCreatingNew?'is-selected':''}${hidden?' is-filtered':''}" data-company-campaign-id="${esc(item.campaignId)}" data-company-campaign-status="${status}" ${hidden?'hidden':''} aria-hidden="${hidden?'true':'false'}" aria-pressed="${String(item.campaignId)===String(selectedCampaignId)&&!adCreatingNew?'true':'false'}" ${adSaving||adStatusSaving?'disabled':''}><strong class="ad-company-campaign-title">${esc(adName)}</strong><span class="ad-company-campaign-status ${statusClass}">${statusLabel}</span><span class="ad-company-campaign-meta">${esc(item.title||'タイトル未設定')} · ${esc(displayCampaignPeriod(item))}</span><span class="ad-company-campaign-meta">${esc(item.mediaUrl?'PC画像あり':'PC画像なし')} / ${esc(item.mediaUrlMobile?'スマホ画像あり':'スマホ画像なし')}</span></button>`}).join('');
+  const companyCampaignPanel=isCompany?`<section class="card ad-panel ad-campaigns-panel"><div class="ad-store-campaigns" aria-label="企業広告一覧"><div class="ad-store-campaigns-head ad-company-campaigns-head"><div class="ad-campaigns-head-title"><strong>COMPANY CAMPAIGNS</strong><span>${esc(company?.name||'企業広告一覧')}</span></div><div class="ad-campaigns-head-actions ad-company-campaign-actions"><label class="ad-company-archived-toggle"><input id="adCompanyShowArchived" type="checkbox" ${adCompanyShowArchived?'checked':''} onchange="setCompanyAdArchivedVisible(this.checked)">アーカイブ済みを表示</label><span class="ad-campaign-count" id="adCompanyCampaignCount">${companyVisibleCampaignCount}件</span><button type="button" class="store-campaign-add" onclick="startNewCompanyAd()" ${adSaving||adStatusSaving||!companyCanEdit||adCreatingNew?'disabled':''}>＋ 新しい広告を追加</button></div></div>${adCompaniesLoading?(adCompanyId?'<p class="sub">企業広告を読み込んでいます…</p>':'<p class="sub">企業一覧を読み込んでいます…</p>'):adCompanyLoading?'<p class="sub">企業広告を読み込んでいます…</p>':adCompaniesError?`<p class="ad-target-error" role="alert">${esc(adCompaniesError)}</p>`:!adCompanyId?'<p class="sub">企業を選択してください。</p>':adCompanyError?`<p class="ad-target-error" role="alert">${esc(adCompanyError)}</p>`:`<div id="adCompanyCampaignList" class="ad-company-campaign-list${companyVisibleCampaignCount===0?' is-empty':''}">${companyCampaignRowsMarkup}</div><p id="adCompanyCampaignEmpty" class="sub ad-company-campaign-empty" ${companyVisibleCampaignCount===0?'':'hidden'}>企業広告はまだありません。</p>`}</div></section>`:'';
   const formStoreOptions=isGlobal?globalStoreOptions:(adStores||[]).map(x=>`<option value="${esc(x.name)}" ${String(x.id)===String(adStoreId)?'selected':''}>${esc(x.name)}</option>`).join('');
-  const saveLabel=isGlobal?'広告内容を保存':adCreatingNew&&adCreateBlocked?'再読み込みして登録状況を確認':adCreatingNew?'新しい広告を登録':selectedCampaignId?'店舗別広告を保存':'広告を選択してください';
+  const saveLabel=isCompany?adCreatingNew?'新しい企業広告を登録':selectedCampaignId?'企業別広告を保存':'広告を選択してください':isGlobal?'広告内容を保存':adCreatingNew&&adCreateBlocked?'再読み込みして登録状況を確認':adCreatingNew?'新しい広告を登録':selectedCampaignId?'店舗別広告を保存':'広告を選択してください';
   const saveGuidanceState=archivedStore||globalArchivedStore||campaignArchived||globalStatus==='archived'?'archived':adCreatingNew?'new':(isGlobal?globalStatus:campaignLifecycle.status)===null||(!isGlobal&&campaignStatusUnknown)?'unknown':(isGlobal?globalStatus:campaignLifecycle.status)==='active'&&selectedStoreStopped?'activeStopped':(isGlobal?globalStatus:campaignLifecycle.status);
   const saveGuidance=(isGlobal||adCreatingNew||selectedCampaignId)?adSaveGuidanceMarkup(saveGuidanceState):'';
-  const storeCampaignPanel=lockStore?`<section class="card ad-panel ad-campaigns-panel"><div class="ad-store-campaigns" aria-label="店舗広告一覧"><div class="ad-store-campaigns-head"><div class="ad-campaigns-head-title"><strong>AD CAMPAIGNS</strong><span>広告一覧</span></div><div class="ad-campaigns-head-actions"><span class="ad-campaign-count">${adCampaignCount}件</span><button type="button" class="store-campaign-add" onclick="startNewStoreAd()" ${adSaving||adStatusSaving||adStoreLoading||!!adStoreError||adCreatingNew||selectedStoreUnavailable||archivedStore?'disabled':''}>${archivedStore?'アーカイブ済み店舗では新規広告を作成できません':selectedStoreStopped?'停止中のため新規広告を作成できません':selectedStoreUnavailable?'店舗状態を確認できないため新規広告を作成できません':'＋ 新しい広告を追加'}</button></div></div>${adStoreLoading?'<p class="sub">店舗広告を読み込んでいます…</p>':adStoreError?`<p class="ad-target-error" role="alert">${esc(adStoreError)}</p>`:adCampaigns.length===0?'<p class="sub">この店舗には広告がまだありません。</p>':`<div class="store-campaign-list">${adCampaigns.map(item=>{const status=storeCampaignStatus(item);const periodNote=status.periodNote?` · ${status.periodNote}`:'';return `<button type="button" class="store-campaign-row ${item.campaignId===selectedCampaignId&&!adCreatingNew?'is-selected':''}" data-store-campaign-id="${esc(item.campaignId)}" aria-pressed="${item.campaignId===selectedCampaignId&&!adCreatingNew?'true':'false'}" ${adSaving||adStatusSaving||(adCreatingNew&&adCreateUncertain)?'disabled':''}><span class="store-campaign-title">${esc(item.title||'無題の広告')}</span><span class="store-campaign-status ${status.className}">${status.label}</span><span class="store-campaign-period">${esc(displayCampaignPeriod(item))}${esc(periodNote)}</span></button>`}).join('')}</div>`}<p class="store-campaign-preview-note">右側のプレビューはフォーム編集中の内容を表示します。</p></div></section>`:'';
+  const storeCampaignPanel=isStore?`<section class="card ad-panel ad-campaigns-panel"><div class="ad-store-campaigns" aria-label="店舗広告一覧"><div class="ad-store-campaigns-head"><div class="ad-campaigns-head-title"><strong>AD CAMPAIGNS</strong><span>広告一覧</span></div><div class="ad-campaigns-head-actions"><span class="ad-campaign-count">${adCampaignCount}件</span><button type="button" class="store-campaign-add" onclick="startNewStoreAd()" ${adSaving||adStatusSaving||adStoreLoading||!!adStoreError||adCreatingNew||selectedStoreUnavailable||archivedStore?'disabled':''}>${archivedStore?'アーカイブ済み店舗では新規広告を作成できません':selectedStoreStopped?'停止中のため新規広告を作成できません':selectedStoreUnavailable?'店舗状態を確認できないため新規広告を作成できません':'＋ 新しい広告を追加'}</button></div></div>${adStoreLoading?'<p class="sub">店舗広告を読み込んでいます…</p>':!adStoreId?'<p class="sub">店舗を選択してください。</p>':adStoreError?`<p class="ad-target-error" role="alert">${esc(adStoreError)}</p>`:adCampaigns.length===0?'<p class="sub">この店舗には広告がまだありません。</p>':`<div class="store-campaign-list">${adCampaigns.map(item=>{const status=storeCampaignStatus(item);const periodNote=status.periodNote?` · ${status.periodNote}`:'';return `<button type="button" class="store-campaign-row ${item.campaignId===selectedCampaignId&&!adCreatingNew?'is-selected':''}" data-store-campaign-id="${esc(item.campaignId)}" aria-pressed="${item.campaignId===selectedCampaignId&&!adCreatingNew?'true':'false'}" ${adSaving||adStatusSaving||(adCreatingNew&&adCreateUncertain)?'disabled':''}><span class="store-campaign-title">${esc(item.title||'無題の広告')}</span><span class="store-campaign-status ${status.className}">${status.label}</span><span class="store-campaign-period">${esc(displayCampaignPeriod(item))}${esc(periodNote)}</span></button>`}).join('')}</div>`}<p class="store-campaign-preview-note">右側のプレビューはフォーム編集中の内容を表示します。</p></div></section>`:'';
   shell('<span class="ad-title">AD MANAGEMENT</span><span class="ad-title-ja">広告管理</span>','広告内容・掲載期間・リンク・画像/GIFを管理します.',
-  `<div class="ad-management-view"><div class="ad-system-status"><div><div class="ad-console-name">AD DELIVERY CONTROL</div><div class="ad-console-message">Editing current advertisement configuration.</div></div><span class="ad-ready"><i></i> READY</span></div><div class="ad-target-row"><label for="adDeliveryTarget">配信対象</label><select id="adDeliveryTarget" onchange="changeAdTarget(this.value)" ${adStoresLoading||adSaving||adStatusSaving||(adCreatingNew&&adCreateUncertain)?'disabled':''}><option value="global" ${isGlobal?'selected':''}>全店舗共通</option>${storeOptions}</select></div><div class="layout ad-layout"><div class="ad-left-stack">${storeCampaignPanel}<section class="card ad-panel ad-config-panel"><div class="section ad-panel-heading"><div class="ad-panel-title-group"><span class="ad-terminal-label">AD CONFIGURATION</span><span>広告内容 · ${isGlobal?'全店舗共通':esc(store?.name||'選択店舗')}</span></div>${headerStatusActions}</div>${isGlobal?globalNotice:notice}${selectedStoreStopped?'<div class="ad-store-notice" role="status">停止中店舗です。キャンペーン状態は操作できますが、店舗が稼働するまでは広告は配信されません。</div>':''}${lockStore?`<p id="adSaveFeedback" class="ad-store-notice ad-target-error" role="alert" ${adSaveError?'':'hidden'}>${esc(adSaveError)}</p>`:''}${isGlobal?'<div class="field"><label>店舗</label><div class="sub">全店舗共通（店舗指定なし）</div></div>':`<div class="field"><label>店舗</label><select id="aStore" ${lockStore||adSaving||adStatusSaving||globalReadOnly?'disabled':''}>${formStoreOptions}</select></div>`}<div class="field"><label>タイトル${isGlobal?'':' <span class="required-label">必須</span>'}</label><input id="aTitle" maxlength="500" value="${esc(fieldValue('title'))}" ${formDisabled?'disabled':''}></div><div class="field"><label>本文</label><textarea id="aBody" maxlength="24000" ${formDisabled?'disabled':''}>${esc(fieldValue('body'))}</textarea></div><div class="twocol"><div class="field"><label>掲載開始</label><input id="aStart" type="date" value="${esc(fieldValue(isGlobal?'start':'startsOn'))}" ${formDisabled?'disabled':''}></div><div class="field"><label>掲載終了</label><input id="aEnd" type="date" value="${esc(fieldValue(isGlobal?'end':'endsOn'))}" ${formDisabled?'disabled':''}></div></div><div class="field"><label>「詳しく見る」のリンク先</label><input id="aLink" type="url" maxlength="4096" value="${esc(fieldValue(isGlobal?'link':'landingUrl'))}" placeholder="https://..." ${formDisabled?'disabled':''}></div><div class="field"><label for="aFilePc">PC用画像</label><input id="aFilePc" type="file" accept=".gif,image/gif,image/png,image/jpeg,image/webp" ${formDisabled||(adCreatingNew&&adCreateUncertain)?'disabled':''}><p id="aFilePcError" class="ad-upload-error" role="alert" hidden></p><small>推奨サイズ：1920 × 1080px（16:9）</small></div><div class="field"><label for="aFileMobile">スマホ用画像</label><input id="aFileMobile" type="file" accept=".gif,image/gif,image/png,image/jpeg,image/webp" ${formDisabled||(adCreatingNew&&adCreateUncertain)?'disabled':''}><p id="aFileMobileError" class="ad-upload-error" role="alert" hidden></p><small>推奨サイズ：1080 × 1350px（4:5）</small>${storeMediaReadout}<div class="previewbox ad-upload-note"><strong>MEDIA UPLOAD</strong><span>GIF / JPG / JPEG / PNG / WebP</span><small>PC用・スマホ用画像はそれぞれ別にアップロードできます。未選択の画像は現在のURLを維持します。</small></div></div>${saveGuidance}<div class="actions ad-actions"><button id="adSaveButton" class="ad-primary ${lockStore&&storeSaveLocked?'ad-store-disabled':''}" onclick="publishAd()" ${adSaving||adStatusSaving||storeSaveLocked||globalReadOnly?'disabled':''}>${adSaving?'保存中…':saveLabel}</button><button class="secondary ad-secondary" onclick="openAdPublicPage()" ${adSaving||adStatusSaving?'disabled':''}>公開ページを開く</button></div>${lockStore?'<p class="ad-store-notice">店舗別広告は保存すると選択店舗へ反映されます。</p>':''}</section></div><section class="card ad-panel ad-preview-panel"><div class="ad-preview-head"><div><span class="ad-terminal-label">AD PREVIEW</span><div class="section">広告プレビュー</div></div><span class="ad-connected"><i></i> EDITING</span></div><div class="ad-preview-devices"><section class="ad-preview-device"><div class="ad-preview-device-heading"><span class="ad-terminal-label">PC PREVIEW</span><span class="ad-preview-spec">DESKTOP · 16:9</span></div><div class="ad-preview-pc-viewport" id="adPcPreviewViewport" inert>${adEditorPreviewMarkup('pc')}</div><div class="ad-preview-caption">PC表示 · 960 × 540</div></section><section class="ad-preview-device ad-preview-mobile-device"><div class="ad-preview-device-heading"><span class="ad-terminal-label">MOBILE PREVIEW</span><span class="ad-preview-spec">600px以下</span></div><div class="ad-preview-mobile-viewport" inert><div class="phonewrap ad-crt-frame"><div class="phone ad-crt-phone">${adEditorPreviewMarkup('mobile')}</div></div></div></section></div><div class="ad-preview-footer"><span>PREVIEW MODE : EDITING</span><span class="ad-signal"><i></i><i></i><i></i></span></div></section></div></div>`);
+  `<div class="ad-management-view${isCompany?' is-company-mode':''}"><div class="ad-system-status"><div><div class="ad-console-name">AD DELIVERY CONTROL</div><div class="ad-console-message">Editing current advertisement configuration.</div></div><span class="ad-ready"><i></i> READY</span></div><div class="ad-target-row"><label for="adDeliveryTarget">配信対象</label><select id="adDeliveryTarget" onchange="changeAdTarget(this.value)" ${adSaving||adStatusSaving||(adCreatingNew&&adCreateUncertain)?'disabled':''}><option value="global" ${isGlobal?'selected':''}>全店舗共通</option><option value="${AD_COMPANY_TARGET_VALUE}" ${isCompany?'selected':''}>企業別</option><option value="${AD_STORE_TARGET_VALUE}" ${isStore?'selected':''}>店舗別</option></select>${companySelector}${storeSelector}</div><div class="layout ad-layout"><div class="ad-left-stack">${companyCampaignPanel}${storeCampaignPanel}<section class="card ad-panel ad-config-panel"><div class="section ad-panel-heading"><div class="ad-panel-title-group"><span class="ad-terminal-label">AD CONFIGURATION</span><span>広告内容 · ${isGlobal?'全店舗共通':isCompany?esc(company?.name||'企業別'):esc(store?.name||'選択店舗')}</span></div>${headerStatusActions}</div>${isCompany?companyModeNote:isGlobal?globalNotice:notice}${!isCompany&&selectedStoreStopped?'<div class="ad-store-notice" role="status">停止中店舗です。キャンペーン状態は操作できますが、店舗が稼働するまでは広告は配信されません。</div>':''}${lockStore||isCompany?`<p id="adSaveFeedback" class="ad-store-notice ad-target-error" role="alert" ${adSaveError?'':'hidden'}>${esc(adSaveError)}</p>`:''}${isGlobal?'<div class="field"><label>店舗</label><div class="sub">全店舗共通（店舗指定なし）</div></div>':isCompany?`<div class="field"><label>企業</label><div class="sub">${esc(company?.name||'企業を選択してください')}</div></div>`:`<div class="field"><label>店舗</label><select id="aStore" ${lockStore||adSaving||adStatusSaving||globalReadOnly?'disabled':''}>${formStoreOptions}</select></div>`}<div class="field"><label>タイトル${isGlobal?'':' <span class="required-label">必須</span>'}</label><input id="aTitle" maxlength="500" value="${esc(fieldValue('title'))}" ${formDisabled?'disabled':''}></div><div class="field"><label>本文</label><textarea id="aBody" maxlength="24000" ${formDisabled?'disabled':''}>${esc(fieldValue('body'))}</textarea></div><div class="twocol"><div class="field"><label>掲載開始</label><input id="aStart" type="date" value="${esc(fieldValue(isGlobal?'start':'startsOn'))}" ${formDisabled?'disabled':''}></div><div class="field"><label>掲載終了</label><input id="aEnd" type="date" value="${esc(fieldValue(isGlobal?'end':'endsOn'))}" ${formDisabled?'disabled':''}></div></div><div class="field"><label>「詳しく見る」のリンク先</label><input id="aLink" type="url" maxlength="4096" value="${esc(fieldValue(isGlobal?'link':'landingUrl'))}" placeholder="https://..." ${formDisabled?'disabled':''}></div><div class="field"><label for="aFilePc">PC用画像</label><input id="aFilePc" type="file" accept=".gif,image/gif,image/png,image/jpeg,image/webp" ${formDisabled||(adCreatingNew&&adCreateUncertain)?'disabled':''}><p id="aFilePcError" class="ad-upload-error" role="alert" hidden></p><small>推奨サイズ：1920 × 1080px（16:9）</small></div><div class="field"><label for="aFileMobile">スマホ用画像</label><input id="aFileMobile" type="file" accept=".gif,image/gif,image/png,image/jpeg,image/webp" ${formDisabled||(adCreatingNew&&adCreateUncertain)?'disabled':''}><p id="aFileMobileError" class="ad-upload-error" role="alert" hidden></p><small>推奨サイズ：1080 × 1350px（4:5）</small>${storeMediaReadout}<div class="previewbox ad-upload-note"><strong>MEDIA UPLOAD</strong><span>GIF / JPG / JPEG / PNG / WebP</span><small>PC用・スマホ用画像はそれぞれ別にアップロードできます。未選択の画像は現在のURLを維持します。</small></div></div>${saveGuidance}<div class="actions ad-actions"><button id="adSaveButton" class="ad-primary ${lockStore&&storeSaveLocked?'ad-store-disabled':''}" onclick="publishAd()" ${adSaving||adStatusSaving||storeSaveLocked||globalReadOnly?'disabled':''}>${adSaving?'保存中…':saveLabel}</button><button class="secondary ad-secondary" onclick="openAdPublicPage()" ${adSaving||adStatusSaving?'disabled':''}>公開ページを開く</button></div>${lockStore?'<p class="ad-store-notice">店舗別広告は保存すると選択店舗へ反映されます。</p>':isCompany?'<p class="ad-store-notice">企業広告は選択企業に所属する店舗へ配信されます。</p>':''}</section></div><section class="card ad-panel ad-preview-panel"><div class="ad-preview-head"><div><span class="ad-terminal-label">AD PREVIEW</span><div class="section">広告プレビュー</div></div><span class="ad-connected"><i></i> EDITING</span></div><div class="ad-preview-devices"><section class="ad-preview-device"><div class="ad-preview-device-heading"><span class="ad-terminal-label">PC PREVIEW</span><span class="ad-preview-spec">DESKTOP · 16:9</span></div><div class="ad-preview-pc-viewport" id="adPcPreviewViewport" inert>${adEditorPreviewMarkup('pc')}</div><div class="ad-preview-caption">PC表示 · 960 × 540</div></section><section class="ad-preview-device ad-preview-mobile-device"><div class="ad-preview-device-heading"><span class="ad-terminal-label">MOBILE PREVIEW</span><span class="ad-preview-spec">600px以下</span></div><div class="ad-preview-mobile-viewport" inert><div class="phonewrap ad-crt-frame"><div class="phone ad-crt-phone">${adEditorPreviewMarkup('mobile')}</div></div></div></section></div><div class="ad-preview-footer"><span>PREVIEW MODE : EDITING</span><span class="ad-signal"><i></i><i></i><i></i></span></div></section></div></div>`);
   captureAdEditorBaseline();
   observeAdPcPreviewScale();
   document.querySelectorAll('#aTitle,#aBody,#aStart,#aEnd,#aLink').forEach(el=>el.addEventListener('input',updateAdEditorPreview));
@@ -1902,8 +1986,10 @@ function renderAds(){
   document.getElementById('aFileMobile')?.addEventListener('change',event=>{clearAdUploadError('mobile');setAdLocalPreviewImage('mobile',event.currentTarget.files?.[0]||null)});
   updateAdEditorPreview();
   document.querySelectorAll('[data-store-campaign-id]').forEach(button=>button.addEventListener('click',()=>selectStoreCampaign(button.dataset.storeCampaignId)));
+  document.querySelectorAll('[data-company-campaign-id]').forEach(button=>button.addEventListener('click',()=>selectCompanyCampaign(button.dataset.companyCampaignId)));
   document.querySelectorAll('[data-ad-status-campaign]').forEach(button=>button.addEventListener('click',()=>changeCampaignStatus(button.dataset.adStatusCampaign,button.dataset.adStatusNext)));
-  if(adStoresLoading){const select=document.getElementById('adDeliveryTarget');if(select)select.innerHTML='<option value="global">全店舗共通</option><option value="" disabled selected>店舗一覧を読み込み中…</option>';}
+  document.querySelectorAll('[data-company-ad-status-campaign]').forEach(button=>button.addEventListener('click',()=>changeCompanyCampaignStatus(button.dataset.companyAdStatusCampaign,button.dataset.adStatusNext)));
+
 }
 function adEditorPreviewMarkup(device){
   const mobile=device==='mobile';
@@ -1977,6 +2063,56 @@ function updateAdEditorPreview(){
     else{imageNode.removeAttribute('src');imageNode.hidden=true;placeholder.textContent='画像未設定';placeholder.hidden=false;}
   }
 }
+async function loadAdCompanies(requestedCompanyId=null){
+  const seq=++adCompaniesRequestSeq;adCompaniesLoading=true;adCompaniesLoaded=false;adCompaniesError='';adCompanies=[];adCompanyCampaigns=[];adCompanyLoading=!!requestedCompanyId;adCompanyError='';renderAds();
+  try{
+    const response=await companyApiFetch('/api/admin/companies');
+    if(!response.ok)throw new Error('企業一覧を読み込めませんでした。');
+    const payload=await response.json();
+    if(seq!==adCompaniesRequestSeq||adTarget!=='company'||!isAdminRoute('ads'))return;
+    if(!Array.isArray(payload.companies))throw new Error('企業一覧を読み込めませんでした。');
+    adCompanies=payload.companies.filter(item=>item&&item.id!==undefined&&typeof item.name==='string'&&item.archivedAt==null);
+    adCompaniesLoading=false;adCompaniesLoaded=true;
+    if(requestedCompanyId){
+      const company=payload.companies.find(item=>item&&String(item.id)===String(requestedCompanyId));
+      if(!company||company.archivedAt!=null){adCompanyId=null;adCompanyCampaigns=[];adCompanyLoading=false;adTarget='global';setAdminRouteHash('#ads');renderAds();toast(company?'アーカイブ済み企業は広告の配信対象にできません。':'指定された企業が見つかりません。',{type:'info'});return;}
+      adCompanyId=String(company.id);await loadAdCompanyCampaigns(adCompanyId);return;
+    }
+    if(adCompanyId&&!adCompanies.some(item=>String(item.id)===String(adCompanyId))){adCompanyId=null;adCompanyCampaigns=[];adCompanyError='';}
+    if(!adCompanyId&&adCompanies.length){adCompanyId=String(adCompanies[0].id);await loadAdCompanyCampaigns(adCompanyId);return;}
+    adCompanyLoading=false;renderAds();
+  }catch(error){
+    if(seq!==adCompaniesRequestSeq||adTarget!=='company'||!isAdminRoute('ads'))return;
+    adCompaniesLoading=false;adCompaniesLoaded=false;adCompaniesError='企業一覧を読み込めませんでした。';adCompanyId=null;adCompanyCampaigns=[];adCompanyLoading=false;renderAds();toast(adCompaniesError,{type:'error'});
+    if(requestedCompanyId){adTarget='global';setAdminRouteHash('#ads');renderAds();}
+  }
+}
+async function loadAdCompanyCampaigns(companyId){
+  const id=String(companyId??'');if(!id)return;
+  const seq=++adCompanyRequestSeq;adCompanyLoading=true;adCompanyError='';adCompanyCampaigns=[];renderAds();
+  try{
+    const response=await companyApiFetch(`/api/admin/companies/${encodeURIComponent(id)}/campaigns`);
+    if(!response.ok)throw new Error(response.status===404?'指定された企業が見つかりません。':'企業広告を読み込めませんでした。');
+    const payload=await response.json();
+    if(seq!==adCompanyRequestSeq||adTarget!=='company'||String(adCompanyId)!==id||!isAdminRoute('ads'))return;
+    if(!Array.isArray(payload.campaigns))throw new Error('企業広告を読み込めませんでした。');
+    const responseCompany=payload.company;if(responseCompany&&String(responseCompany.id)!==id)throw new Error('企業広告を読み込めませんでした。');
+    if(responseCompany&&responseCompany.archivedAt!=null){adCompanyId=null;adCompanyCampaigns=[];adCompanyLoading=false;adTarget='global';setAdminRouteHash('#ads');renderAds();toast('アーカイブ済み企業は広告の配信対象にできません。',{type:'info'});return;}
+    adCompanyCampaigns=payload.campaigns.filter(item=>item&&item.scope==='company'&&String(item.companyId)===id);adCompanyLoading=false;adCompanyError='';renderAds();
+  }catch(error){
+    if(seq!==adCompanyRequestSeq||adTarget!=='company'||String(adCompanyId)!==id||!isAdminRoute('ads'))return;
+    adCompanyCampaigns=[];adCompanyLoading=false;adCompanyError=error.message||'企業広告を読み込めませんでした。';renderAds();toast(adCompanyError,{type:'error'});
+  }
+}
+async function changeAdCompanyTarget(value){
+  if(adSaving||adStatusSaving||adTarget!=='company')return;
+  const id=String(value??'');const nextId=id||null;
+  if(String(adCompanyId??'')!==String(nextId??'')&&!confirmDiscardAdChanges()){const select=document.getElementById('adCompanyTarget');if(select)select.value=adCompanyId||'';return;}
+  clearAdLocalPreviewUrls();resetAdCreateIdempotency();adStoreRequestSeq++;adCompanyRequestSeq++;adTarget='company';adStoreId=null;adCompanyId=nextId;adCampaigns=[];selectedCampaignId=null;adCampaign=null;adCreatingNew=false;adCampaignCount=0;adStoreLoading=false;adStoreError='';adCompanyCampaigns=[];adCompanyError='';adCompanyLoading=false;adSaveError='';
+  setAdminRouteHash(nextId?buildAdminHash('ads',{company:nextId}):'#ads');renderAds();
+  if(!adCompaniesLoaded){await loadAdCompanies(nextId);return;}
+  if(nextId){if(!adCompanies.some(item=>String(item.id)===nextId)){adCompanyId=null;adTarget='global';setAdminRouteHash('#ads');renderAds();toast('指定された企業が見つかりません。',{type:'info'});return;}await loadAdCompanyCampaigns(nextId);}
+}
 async function loadAdStores(requestedStoreId=null){
   const seq=++adStoresRequestSeq;adStoresLoading=true;renderAds();
   try{
@@ -1989,48 +2125,64 @@ async function loadAdStores(requestedStoreId=null){
     if(requestedStoreId&&!adStores.some(x=>String(x.id)===String(requestedStoreId))){
       resetAdCreateIdempotency();adStoreRequestSeq++;adTarget='global';adStoreId=null;adCampaigns=[];selectedCampaignId=null;adCampaign=null;adCreatingNew=false;adCampaignCount=0;adStoreLoading=false;adStoreError='';adSaveError='';setAdminRouteHash('#ads');renderAds();toast('指定された店舗が見つかりません。',{type:'info'});return;
     }
-    if(adTarget==='store'&&!adStores.some(x=>String(x.id)===String(adStoreId))){
+    if(adTarget==='store'&&adStoreId&&!adStores.some(x=>String(x.id)===String(adStoreId))){
       resetAdCreateIdempotency();adStoreRequestSeq++;adTarget='global';adStoreId=null;adCampaigns=[];selectedCampaignId=null;adCampaign=null;adCreatingNew=false;adCampaignCount=0;adStoreLoading=false;adStoreError='';adSaveError='';
     }
-    adStoresLoading=false;renderAds();if(requestedStoreId)await changeAdTarget(requestedStoreId);
+    adStoresLoading=false;renderAds();if(requestedStoreId)await changeAdStoreTarget(requestedStoreId);
   }catch(error){
     if(seq!==adStoresRequestSeq||!isAdminRoute('ads'))return;
     adStoresLoading=false;adStoreError='店舗一覧を読み込めませんでした。';renderAds();
   }
 }
 async function changeAdTarget(value){
-  if(adSaving)return;
-  const requestedStoreId=value==='global'?null:String(value);
+  if(adSaving||adStatusSaving)return;
   const select=document.getElementById('adDeliveryTarget');
-  const currentTargetValue=adTarget==='global'?'global':String(adStoreId??'');
-  if(adTarget==='store'&&adCreatingNew&&adCreateUncertain&&String(adCreateStoreId)===String(adStoreId)){
-    if(requestedStoreId!==String(adStoreId)){adSaveError='前回の保存結果が未確定です。別店舗へ移動する前に、同じ内容で再試行するか画面を再読み込みして登録状況を確認してください。';renderAds();return;}
-    renderAds();return;
+  const nextMode=value===AD_COMPANY_TARGET_VALUE?'company':value===AD_STORE_TARGET_VALUE?'store':value==='global'?'global':null;
+  if(!nextMode){if(select)select.value=adTarget==='company'?AD_COMPANY_TARGET_VALUE:adTarget==='store'?AD_STORE_TARGET_VALUE:'global';return;}
+  const currentMode=adTarget==='company'?AD_COMPANY_TARGET_VALUE:adTarget==='store'?AD_STORE_TARGET_VALUE:'global';
+  if(adTarget==='store'&&adCreatingNew&&adCreateUncertain&&String(adCreateStoreId)===String(adStoreId)&&nextMode!=='store'){
+    adSaveError='前回の保存結果が未確定です。別の配信対象へ移動する前に、同じ内容で再試行するか画面を再読み込みして登録状況を確認してください。';renderAds();return;
   }
-  const store=value==='global'?null:adStores?.find(x=>String(x.id)===String(value));
-  if(value!=='global'&&!store){if(select)select.value='global';return;}
-  const requestedTargetValue=value==='global'?'global':String(value);
-  if(requestedTargetValue!==currentTargetValue&&!confirmDiscardAdChanges()){
-    if(select)select.value=currentTargetValue;
+  if(nextMode!==currentMode&&!confirmDiscardAdChanges()){
+    if(select)select.value=currentMode;
     return;
   }
-  if(value==='global'){
-    clearAdLocalPreviewUrls();
-    resetAdCreateIdempotency();adStoreRequestSeq++;adTarget='global';adStoreId=null;adCampaigns=[];selectedCampaignId=null;adCampaign=null;adCreatingNew=false;adCampaignCount=0;adStoreLoading=false;adStoreError='';adSaveError='';renderAds();return;
+  if(nextMode===currentMode){renderAds();return;}
+  clearAdLocalPreviewUrls();resetAdCreateIdempotency();adStoreRequestSeq++;adCompanyRequestSeq++;
+  adTarget=nextMode;adStoreId=null;adCompanyId=null;adCampaigns=[];selectedCampaignId=null;adCampaign=null;adCreatingNew=false;adCampaignCount=0;adStoreLoading=false;adStoreError='';adCompanyCampaigns=[];adCompanyLoading=false;adCompanyError='';adSaveError='';
+  if(nextMode==='global'){
+    adStoresLoading=false;setAdminRouteHash('#ads');renderAds();return;
   }
-  clearAdLocalPreviewUrls();
-  resetAdCreateIdempotency();adTarget='store';adStoreId=String(store.id);adCampaigns=[];selectedCampaignId=null;adCampaign=null;adCreatingNew=false;adCampaignCount=0;adStoreLoading=true;adStoreError='';adSaveError='';
+  if(nextMode==='company'){
+    setAdminRouteHash('#ads');adCompaniesLoaded=false;renderAds();await loadAdCompanies();return;
+  }
+  setAdminRouteHash('#ads');renderAds();
+}
+async function changeAdStoreTarget(value){
+  if(adSaving||adStatusSaving||adTarget!=='store')return;
+  const id=String(value??'');
+  const select=document.getElementById('adStoreTarget');
+  if(!id){
+    if(adCreatingNew&&adCreateUncertain&&String(adCreateStoreId)===String(adStoreId)){adSaveError='前回の保存結果が未確定です。別の店舗へ移動する前に、同じ内容で再試行するか画面を再読み込みして登録状況を確認してください。';renderAds();return;}
+    if(String(adStoreId??'')){if(!confirmDiscardAdChanges()){if(select)select.value=String(adStoreId);return;}}
+    clearAdLocalPreviewUrls();resetAdCreateIdempotency();adStoreRequestSeq++;adStoreId=null;adCampaigns=[];selectedCampaignId=null;adCampaign=null;adCreatingNew=false;adCampaignCount=0;adStoreLoading=false;adStoreError='';adSaveError='';setAdminRouteHash('#ads');renderAds();return;
+  }
+  const store=adStores?.find(item=>String(item.id)===id);
+  if(!store){if(select)select.value=adStoreId||'';return;}
+  if(adCreatingNew&&adCreateUncertain&&String(adCreateStoreId)===String(adStoreId)&&id!==String(adStoreId)){adSaveError='前回の保存結果が未確定です。別の店舗へ移動する前に、同じ内容で再試行するか画面を再読み込みして登録状況を確認してください。';renderAds();return;}
+  if(id!==String(adStoreId??'')&&!confirmDiscardAdChanges()){if(select)select.value=adStoreId||'';return;}
+  clearAdLocalPreviewUrls();resetAdCreateIdempotency();adCompanyRequestSeq++;adTarget='store';adStoreId=id;adCompanyId=null;adCampaigns=[];selectedCampaignId=null;adCampaign=null;adCreatingNew=false;adCampaignCount=0;adStoreLoading=true;adStoreError='';adCompanyCampaigns=[];adCompanyLoading=false;adCompanyError='';adSaveError='';
+  setAdminRouteHash(buildAdminHash('ads',{store:id}));
   const seq=++adStoreRequestSeq;renderAds();
   try{
-    const response=await apiFetch(`/api/admin/stores/${encodeURIComponent(store.id)}/campaigns`);
+    const response=await apiFetch(`/api/admin/stores/${encodeURIComponent(id)}/campaigns`);
     if(!response.ok)throw new Error('店舗広告を読み込めませんでした。');
     const payload=await response.json();
-    if(seq!==adStoreRequestSeq||adTarget!=='store'||String(adStoreId)!==String(store.id)||!isAdminRoute('ads'))return;
+    if(seq!==adStoreRequestSeq||adTarget!=='store'||String(adStoreId)!==id||!isAdminRoute('ads'))return;
     if(!Array.isArray(payload.campaigns))throw new Error('店舗広告を読み込めませんでした。');
-    applyStoreCampaigns(payload.campaigns,selectedCampaignId);
-    adStoreLoading=false;renderAds();
+    applyStoreCampaigns(payload.campaigns,selectedCampaignId);adStoreLoading=false;renderAds();
   }catch(error){
-    if(seq!==adStoreRequestSeq||adTarget!=='store'||String(adStoreId)!==String(store.id)||!isAdminRoute('ads'))return;
+    if(seq!==adStoreRequestSeq||adTarget!=='store'||String(adStoreId)!==id||!isAdminRoute('ads'))return;
     adCampaigns=[];selectedCampaignId=null;adCampaign=null;adCreatingNew=false;adCampaignCount=0;adStoreLoading=false;adStoreError='店舗広告を読み込めませんでした。';renderAds();
   }
 }
@@ -2047,22 +2199,29 @@ function setAdSaveFeedback(message){
 function updateAdSavingUI(){
   const button=document.getElementById('adSaveButton');
   const selector=document.getElementById('adDeliveryTarget');
+  const companySelector=document.getElementById('adCompanyTarget');
+  const storeSelector=document.getElementById('adStoreTarget');
   const publicPageButton=document.querySelector('.ad-secondary');
   const currentStore=adStores?.find(store=>String(store.id)===String(adStoreId));
-  const selectedCampaign=adCampaigns.find(item=>item?.campaignId===selectedCampaignId);
+  const selectedCampaign=(adTarget==='company'?adCompanyCampaigns:adCampaigns).find(item=>item?.campaignId===selectedCampaignId);
+  const selectedCompany=adCompanies.find(item=>String(item.id)===String(adCompanyId));
   const globalReadOnly=adTarget==='global'&&(!['draft','active','paused'].includes(defaultAdStatus())||defaultAdLinkedToArchivedStore());
+  const companyReadOnly=adTarget==='company'&&(!selectedCompany||selectedCompany.archivedAt!=null||adCompaniesLoading||!adCompaniesLoaded||!!adCompaniesError||adCompanyLoading||!!adCompanyError||(!adCreatingNew&&(!selectedCampaignId||!['draft','active','paused'].includes(selectedCampaign?.status))));
   const storeReadOnly=adTarget==='store'&&(isArchivedStore(currentStore)||!adCreatingNew&&!['draft','active','paused','archived'].includes(selectedCampaign?.status)||selectedCampaign?.status==='archived'||adStoreLoading||!!adStoreError||(!adCreatingNew&&!selectedCampaignId));
-  if(selector)selector.disabled=adSaving||adStatusSaving||adStoresLoading||(adCreatingNew&&adCreateUncertain);
+  const editorReadOnly=companyReadOnly||storeReadOnly;
+  if(selector)selector.disabled=adSaving||adStatusSaving||(adCreatingNew&&adCreateUncertain);
+  if(companySelector)companySelector.disabled=adSaving||adStatusSaving||adCompaniesLoading||!adCompaniesLoaded;
+  if(storeSelector)storeSelector.disabled=adSaving||adStatusSaving||adStoresLoading||(adCreatingNew&&adCreateUncertain);
   if(publicPageButton)publicPageButton.disabled=adSaving||adStatusSaving;
   document.querySelectorAll('.store-campaign-row,.store-campaign-add').forEach(el=>{el.disabled=adSaving||adStatusSaving||(adCreatingNew&&adCreateUncertain)||el.classList.contains('store-campaign-add')&&(adStoreLoading||!!adStoreError||isArchivedStore(currentStore)||currentStore?.status!=='稼働中');});
-  document.querySelectorAll('[data-ad-status-campaign]').forEach(el=>{el.disabled=adSaving||adStatusSaving||globalReadOnly||storeReadOnly;el.textContent=adStatusSaving?'処理中…':el.dataset.adStatusLabel||'';});
+  document.querySelectorAll('[data-ad-status-campaign],[data-company-ad-status-campaign]').forEach(el=>{el.disabled=adSaving||adStatusSaving||el.hasAttribute('data-ad-status-campaign')&&(globalReadOnly||storeReadOnly);el.textContent=adStatusSaving?'処理中…':el.dataset.adStatusLabel||'';});
   if(button){
-    button.disabled=adSaving||adStatusSaving||storeReadOnly||globalReadOnly||(adCreatingNew&&adCreateBlocked);
-    button.textContent=adSaving?'保存中…':adTarget==='global'?'広告内容を保存':adCreatingNew&&adCreateBlocked?'再読み込みして確認':adCreatingNew?'新しい広告を登録':selectedCampaignId?'店舗別広告を保存':'広告を選択してください';
+    button.disabled=adSaving||adStatusSaving||editorReadOnly||globalReadOnly||(adTarget==='store'&&adCreatingNew&&adCreateBlocked);
+    button.textContent=adSaving?'保存中…':adTarget==='global'?'広告内容を保存':adCreatingNew&&adCreateBlocked?'再読み込みして確認':adCreatingNew?adTarget==='company'?'新しい企業広告を登録':'新しい広告を登録':selectedCampaignId?adTarget==='company'?'企業別広告を保存':'店舗別広告を保存':'広告を選択してください';
   }
   document.querySelectorAll('#aStore,#aTitle,#aBody,#aStart,#aEnd,#aLink,#aFilePc,#aFileMobile').forEach(el=>{
     if(adTarget==='global')el.disabled=adSaving||adStatusSaving||globalReadOnly;
-    else el.disabled=adSaving||adStatusSaving||storeReadOnly||(adCreatingNew&&adCreateBlocked)||((el.id==='aFilePc'||el.id==='aFileMobile')&&adCreatingNew&&adCreateUncertain);
+    else el.disabled=adSaving||adStatusSaving||editorReadOnly||(adTarget==='store'&&adCreatingNew&&adCreateBlocked)||((el.id==='aFilePc'||el.id==='aFileMobile')&&adTarget==='store'&&adCreatingNew&&adCreateUncertain);
   });
 }
 function updateAdPcPreviewScale(){
@@ -2100,6 +2259,7 @@ function storeCampaignNameFromTitle(title){
 async function publishAd(){
   if(adSaving||adStatusSaving)return;
   if(adTarget==='global')return publishGlobalAd();
+  if(adTarget==='company')return publishCompanyAd();
   return publishStoreAd();
 }
 function adUploadErrorMessage(target){return target==='pc'?'PC用画像をアップロードできませんでした。もう一度お試しください。':'スマホ用画像をアップロードできませんでした。もう一度お試しください。'}
@@ -2113,6 +2273,68 @@ async function uploadAdImage(file){
     return {url:null,message:response.ok?'画像をアップロードできませんでした。':storeSaveErrorMessage(response.status)};
   }
   return {url:result.url,message:''};
+}
+function companyCampaignSaveError(status,errorCode=''){
+  if(errorCode==='company_not_found'||status===404)return '企業または広告が見つかりません。企業広告一覧を再読み込みしてください。';
+  if(errorCode==='company_archived')return 'アーカイブ済み企業には広告を保存できません。';
+  if(errorCode==='company_campaign_active_conflict')return 'この企業には公開中の広告があります。今回は状態を変更せず、入力内容を保持しました。';
+  if(status===400)return '入力内容を確認してください。タイトルと掲載期間を確認してください。';
+  if(status===409)return '現在の状態では保存できません。広告一覧を再読み込みして確認してください。';
+  if(status===413)return '送信サイズが上限を超えています。画像を小さくしてください。';
+  return '保存できませんでした。時間をおいて再度お試しください。';
+}
+async function publishCompanyAd(){
+  if(adTarget!=='company'||adSaving||adStatusSaving)return;
+  const company=adCompanies.find(item=>String(item.id)===String(adCompanyId));
+  if(!company||company.archivedAt!=null){setAdSaveFeedback('企業を確認できません。通常の企業を選択してください。');return;}
+  if(adCompaniesLoading||!adCompaniesLoaded||adCompaniesError||adCompanyLoading||adCompanyError){setAdSaveFeedback('企業広告の状態を確認できません。再読み込みしてください。');return;}
+  const isCreate=adCreatingNew===true,isUpdate=!isCreate&&!!selectedCampaignId;
+  const campaign=isUpdate?adCompanyCampaigns.find(item=>String(item.campaignId)===String(selectedCampaignId)&&String(item.companyId)===String(adCompanyId)):null;
+  if(!isCreate&&!campaign){setAdSaveFeedback('編集する企業広告を確認できません。一覧から選択してください。');return;}
+  if(campaign&&(!['draft','active','paused'].includes(campaign.status)||campaign.status==='archived')){setAdSaveFeedback('この広告は閲覧のみ可能です。');return;}
+  const title=document.getElementById('aTitle')?.value||'',body=document.getElementById('aBody')?.value||'';
+  const startsOn=document.getElementById('aStart')?.value||null,endsOn=document.getElementById('aEnd')?.value||null;
+  const landingUrl=document.getElementById('aLink')?.value||'';
+  const validation=validateStoreAd({title,startsOn,endsOn});if(validation){setAdSaveFeedback(validation);return;}
+  const pcFile=document.getElementById('aFilePc')?.files?.[0]||null,mobileFile=document.getElementById('aFileMobile')?.files?.[0]||null;
+  const companyId=String(adCompanyId),campaignId=String(selectedCampaignId||'');
+  const requestSeq=++adCompanyRequestSeq;
+  const isCurrent=()=>adTarget==='company'&&String(adCompanyId)===companyId&&adCompanyRequestSeq===requestSeq&&isAdminRoute('ads');
+  adSaveError='';setAdSaveFeedback('');adSaving=true;updateAdSavingUI();
+  try{
+    let mediaUrl=isUpdate?(typeof campaign.mediaUrl==='string'?campaign.mediaUrl:''):'';
+    let mediaUrlMobile=isUpdate?(typeof campaign.mediaUrlMobile==='string'?campaign.mediaUrlMobile:''):'';
+    let uploadFailed=false;
+    for(const [file,target] of [[pcFile,'pc'],[mobileFile,'mobile']]){
+      if(!file)continue;
+      let uploaded;try{uploaded=await uploadAdImage(file);}catch(_){if(isCurrent())setAdUploadError(target);uploadFailed=true;continue;}
+      if(!uploaded.url){if(isCurrent())setAdUploadError(target);uploadFailed=true;continue;}
+      if(isCurrent())clearAdUploadError(target);
+      if(target==='pc')mediaUrl=uploaded.url;else mediaUrlMobile=uploaded.url;
+    }
+    if(uploadFailed)return;
+    const status=isCreate?'draft':campaign.status;
+    if(!['draft','active','paused'].includes(status)){setAdSaveFeedback('広告状態を確認できないため保存できません。一覧を再読み込みしてください。');return;}
+    const payload={name:isUpdate&&typeof campaign.name==='string'&&campaign.name.trim()?campaign.name:storeCampaignNameFromTitle(title),status,startsOn,endsOn,title,body,landingUrl,mediaUrl,mediaUrlMobile,published:status==='active'};
+    const base=`/api/admin/companies/${encodeURIComponent(companyId)}/campaigns`;
+    const url=isUpdate?`${base}/${encodeURIComponent(campaignId)}`:base;
+    const response=await apiFetch(url,{method:isUpdate?'PUT':'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+    if(!response.ok){let errorCode='';try{const error=await response.json();errorCode=error?.error||error?.detail||'';}catch(_){}if(isCurrent())setAdSaveFeedback(companyCampaignSaveError(response.status,errorCode));return;}
+    let result={};try{result=await response.json();}catch(_){}
+    const savedCampaignId=String(result?.campaign?.campaignId||result?.campaignId||campaignId);
+    if(!savedCampaignId){if(isCurrent())setAdSaveFeedback('保存結果を確認できません。企業広告一覧を再読み込みしてください。');return;}
+    const localSavedCampaign={...(campaign||{}),...(result?.campaign||{}),campaignId:savedCampaignId,name:payload.name,status:payload.status,startsOn:payload.startsOn,endsOn:payload.endsOn,title:payload.title,body:payload.body,landingUrl:payload.landingUrl,mediaUrl:payload.mediaUrl,mediaUrlMobile:payload.mediaUrlMobile,published:payload.published,scope:'company',companyId};
+    const applyLocalCompanySave=()=>{if(!isCurrent())return;adCompanyCampaigns=[...adCompanyCampaigns.filter(item=>String(item.campaignId)!==savedCampaignId),localSavedCampaign];adCreatingNew=false;selectedCampaignId=savedCampaignId;adCampaign=localSavedCampaign;adCompanyError='';adSaveError='保存しましたが、企業広告一覧を更新できませんでした。最新状態を再確認してください。';setAdminRouteHash(buildAdminHash('ads',{company:companyId}));clearAdLocalPreviewUrls();renderAds();resetAdEditorBaseline();toast('保存しましたが、企業広告一覧を再取得できませんでした',{type:'error'});};
+    const refreshed=await companyApiFetch(base);
+    if(!refreshed.ok){applyLocalCompanySave();return;}
+    let refreshedData;try{refreshedData=await refreshed.json();}catch(_){applyLocalCompanySave();return;}
+    if(!Array.isArray(refreshedData.campaigns)){applyLocalCompanySave();return;}
+    if(!isCurrent())return;
+    adCompanyCampaigns=refreshedData.campaigns.filter(item=>item&&item.scope==='company'&&String(item.companyId)===companyId);
+    if(!adCompanyCampaigns.some(item=>String(item.campaignId)===savedCampaignId)){adCompanyCampaigns.push(localSavedCampaign);}
+    clearAdLocalPreviewUrls();adCreatingNew=false;selectedCampaignId=savedCampaignId;adCampaign=adCompanyCampaigns.find(item=>String(item.campaignId)===savedCampaignId)||null;adCompanyError='';adSaveError='';setAdminRouteHash(buildAdminHash('ads',{company:companyId}));renderAds();resetAdEditorBaseline();toast('保存しました',{type:'success'});
+  }catch(_){if(isCurrent())setAdSaveFeedback('保存できませんでした。入力内容を保持しています。時間をおいて再度お試しください。');}
+  finally{adSaving=false;if(isAdminRoute('ads'))updateAdSavingUI();}
 }
 async function publishGlobalAd(){
   if(adSaving||adStatusSaving||!['draft','active','paused'].includes(defaultAdStatus())||defaultAdLinkedToArchivedStore())return;
@@ -2269,6 +2491,63 @@ function campaignStatusErrorMessage(status,errorCode=''){
   if(status===400)return '指定された広告状態を確認してください。';
   if(status>=500)return 'サーバーで処理できませんでした。時間をおいて再度ご確認ください。';
   return '広告状態を変更できませんでした。';
+}
+function companyCampaignStatusErrorMessage(status,errorCode=''){
+  if(errorCode==='company_campaign_active_conflict')return 'この企業にはすでに公開中の企業広告があります。先に現在の企業広告を停止してから公開してください。';
+  if(errorCode==='company_archived')return 'この企業はアーカイブ済みのため公開できません。';
+  if(errorCode==='company_not_found')return '企業が見つかりません。企業一覧を再読み込みしてください。';
+  if(status===404)return '企業広告が見つかりません。企業広告一覧を再読み込みしてください。';
+  if(status===409)return '現在の状態ではこの操作を実行できません。企業広告一覧を再読み込みしてください。';
+  if(status===400)return '指定された企業広告の状態を確認してください。';
+  if(status>=500)return 'サーバーで処理できませんでした。時間をおいて再度ご確認ください。';
+  return '企業広告の状態を変更できませんでした。';
+}
+async function reloadCompanyCampaignAfterStatus(companyId,campaignId){
+  const id=String(companyId),campaignKey=String(campaignId);
+  const response=await companyApiFetch(`/api/admin/companies/${encodeURIComponent(id)}/campaigns`);
+  if(!response.ok)return false;
+  const payload=await response.json();
+  if(!Array.isArray(payload.campaigns))return false;
+  const campaigns=payload.campaigns.filter(item=>item&&item.scope==='company'&&String(item.companyId)===id);
+  const campaign=campaigns.find(item=>String(item.campaignId)===campaignKey);
+  if(!campaign)return false;
+  if(isAdminRoute('ads')&&adTarget==='company'&&String(adCompanyId)===id){
+    adCompanyCampaigns=campaigns;adCreatingNew=false;selectedCampaignId=campaignKey;adCampaign=campaign;adCompanyLoading=false;adCompanyError='';adSaveError='';
+    clearAdLocalPreviewUrls();renderAds();resetAdEditorBaseline();
+  }
+  return true;
+}
+async function changeCompanyCampaignStatus(campaignId,nextStatus){
+  if(adSaving||adStatusSaving||adTarget!=='company'||String(selectedCampaignId)!==String(campaignId))return;
+  const companyId=String(adCompanyId??''),campaignKey=String(campaignId);
+  const company=adCompanies.find(item=>String(item.id)===companyId);
+  const campaign=adCompanyCampaigns.find(item=>String(item.campaignId)===campaignKey&&String(item.companyId)===companyId);
+  if(!company||!campaign||!['draft','active','paused'].includes(campaign.status))return;
+  const current=campaign.status;
+  const permitted=current==='draft'&&nextStatus==='active'||current==='active'&&nextStatus==='paused'||current==='paused'&&nextStatus==='active'||nextStatus==='archived';
+  if(!permitted)return;
+  if(nextStatus==='active'&&company.archivedAt!=null){toast('この企業はアーカイブ済みのため公開できません。',{type:'error'});return;}
+  const actionMessage=nextStatus==='active'?(current==='paused'?'この企業広告を再開しますか？\nこの企業に所属する全店舗で最優先広告として配信されます。':'この企業広告を公開しますか？\nこの企業に所属する全店舗で最優先広告として配信されます。'):nextStatus==='paused'?'この企業広告を停止しますか？\n停止後は各店舗の店舗別広告、なければ全店舗共通広告へ切り替わります。':'この企業広告をアーカイブしますか？';
+  if(!confirm(actionMessage))return;
+  if(!confirmDiscardAdChanges({message:'未保存の変更があります。破棄して広告の状態変更を続けますか？'}))return;
+  adStatusSaving=true;updateAdSavingUI();
+  let succeeded=false,reloadSucceeded=false,errorMessage='';
+  try{
+    const response=await companyApiFetch(`/api/admin/companies/${encodeURIComponent(companyId)}/campaigns/${encodeURIComponent(campaignKey)}/status`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({status:nextStatus})});
+    let result={};try{result=await response.json();}catch(_){}
+    if(!response.ok)errorMessage=companyCampaignStatusErrorMessage(response.status,result?.error||result?.detail||'');
+    else succeeded=true;
+    reloadSucceeded=await reloadCompanyCampaignAfterStatus(companyId,campaignKey);
+  }catch(_){
+    errorMessage='通信結果を確認できません。企業広告一覧を再取得して確認してください。';
+    try{reloadSucceeded=await reloadCompanyCampaignAfterStatus(companyId,campaignKey);}catch(__){reloadSucceeded=false;}
+  }finally{
+    adStatusSaving=false;if(isAdminRoute('ads'))updateAdSavingUI();
+  }
+  if(!succeeded){toast(errorMessage||'企業広告の状態を変更できませんでした。',{type:'error'});return;}
+  if(!reloadSucceeded){toast('状態変更後の企業広告一覧を再取得できません。画面を再読み込みしてください。',{type:'error'});return;}
+  const successMessage={active:current==='draft'?'企業広告を公開しました':'企業広告を再開しました',paused:'企業広告を停止しました',archived:'企業広告をアーカイブしました'}[nextStatus];
+  toast(successMessage||'企業広告の状態を更新しました',{type:'success'});
 }
 async function reloadCampaignAfterStatus(campaignId,target,storeId){
   if(target==='default'){

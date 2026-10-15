@@ -33,6 +33,18 @@ class StoreCampaignIdempotencyMismatchError(Exception):
     """Raised when an idempotency key is reused for another store or payload."""
 
 
+class CompanyArchivedError(Exception):
+    """Raised when an archived company cannot receive an active campaign."""
+
+
+class CompanyCampaignActiveConflictError(Exception):
+    """Raised when a company already has an active company campaign."""
+
+    def __init__(self, active_campaign_id=None):
+        super().__init__("company already has an active campaign")
+        self.active_campaign_id = active_campaign_id
+
+
 class CompanyCodeConflictError(Exception):
     """Raised when a company code is already assigned to another company."""
 
@@ -612,7 +624,8 @@ def get_campaigns_for_store(store_id):
         return []
     with pool().connection() as conn:
         rows = conn.execute(
-            "SELECT c.id AS campaign_id, c.ad_id, c.name AS campaign_name, "
+            "SELECT c.id AS campaign_id, c.ad_id, c.scope, c.company_id, "
+            "c.name AS campaign_name, "
             "c.starts_on, c.ends_on, a.starts_on AS ad_starts_on, "
             "a.ends_on AS ad_ends_on, c.status AS campaign_status, "
             "a.title, a.body, a.landing_url, a.media_url, "
@@ -628,15 +641,173 @@ def get_campaigns_for_store(store_id):
     return [dict(row) for row in rows]
 
 
+
+def _select_preferred_public_campaign(candidates):
+    """Choose one candidate at the highest scope, failing closed on ambiguity."""
+    priorities = {"company": 1, "store": 2, "global": 3}
+    eligible = [row for row in candidates if row.get("scope") in priorities]
+    if not eligible:
+        return None
+    priority = min(priorities[row["scope"]] for row in eligible)
+    preferred = [row for row in eligible if priorities[row["scope"]] == priority]
+    return preferred[0] if len(preferred) == 1 else None
+
+
+def _public_delivery_rows(conn, public_code, delivery_date):
+    """Read one store and all currently eligible, explicitly scoped ads."""
+    return conn.execute(
+        "WITH target_store AS MATERIALIZED ("
+        "SELECT id, company_id, public_code, name, status, archived_at "
+        "FROM stores WHERE public_code = %s"
+        "), eligible AS ("
+        "SELECT 1 AS priority, 'company'::text AS scope, c.company_id, "
+        "c.id AS campaign_id, c.ad_id, c.name AS campaign_name, "
+        "c.status AS campaign_status, c.starts_on, c.ends_on, "
+        "a.starts_on AS ad_starts_on, a.ends_on AS ad_ends_on, "
+        "a.title, a.body, a.landing_url, a.media_url, "
+        "COALESCE(a.media_url_mobile, '') AS media_url_mobile, a.published "
+        "FROM target_store s JOIN companies co ON co.id = s.company_id "
+        "JOIN campaigns c ON c.scope = 'company' AND c.company_id = co.id "
+        "JOIN ads a ON a.id = c.ad_id "
+        "WHERE co.archived_at IS NULL AND s.status <> '停止中' "
+        "AND s.archived_at IS NULL AND c.status = 'active' AND a.published IS TRUE "
+        "AND (c.starts_on IS NULL OR c.starts_on <= %s) "
+        "AND (c.ends_on IS NULL OR c.ends_on >= %s) "
+        "AND (a.starts_on IS NULL OR a.starts_on <= %s) "
+        "AND (a.ends_on IS NULL OR a.ends_on >= %s) "
+        "UNION ALL "
+        "SELECT 2 AS priority, 'store'::text AS scope, c.company_id, "
+        "c.id AS campaign_id, c.ad_id, c.name AS campaign_name, "
+        "c.status AS campaign_status, c.starts_on, c.ends_on, "
+        "a.starts_on AS ad_starts_on, a.ends_on AS ad_ends_on, "
+        "a.title, a.body, a.landing_url, a.media_url, "
+        "COALESCE(a.media_url_mobile, '') AS media_url_mobile, a.published "
+        "FROM target_store s JOIN campaign_stores cs ON cs.store_id = s.id "
+        "JOIN campaigns c ON c.id = cs.campaign_id AND c.scope = 'store' "
+        "AND c.company_id IS NULL JOIN ads a ON a.id = c.ad_id "
+        "WHERE s.status <> '停止中' AND s.archived_at IS NULL "
+        "AND c.status = 'active' AND a.published IS TRUE "
+        "AND (a.store_id IS NULL OR a.store_id = s.id) "
+        "AND (c.starts_on IS NULL OR c.starts_on <= %s) "
+        "AND (c.ends_on IS NULL OR c.ends_on >= %s) "
+        "AND (a.starts_on IS NULL OR a.starts_on <= %s) "
+        "AND (a.ends_on IS NULL OR a.ends_on >= %s) "
+        "UNION ALL "
+        "SELECT 3 AS priority, 'global'::text AS scope, c.company_id, "
+        "c.id AS campaign_id, c.ad_id, c.name AS campaign_name, "
+        "c.status AS campaign_status, c.starts_on, c.ends_on, "
+        "a.starts_on AS ad_starts_on, a.ends_on AS ad_ends_on, "
+        "a.title, a.body, a.landing_url, a.media_url, "
+        "COALESCE(a.media_url_mobile, '') AS media_url_mobile, a.published "
+        "FROM target_store s JOIN campaigns c ON c.id = 'default' "
+        "AND c.scope = 'global' AND c.company_id IS NULL "
+        "JOIN ads a ON a.id = c.ad_id AND a.id = 'main' "
+        "WHERE s.status <> '停止中' AND s.archived_at IS NULL "
+        "AND a.store_id IS NULL AND NOT EXISTS ("
+        "SELECT 1 FROM campaign_stores cs WHERE cs.campaign_id = c.id) "
+        "AND c.status = 'active' AND a.published IS TRUE "
+        "AND (c.starts_on IS NULL OR c.starts_on <= %s) "
+        "AND (c.ends_on IS NULL OR c.ends_on >= %s) "
+        "AND (a.starts_on IS NULL OR a.starts_on <= %s) "
+        "AND (a.ends_on IS NULL OR a.ends_on >= %s)"
+        ") SELECT s.id AS store_id, s.company_id AS store_company_id, "
+        "s.public_code, s.name AS store_name, s.status AS store_status, "
+        "s.archived_at AS store_archived_at, e.priority, e.scope, e.company_id, "
+        "e.campaign_id, e.ad_id, e.campaign_name, e.campaign_status, "
+        "e.starts_on, e.ends_on, e.ad_starts_on, e.ad_ends_on, e.title, e.body, "
+        "e.landing_url, e.media_url, e.media_url_mobile, e.published "
+        "FROM target_store s LEFT JOIN eligible e ON TRUE "
+        "ORDER BY e.priority, e.campaign_id",
+        (public_code, delivery_date, delivery_date, delivery_date, delivery_date,
+         delivery_date, delivery_date, delivery_date, delivery_date,
+         delivery_date, delivery_date, delivery_date, delivery_date),
+    ).fetchall()
+
+
+def get_public_ad_for_store(public_code, delivery_date):
+    """Return the resolved COMPANY > STORE > GLOBAL delivery for a public store."""
+    if (not isinstance(public_code, str) or not _PUBLIC_CODE_RE.fullmatch(public_code)
+            or not isinstance(delivery_date, date) or isinstance(delivery_date, datetime)):
+        return None
+    with pool().connection() as conn:
+        rows = _public_delivery_rows(conn, public_code, delivery_date)
+    if not rows:
+        return None
+    store = {
+        "id": rows[0]["store_id"],
+        "company_id": rows[0]["store_company_id"],
+        "public_code": rows[0]["public_code"],
+        "name": rows[0]["store_name"],
+        "status": rows[0]["store_status"],
+        "archived_at": rows[0]["store_archived_at"],
+    }
+    candidates = [dict(row) for row in rows if row.get("campaign_id") is not None]
+    return {"store": store, "campaign": _select_preferred_public_campaign(candidates)}
+
+def get_campaigns_for_company(company_id):
+    """Return all explicitly company-scoped campaigns for one company."""
+    if company_id is None or not str(company_id).strip():
+        return []
+    with pool().connection() as conn:
+        rows = conn.execute(
+            "SELECT c.id AS campaign_id, c.ad_id, c.scope, c.company_id, "
+            "c.name AS campaign_name, c.starts_on, c.ends_on, "
+            "a.starts_on AS ad_starts_on, a.ends_on AS ad_ends_on, "
+            "c.status AS campaign_status, a.title, a.body, a.landing_url, "
+            "a.media_url, COALESCE(a.media_url_mobile, '') AS media_url_mobile, "
+            "a.published FROM campaigns c JOIN ads a ON a.id = c.ad_id "
+            "WHERE c.scope = 'company' AND c.company_id = %s "
+            "ORDER BY c.created_at, c.id",
+            (str(company_id),),
+        ).fetchall()
+    return [dict(row) for row in rows]
+
+
+def count_active_company_campaigns(company_id, exclude_campaign_id=None):
+    """Count active company campaigns for a future API preflight check.
+
+    The partial unique index is the concurrency-safe guarantee; this helper
+    makes the expected conflict clear before a status transition is attempted.
+    """
+    if company_id is None or not str(company_id).strip():
+        return 0
+    query = (
+        "SELECT count(*) AS campaign_count FROM campaigns "
+        "WHERE scope = 'company' AND company_id = %s AND status = 'active'"
+    )
+    params = [str(company_id)]
+    if exclude_campaign_id is not None:
+        query += " AND id <> %s"
+        params.append(str(exclude_campaign_id))
+    with pool().connection() as conn:
+        row = conn.execute(query, tuple(params)).fetchone()
+    return int(row["campaign_count"] or 0) if row else 0
+
+
+def campaign_scope(campaign):
+    """Return a valid explicit scope, or None for unclassified records."""
+    if not isinstance(campaign, dict):
+        return None
+    scope = campaign.get("scope")
+    company_id = campaign.get("company_id")
+    if scope == "company":
+        return scope if company_id is not None else None
+    if scope in {"global", "store"}:
+        return scope if company_id is None else None
+    return None
+
+
 def get_default_ad_delivery_state():
     """Return the canonical default-campaign state used for public delivery."""
     with pool().connection() as conn:
         row = conn.execute(
-            "SELECT c.status AS campaign_status, c.starts_on, c.ends_on, "
+            "SELECT c.scope, c.company_id, c.status AS campaign_status, "
+            "c.starts_on, c.ends_on, "
             "a.published, a.starts_on AS ad_starts_on, a.ends_on AS ad_ends_on, "
             "a.store_id, s.id AS target_store_id, s.status AS store_status, "
             "s.archived_at, "
-            "(a.store_id IS NULL AND NOT EXISTS ("
+            "(c.scope = 'global' AND c.company_id IS NULL "
+            "AND a.store_id IS NULL AND NOT EXISTS ("
             "SELECT 1 FROM campaign_stores cs WHERE cs.campaign_id = c.id"
             ")) AS is_global "
             "FROM campaigns c JOIN ads a ON a.id = c.ad_id "
@@ -919,7 +1090,8 @@ def get_admin_campaigns_for_store(store_id):
         return []
     with pool().connection() as conn:
         rows = conn.execute(
-            "SELECT c.id AS campaign_id, c.ad_id, c.name AS campaign_name, "
+            "SELECT c.id AS campaign_id, c.ad_id, c.scope, c.company_id, "
+            "c.name AS campaign_name, "
             "c.status AS campaign_status, c.starts_on, c.ends_on, "
             "c.created_at AS campaign_created_at, c.updated_at AS campaign_updated_at, "
             "a.title, a.body, a.landing_url, a.media_url, "
@@ -962,8 +1134,9 @@ def create_store_campaign(store_id, campaign_id, ad_id, campaign):
                  campaign["published"]),
             )
             conn.execute(
-                "INSERT INTO campaigns (id, ad_id, name, starts_on, ends_on, status) "
-                "VALUES (%s, %s, %s, %s, %s, %s)",
+                "INSERT INTO campaigns "
+                "(id, ad_id, scope, company_id, name, starts_on, ends_on, status) "
+                "VALUES (%s, %s, 'store', NULL, %s, %s, %s, %s)",
                 (campaign_id, ad_id, campaign["name"], campaign["starts_on"],
                  campaign["ends_on"], campaign["status"]),
             )
@@ -1059,8 +1232,9 @@ def create_store_campaign_idempotent(
                  campaign.get("media_url_mobile") or "", campaign["published"]),
             )
             conn.execute(
-                "INSERT INTO campaigns (id, ad_id, name, starts_on, ends_on, status) "
-                "VALUES (%s, %s, %s, %s, %s, %s)",
+                "INSERT INTO campaigns "
+                "(id, ad_id, scope, company_id, name, starts_on, ends_on, status) "
+                "VALUES (%s, %s, 'store', NULL, %s, %s, %s, %s)",
                 (campaign_id, ad_id, campaign["name"], campaign["starts_on"],
                  campaign["ends_on"], campaign["status"]),
             )
@@ -1152,10 +1326,225 @@ def update_store_campaign(store_id, campaign_id, campaign):
     return _admin_campaign_result(current["campaign_id"], current["ad_id"], campaign)
 
 
+def get_active_company_campaign(company_id):
+    """Return the active company campaign for one company, if present."""
+    if company_id is None or not str(company_id).strip():
+        return None
+    with pool().connection() as conn:
+        row = conn.execute(
+            "SELECT c.id AS campaign_id, c.ad_id, c.scope, c.company_id, "
+            "c.name AS campaign_name, c.starts_on, c.ends_on, "
+            "a.starts_on AS ad_starts_on, a.ends_on AS ad_ends_on, "
+            "c.status AS campaign_status, a.title, a.body, a.landing_url, "
+            "a.media_url, COALESCE(a.media_url_mobile, '') AS media_url_mobile, "
+            "a.published FROM campaigns c JOIN ads a ON a.id = c.ad_id "
+            "WHERE c.scope = 'company' AND c.company_id = %s AND c.status = 'active' "
+            "ORDER BY c.created_at, c.id LIMIT 1",
+            (str(company_id),),
+        ).fetchone()
+    return dict(row) if row else None
+
+
+def _active_company_campaign_id(conn, company_id, exclude_campaign_id=None):
+    query = (
+        "SELECT id FROM campaigns "
+        "WHERE scope = 'company' AND company_id = %s AND status = 'active'"
+    )
+    params = [str(company_id)]
+    if exclude_campaign_id is not None:
+        query += " AND id <> %s"
+        params.append(str(exclude_campaign_id))
+    query += " ORDER BY created_at, id LIMIT 1 FOR UPDATE"
+    row = conn.execute(query, tuple(params)).fetchone()
+    return str(row["id"]) if row else None
+
+
+def _ensure_company_campaign_active_available(conn, company_id, exclude_campaign_id=None):
+    active_id = _active_company_campaign_id(conn, company_id, exclude_campaign_id)
+    if active_id is not None:
+        raise CompanyCampaignActiveConflictError(active_id)
+
+
+def _company_campaign_unique_conflict(exc, company_id, exclude_campaign_id=None):
+    if getattr(getattr(exc, "diag", None), "constraint_name", None) != (
+        "campaigns_one_active_company_idx"
+    ):
+        raise exc
+    active = get_active_company_campaign(company_id)
+    active_id = active.get("campaign_id") if active else None
+    if active_id is not None and str(active_id) == str(exclude_campaign_id):
+        active_id = None
+    raise CompanyCampaignActiveConflictError(active_id) from exc
+
+
+def create_company_campaign(company_id, campaign_id, ad_id, campaign):
+    """Atomically create one ad and campaign owned by a company."""
+    if campaign_id == "default" or ad_id == "main":
+        raise ValueError("reserved identifiers")
+    _validate_campaign_for_write(campaign)
+    company_id = str(company_id)
+    company_campaign = dict(campaign)
+    company_campaign.update(scope="company", company_id=company_id)
+    try:
+        with pool().connection() as conn:
+            with conn.transaction():
+                company = conn.execute(
+                    "SELECT id, archived_at FROM companies WHERE id = %s FOR UPDATE",
+                    (company_id,),
+                ).fetchone()
+                if not company:
+                    return None
+                if company.get("archived_at") is not None:
+                    raise CompanyArchivedError("company_archived")
+                if campaign["status"] == "active":
+                    _ensure_company_campaign_active_available(conn, company_id)
+                conn.execute(
+                    "INSERT INTO ads "
+                    "(id, store_id, title, body, landing_url, media_url, media_url_mobile, published) "
+                    "VALUES (%s, NULL, %s, %s, %s, %s, %s, %s)",
+                    (ad_id, campaign["title"], campaign["body"],
+                     campaign["landing_url"], campaign["media_url"],
+                     campaign.get("media_url_mobile") or "", campaign["published"]),
+                )
+                conn.execute(
+                    "INSERT INTO campaigns "
+                    "(id, ad_id, scope, company_id, name, starts_on, ends_on, status) "
+                    "VALUES (%s, %s, 'company', %s, %s, %s, %s, %s)",
+                    (campaign_id, ad_id, company_id, campaign["name"],
+                     campaign["starts_on"], campaign["ends_on"], campaign["status"]),
+                )
+    except psycopg.errors.UniqueViolation as exc:
+        _company_campaign_unique_conflict(exc, company_id)
+    return _admin_campaign_result(campaign_id, ad_id, company_campaign)
+
+
+def update_company_campaign(company_id, campaign_id, campaign):
+    """Update only a campaign owned by the requested company."""
+    company_id, campaign_id = str(company_id), str(campaign_id)
+    if campaign_id == "default":
+        return None
+    _validate_campaign_for_write(campaign)
+    try:
+        with pool().connection() as conn:
+            with conn.transaction():
+                company = conn.execute(
+                    "SELECT id, archived_at FROM companies WHERE id = %s FOR UPDATE",
+                    (company_id,),
+                ).fetchone()
+                if not company:
+                    return None
+                current = conn.execute(
+                    "SELECT c.id AS campaign_id, c.ad_id, c.scope, c.company_id, "
+                    "c.status, c.name AS campaign_name, c.starts_on AS campaign_starts_on, "
+                    "c.ends_on AS campaign_ends_on, a.title, a.body, a.landing_url, "
+                    "a.media_url, COALESCE(a.media_url_mobile, '') AS media_url_mobile, "
+                    "a.published FROM campaigns c JOIN ads a ON a.id = c.ad_id "
+                    "WHERE c.id = %s AND c.scope = 'company' AND c.company_id = %s "
+                    "FOR UPDATE OF c, a",
+                    (campaign_id, company_id),
+                ).fetchone()
+                if not current:
+                    return None
+                if campaign["status"] != current["status"]:
+                    raise CampaignStatusTransitionError(
+                        "campaign status must use the status endpoint"
+                    )
+                if current["status"] == "archived":
+                    unchanged = (
+                        campaign["name"] == current["campaign_name"]
+                        and campaign["starts_on"] == current["campaign_starts_on"]
+                        and campaign["ends_on"] == current["campaign_ends_on"]
+                        and campaign["title"] == current["title"]
+                        and campaign["body"] == current["body"]
+                        and campaign["landing_url"] == current["landing_url"]
+                        and campaign["media_url"] == current["media_url"]
+                        and campaign.get("media_url_mobile", current["media_url_mobile"] or "")
+                            == (current["media_url_mobile"] or "")
+                        and campaign["published"] is False
+                    )
+                    if not unchanged:
+                        raise CampaignArchivedError("campaign archive must not change content")
+                if current["status"] == "active":
+                    _ensure_company_campaign_active_available(
+                        conn, company_id, exclude_campaign_id=campaign_id
+                    )
+                conn.execute(
+                    "UPDATE campaigns SET name = %s, starts_on = %s, ends_on = %s, "
+                    "updated_at = now() WHERE id = %s",
+                    (campaign["name"], campaign["starts_on"], campaign["ends_on"], campaign_id),
+                )
+                if "media_url_mobile" in campaign:
+                    conn.execute(
+                        "UPDATE ads SET title = %s, body = %s, landing_url = %s, "
+                        "media_url = %s, media_url_mobile = %s, published = %s, "
+                        "updated_at = now() WHERE id = %s",
+                        (campaign["title"], campaign["body"], campaign["landing_url"],
+                         campaign["media_url"], campaign.get("media_url_mobile") or "",
+                         campaign["published"], current["ad_id"]),
+                    )
+                else:
+                    campaign["media_url_mobile"] = current["media_url_mobile"] or ""
+                    conn.execute(
+                        "UPDATE ads SET title = %s, body = %s, landing_url = %s, "
+                        "media_url = %s, published = %s, updated_at = now() WHERE id = %s",
+                        (campaign["title"], campaign["body"], campaign["landing_url"],
+                         campaign["media_url"], campaign["published"], current["ad_id"]),
+                    )
+    except psycopg.errors.UniqueViolation as exc:
+        _company_campaign_unique_conflict(exc, company_id, campaign_id)
+    result = dict(campaign)
+    result.update(scope="company", company_id=company_id)
+    return _admin_campaign_result(campaign_id, current["ad_id"], result)
+
+
+def change_company_campaign_status(company_id, campaign_id, requested_status):
+    """Apply existing lifecycle transitions to one company's campaign."""
+    company_id, campaign_id = str(company_id), str(campaign_id)
+    try:
+        with pool().connection() as conn:
+            with conn.transaction():
+                company = conn.execute(
+                    "SELECT id, archived_at FROM companies WHERE id = %s FOR UPDATE",
+                    (company_id,),
+                ).fetchone()
+                if not company:
+                    return None
+                campaign = conn.execute(
+                    "SELECT c.id, c.ad_id, c.status FROM campaigns c "
+                    "WHERE c.id = %s AND c.scope = 'company' AND c.company_id = %s "
+                    "FOR UPDATE",
+                    (campaign_id, company_id),
+                ).fetchone()
+                if not campaign:
+                    return None
+                _validate_campaign_status_transition(campaign.get("status"), requested_status)
+                if requested_status == "active":
+                    if company.get("archived_at") is not None:
+                        raise CompanyArchivedError("company_archived")
+                    _ensure_company_campaign_active_available(
+                        conn, company_id, exclude_campaign_id=campaign_id
+                    )
+                published = requested_status == "active"
+                conn.execute(
+                    "UPDATE campaigns SET status = %s, updated_at = now() WHERE id = %s",
+                    (requested_status, campaign_id),
+                )
+                conn.execute(
+                    "UPDATE ads SET published = %s, updated_at = now() WHERE id = %s",
+                    (published, str(campaign["ad_id"])),
+                )
+    except psycopg.errors.UniqueViolation as exc:
+        _company_campaign_unique_conflict(exc, company_id, campaign_id)
+    return {"campaign_id": campaign_id, "status": requested_status,
+            "published": published, "scope": "company", "company_id": company_id}
+
+
 def _admin_campaign_result(campaign_id, ad_id, campaign):
     return {
         "campaign_id": campaign_id,
         "ad_id": ad_id,
+        "scope": campaign.get("scope", "store"),
+        "company_id": campaign.get("company_id"),
         "campaign_name": campaign["name"],
         "campaign_status": campaign["status"],
         "starts_on": campaign["starts_on"],
@@ -1646,9 +2035,11 @@ def save_state(data):
                      campaign_status == "active", has_mobile_media),
                 )
                 conn.execute(
-                    "INSERT INTO campaigns (id, ad_id, name, starts_on, ends_on, status) "
-                    "VALUES (%s, %s, %s, %s, %s, %s) "
-                    "ON CONFLICT (id) DO UPDATE SET ad_id=EXCLUDED.ad_id, name=EXCLUDED.name, "
+                    "INSERT INTO campaigns "
+                    "(id, ad_id, scope, company_id, name, starts_on, ends_on, status) "
+                    "VALUES (%s, %s, 'global', NULL, %s, %s, %s, %s) "
+                    "ON CONFLICT (id) DO UPDATE SET ad_id=EXCLUDED.ad_id, "
+                    "scope='global', company_id=NULL, name=EXCLUDED.name, "
                     "starts_on=EXCLUDED.starts_on, ends_on=EXCLUDED.ends_on, status=EXCLUDED.status, updated_at=now()",
                     (campaign_id, ad_id, ad.get("title", ""), _date(ad.get("start")), _date(ad.get("end")),
                      campaign_status),
@@ -2202,17 +2593,19 @@ def record_event(event_type, store_name, ad_id="main", occurred_at=None, *, lega
                         raise LookupError("store name must resolve to exactly one store")
                     requested_store_id = str(requested_name_rows[0]["id"])
                 campaign = conn.execute(
-                    "SELECT c.id AS campaign_id, c.ad_id, c.status AS campaign_status, "
-                    "c.starts_on, c.ends_on, a.published, "
+                    "SELECT c.id AS campaign_id, c.ad_id, c.scope, c.company_id, "
+                    "c.status AS campaign_status, c.starts_on, c.ends_on, a.published, "
                     "a.starts_on AS ad_starts_on, a.ends_on AS ad_ends_on, "
                     "a.store_id AS target_store_id "
                     "FROM campaigns c JOIN ads a ON a.id = c.ad_id "
                     "WHERE c.id = %s AND a.id = %s FOR UPDATE OF c, a",
                     ("default", str(ad_id)),
                 ).fetchone()
-                if not campaign or not campaign_is_deliverable(
-                    campaign, datetime.now(ZoneInfo("Asia/Tokyo")).date()
-                ):
+                if (not campaign or campaign.get("scope") != "global"
+                        or campaign.get("company_id") is not None
+                        or not campaign_is_deliverable(
+                            campaign, datetime.now(ZoneInfo("Asia/Tokyo")).date()
+                        )):
                     raise AdInactiveError("ad_inactive")
 
                 assignment_rows = conn.execute(
@@ -2291,19 +2684,22 @@ def record_event(event_type, store_name, ad_id="main", occurred_at=None, *, lega
 def record_store_ad_event(
     event_type, public_code, campaign_id, ad_id, delivery_date, store_name=None
 ):
-    """Record a store delivery event only for the exact active assignment.
-
-    The public code, campaign ID, and ad ID are untrusted request values. An
-    INSERT ... SELECT verifies their complete relationship atomically through
-    campaign_stores; ads.store_id is deliberately not consulted.
-    """
+    """Record an event only for the effective public ad at the store's scope."""
     if event_type not in {"impression", "click"}:
         raise ValueError("invalid event type")
     if not isinstance(delivery_date, date) or isinstance(delivery_date, datetime):
         raise ValueError("delivery_date must be a date")
+    if not isinstance(public_code, str) or not _PUBLIC_CODE_RE.fullmatch(public_code):
+        raise ValueError("invalid public code")
+
     occurred_at = datetime.now(timezone.utc)
     with pool().connection() as conn:
         with conn.transaction():
+            # Match the default-campaign lifecycle lock order, then lock the
+            # store and its company so scope changes cannot race attribution.
+            conn.execute(
+                "SELECT id FROM campaigns WHERE id = %s FOR SHARE", ("default",)
+            ).fetchone()
             store = conn.execute(
                 "SELECT id, name, status, company_id, archived_at "
                 "FROM stores WHERE public_code = %s FOR UPDATE",
@@ -2316,56 +2712,57 @@ def record_store_ad_event(
             if store_name not in (None, "", "未設定"):
                 if not isinstance(store_name, str):
                     raise LookupError("invalid store name")
-                # The public code already resolved this exact store ID. The
-                # optional name is only a consistency check, not a selector.
                 if store_name != store.get("name"):
                     raise StoreMismatchError("store_mismatch")
 
-            campaign = conn.execute(
-                "SELECT c.id AS campaign_id, c.ad_id, c.status AS campaign_status, "
-                "c.starts_on, c.ends_on, a.published, a.store_id AS ad_store_id, "
-                "a.starts_on AS ad_starts_on, a.ends_on AS ad_ends_on "
-                "FROM campaign_stores cs "
-                "JOIN campaigns c ON c.id = cs.campaign_id "
-                "JOIN ads a ON a.id = c.ad_id "
-                "JOIN stores s ON s.id = cs.store_id "
-                "WHERE s.public_code = %s AND c.id = %s AND a.id = %s "
-                "AND c.id <> %s FOR UPDATE OF s, cs, c, a",
-                (public_code, campaign_id, ad_id, "default"),
-            ).fetchone()
-            if not campaign:
+            if store.get("company_id") is not None:
+                company = conn.execute(
+                    "SELECT id, archived_at FROM companies WHERE id = %s FOR SHARE",
+                    (str(store["company_id"]),),
+                ).fetchone()
+                if not company:
+                    return False
+
+            rows = _public_delivery_rows(conn, public_code, delivery_date)
+            if not rows or rows[0].get("store_id") is None:
                 return False
-            if (campaign.get("ad_store_id") is not None
-                    and str(campaign["ad_store_id"]) != str(store["id"])):
-                raise StoreMismatchError("store_mismatch")
-            if not campaign_is_deliverable(
-                campaign, delivery_date
-            ):
-                raise AdInactiveError("ad_inactive")
-            row = conn.execute(
+            candidates = [dict(row) for row in rows if row.get("campaign_id") is not None]
+            selected = _select_preferred_public_campaign(candidates)
+            if (selected is None or str(selected["campaign_id"]) != str(campaign_id)
+                    or str(selected["ad_id"]) != str(ad_id)):
+                return False
+
+            locked = conn.execute(
+                "SELECT c.id AS campaign_id, c.ad_id, c.scope, c.company_id, "
+                "c.status AS campaign_status, c.starts_on, c.ends_on, "
+                "a.published, a.starts_on AS ad_starts_on, a.ends_on AS ad_ends_on "
+                "FROM campaigns c JOIN ads a ON a.id = c.ad_id "
+                "WHERE c.id = %s AND a.id = %s FOR SHARE OF c, a",
+                (str(campaign_id), str(ad_id)),
+            ).fetchone()
+            if not locked or locked.get("scope") != selected.get("scope"):
+                return False
+
+            # Re-evaluate after acquiring campaign/ad locks. Store, company and
+            # reserved-global locks serialize all supported scope mutations.
+            rows = _public_delivery_rows(conn, public_code, delivery_date)
+            candidates = [dict(row) for row in rows if row.get("campaign_id") is not None]
+            selected_again = _select_preferred_public_campaign(candidates)
+            if (selected_again is None
+                    or str(selected_again["campaign_id"]) != str(campaign_id)
+                    or str(selected_again["ad_id"]) != str(ad_id)
+                    or not campaign_is_deliverable(locked, delivery_date)):
+                return False
+
+            conn.execute(
                 "INSERT INTO ad_events "
                 "(event_type, store_id, store_name, ad_id, campaign_id, company_id, "
                 "company_attribution_status, occurred_at) "
-                "SELECT %s, s.id, s.name, a.id, c.id, s.company_id, 'captured', %s "
-                "FROM stores s "
-                "JOIN campaign_stores cs ON cs.store_id = s.id "
-                "JOIN campaigns c ON c.id = cs.campaign_id "
-                "JOIN ads a ON a.id = c.ad_id "
-                "WHERE s.public_code = %s AND c.id = %s AND a.id = %s "
-                "AND c.id <> %s "
-                "AND (a.store_id IS NULL OR a.store_id = s.id) "
-                "AND c.status = 'active' AND a.published IS TRUE "
-                "AND s.status <> '停止中' AND s.archived_at IS NULL "
-                "AND (c.starts_on IS NULL OR c.starts_on <= %s) "
-                "AND (c.ends_on IS NULL OR c.ends_on >= %s) "
-                "AND (a.starts_on IS NULL OR a.starts_on <= %s) "
-                "AND (a.ends_on IS NULL OR a.ends_on >= %s) "
-                "RETURNING id",
-                (event_type, occurred_at, public_code, campaign_id, ad_id, "default",
-                 delivery_date, delivery_date, delivery_date, delivery_date),
-            ).fetchone()
-    return row is not None
-
+                "VALUES (%s, %s, %s, %s, %s, %s, 'captured', %s)",
+                (event_type, store["id"], store["name"], str(ad_id), str(campaign_id),
+                 store.get("company_id"), occurred_at),
+            )
+    return True
 
 def record_coupon_event(event, *, legacy_import=False):
     """Persist coupon history separately from impression/click analytics."""

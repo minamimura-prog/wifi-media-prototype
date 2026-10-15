@@ -91,6 +91,8 @@ ALTER TABLE ads
 CREATE TABLE IF NOT EXISTS campaigns (
     id TEXT PRIMARY KEY,
     ad_id TEXT NOT NULL REFERENCES ads(id) ON DELETE CASCADE,
+    scope TEXT,
+    company_id TEXT,
     name TEXT NOT NULL DEFAULT '',
     starts_on DATE,
     ends_on DATE,
@@ -98,6 +100,42 @@ CREATE TABLE IF NOT EXISTS campaigns (
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- Additive campaign-scope foundation. Keep ambiguous legacy campaigns NULL so
+-- they can be reviewed instead of being guessed into a delivery scope.
+ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS scope TEXT;
+ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS company_id TEXT;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conname = 'campaigns_company_id_fkey'
+          AND conrelid = 'campaigns'::regclass
+    ) THEN
+        ALTER TABLE campaigns ADD CONSTRAINT campaigns_company_id_fkey
+            FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE RESTRICT;
+    END IF;
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conname = 'campaigns_scope_company_consistency_check'
+          AND conrelid = 'campaigns'::regclass
+    ) THEN
+        ALTER TABLE campaigns ADD CONSTRAINT campaigns_scope_company_consistency_check
+            CHECK (
+                (scope IS NULL AND company_id IS NULL)
+                OR (scope IN ('global', 'store') AND company_id IS NULL)
+                OR (scope = 'company' AND company_id IS NOT NULL)
+            ) NOT VALID;
+    END IF;
+END $$;
+
+CREATE INDEX IF NOT EXISTS campaigns_company_scope_idx
+    ON campaigns (company_id, status)
+    WHERE scope = 'company' AND company_id IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS campaigns_one_active_company_idx
+    ON campaigns (company_id)
+    WHERE scope = 'company' AND status = 'active' AND company_id IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS coupons (
     id TEXT PRIMARY KEY,
@@ -124,6 +162,25 @@ CREATE TABLE IF NOT EXISTS campaign_stores (
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     PRIMARY KEY (campaign_id, store_id)
 );
+
+-- Preserve only mappings that are explicit in the existing schema. The
+-- reserved default campaign is GLOBAL; campaigns assigned through
+-- campaign_stores are STORE. Unassigned campaigns remain NULL for review.
+UPDATE campaigns
+SET scope = 'global'
+WHERE id = 'default' AND scope IS NULL AND company_id IS NULL;
+
+UPDATE campaigns c
+SET scope = 'store'
+WHERE c.id <> 'default'
+  AND c.scope IS NULL
+  AND c.company_id IS NULL
+  AND EXISTS (
+      SELECT 1 FROM campaign_stores cs WHERE cs.campaign_id = c.id
+  );
+
+CREATE INDEX IF NOT EXISTS campaign_stores_store_campaign_idx
+    ON campaign_stores (store_id, campaign_id);
 
 -- Persistent replay guard for store-campaign creation. Deliberately no foreign
 -- keys: retain the key tombstone if a store/campaign/ad is later deleted so a
