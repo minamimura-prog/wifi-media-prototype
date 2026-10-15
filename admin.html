@@ -1922,7 +1922,7 @@ function displayCampaignPeriod(campaign){
 function renderAds(){
   const isGlobal=adTarget==='global', isCompany=adTarget==='company', isStore=adTarget==='store', store=adStores?.find(x=>String(x.id)===String(adStoreId)), company=adCompanies.find(x=>String(x.id)===String(adCompanyId));
   const archivedStore=isArchivedStore(store);
-  const selectedCampaign=selectedCampaignId===null?null:(isCompany?adCompanyCampaigns:adCampaigns).find(item=>item.campaignId===selectedCampaignId)||null;
+  const selectedCampaign=selectedCampaignId===null?null:(isCompany?adCompanyCampaigns:adCampaigns).find(item=>String(item?.campaignId)===String(selectedCampaignId))||null;
   adCampaign=selectedCampaign;
   const campaign=adCampaign||{};
   const campaignLifecycle=campaignLifecycleStatus(campaign);
@@ -2203,7 +2203,7 @@ function updateAdSavingUI(){
   const storeSelector=document.getElementById('adStoreTarget');
   const publicPageButton=document.querySelector('.ad-secondary');
   const currentStore=adStores?.find(store=>String(store.id)===String(adStoreId));
-  const selectedCampaign=(adTarget==='company'?adCompanyCampaigns:adCampaigns).find(item=>item?.campaignId===selectedCampaignId);
+  const selectedCampaign=(adTarget==='company'?adCompanyCampaigns:adCampaigns).find(item=>String(item?.campaignId)===String(selectedCampaignId));
   const selectedCompany=adCompanies.find(item=>String(item.id)===String(adCompanyId));
   const globalReadOnly=adTarget==='global'&&(!['draft','active','paused'].includes(defaultAdStatus())||defaultAdLinkedToArchivedStore());
   const companyReadOnly=adTarget==='company'&&(!selectedCompany||selectedCompany.archivedAt!=null||adCompaniesLoading||!adCompaniesLoaded||!!adCompaniesError||adCompanyLoading||!!adCompanyError||(!adCreatingNew&&(!selectedCampaignId||!['draft','active','paused'].includes(selectedCampaign?.status))));
