@@ -105,6 +105,24 @@ def _admin_company_campaign_route(path, include_campaign=False, include_status=F
     return company_id, campaign_id
 
 
+def _admin_jack_campaign_route(path, include_campaign=False, include_status=False):
+    parts = path.split("/")
+    if include_status:
+        if (len(parts) != 6 or parts[:3] != ["", "api", "admin"]
+                or parts[3] != "jack-campaigns" or parts[5] != "status"):
+            return None
+    elif include_campaign:
+        if (len(parts) != 5 or parts[:3] != ["", "api", "admin"]
+                or parts[3] != "jack-campaigns"):
+            return None
+    elif path != "/api/admin/jack-campaigns":
+        return None
+    campaign_id = _safe_admin_route_id(parts[4]) if include_campaign or include_status else None
+    if (include_campaign or include_status) and campaign_id is None:
+        return None
+    return campaign_id if include_campaign or include_status else True
+
+
 def _validate_admin_company(payload):
     if not isinstance(payload, dict):
         raise ValueError("invalid payload")
@@ -204,6 +222,25 @@ def _validate_admin_campaign(payload):
     if "mediaUrlMobile" in payload:
         campaign["media_url_mobile"] = payload["mediaUrlMobile"]
     return campaign
+
+
+def _validate_admin_jack_campaign(payload, status):
+    """Validate ad content while ignoring caller-controlled scope and status fields."""
+    if not isinstance(payload, dict):
+        raise ValueError("invalid payload")
+    allowed = {
+        "name", "title", "body", "startsOn", "endsOn", "landingUrl", "mediaUrl",
+        "mediaUrlMobile", "scope", "companyId", "company_id", "storeId", "store_id",
+        "status", "published",
+    }
+    if not set(payload).issubset(allowed):
+        raise ValueError("invalid fields")
+    ad_fields = {key: payload[key] for key in (
+        "name", "title", "body", "startsOn", "endsOn", "landingUrl", "mediaUrl",
+        "mediaUrlMobile",
+    ) if key in payload}
+    ad_fields.update(status=status, published=(status == "active"))
+    return _validate_admin_campaign(ad_fields)
 
 
 def _read_idempotency_key(headers):
@@ -1658,6 +1695,17 @@ class Handler(BaseHTTPRequestHandler):
                 ]})
             except Exception:
                 return self.send_json({"ok": False}, 503)
+        if _admin_jack_campaign_route(path):
+            if not self.require_admin_session(): return
+            if not database.database_enabled():
+                return self.send_json({"ok": False, "error": "admin_data_unavailable"}, 503)
+            try:
+                campaigns = database.list_jack_campaigns()
+                return self.send_json({
+                    "campaigns": [_admin_campaign_json(row) for row in campaigns]
+                })
+            except Exception:
+                return self.send_json({"ok": False}, 503)
         company_campaign_route = _admin_company_campaign_route(path)
         if company_campaign_route:
             if not self.require_admin_session(): return
@@ -1880,6 +1928,37 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send_json({"ok": False, "error": "company_not_found"}, 404)
             return self.send_json({"ok": True, "storeId": company_store_id,
                                    "companyId": requested_company_id})
+        jack_campaign_id = _admin_jack_campaign_route(path, include_campaign=True)
+        if jack_campaign_id is not None:
+            if not self.require_admin_session(): return
+            if not self.require_same_origin(): return
+            if not database.database_enabled():
+                return self.send_json({"ok": False, "error": "admin_data_unavailable"}, 503)
+            try:
+                current = database.get_jack_campaign(jack_campaign_id)
+            except Exception:
+                return self.send_json({"ok": False}, 503)
+            if current is None:
+                return self.send_json({"ok": False, "error": "not_found"}, 404)
+            payload, error_status = self.read_admin_json_payload(ADMIN_CAMPAIGN_MAX_BYTES)
+            if error_status:
+                return self.send_json({"ok": False, "error": "invalid_request"}, error_status)
+            try:
+                campaign = _validate_admin_jack_campaign(
+                    payload, current["campaign_status"]
+                )
+                updated = database.update_jack_campaign(jack_campaign_id, campaign)
+            except database.CampaignArchivedError:
+                return self.send_json({"ok": False, "error": "campaign_archived"}, 409)
+            except database.CampaignStatusTransitionError:
+                return self.send_json({"ok": False, "error": "campaign_status_conflict"}, 409)
+            except (TypeError, ValueError):
+                return self.send_json({"ok": False, "error": "invalid_request"}, 400)
+            except Exception:
+                return self.send_json({"ok": False}, 503)
+            if updated is None:
+                return self.send_json({"ok": False, "error": "not_found"}, 404)
+            return self.send_json({"campaign": _admin_campaign_json(updated)})
         company_campaign_route = _admin_company_campaign_route(path, include_campaign=True)
         if company_campaign_route:
             if not self.require_admin_session(): return
@@ -2016,6 +2095,44 @@ class Handler(BaseHTTPRequestHandler):
                 "businessType": company["business_type"], "status": company["status"],
                 "archivedAt": company["archived_at"].isoformat() if company.get("archived_at") else None,
             }})
+        jack_status_id = _admin_jack_campaign_route(path, include_status=True)
+        if jack_status_id is not None:
+            if not self.require_admin_session(): return
+            if not self.require_same_origin(): return
+            if not database.database_enabled():
+                return self.send_json({"ok": False, "error": "admin_data_unavailable"}, 503)
+            payload, error_status = self.read_admin_json_payload()
+            if error_status:
+                return self.send_json({"ok": False, "error": "invalid_request"}, error_status)
+            if not isinstance(payload, dict) or set(payload) != {"status"}:
+                return self.send_json({"ok": False, "error": "invalid_request"}, 400)
+            if (not isinstance(payload["status"], str)
+                    or payload["status"] not in {"active", "paused", "archived"}):
+                return self.send_json({"ok": False, "error": "invalid_status"}, 400)
+            try:
+                result = database.change_jack_campaign_status(
+                    jack_status_id, payload["status"]
+                )
+            except database.JackCampaignActiveConflictError as exc:
+                return self.send_json({
+                    "ok": False,
+                    "error": "jack_campaign_active_conflict",
+                    "detail": "jack_campaign_active_conflict",
+                    "activeCampaignId": exc.active_campaign_id,
+                }, 409)
+            except database.CampaignStatusTransitionError:
+                return self.send_json({"ok": False, "error": "campaign_status_conflict"}, 409)
+            except database.InvalidCampaignStatusError:
+                return self.send_json({"ok": False, "error": "invalid_status"}, 400)
+            except Exception:
+                return self.send_json({"ok": False}, 503)
+            if result is None:
+                return self.send_json({"ok": False, "error": "not_found"}, 404)
+            return self.send_json({
+                "ok": True, "campaignId": result["campaign_id"],
+                "status": result["status"], "published": result["published"],
+                "scope": "jack",
+            })
         lifecycle_route = _admin_store_lifecycle_route(path)
         if lifecycle_route:
             if not self.require_admin_session(): return
@@ -2103,6 +2220,29 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send_json({"ok": False}, 503)
             if created is None:
                 return self.send_json({"ok": False, "error": "company_not_found"}, 404)
+            return self.send_json({"campaign": _admin_campaign_json(created)}, 201)
+        if _admin_jack_campaign_route(path):
+            if not self.require_admin_session(): return
+            if not self.require_same_origin(): return
+            if not database.database_enabled():
+                return self.send_json({"ok": False, "error": "admin_data_unavailable"}, 503)
+            raw_payload, error_status = self.read_admin_json_payload(ADMIN_CAMPAIGN_MAX_BYTES)
+            if error_status:
+                return self.send_json({"ok": False, "error": "invalid_request"}, error_status)
+            try:
+                campaign = _validate_admin_jack_campaign(raw_payload, "draft")
+            except (TypeError, ValueError):
+                return self.send_json({"ok": False, "error": "invalid_request"}, 400)
+            campaign_id = "campaign-" + uuid.uuid4().hex
+            ad_id = "ad-" + uuid.uuid4().hex
+            try:
+                created = database.create_jack_campaign(campaign_id, ad_id, campaign)
+            except (TypeError, ValueError):
+                return self.send_json({"ok": False, "error": "invalid_request"}, 400)
+            except Exception:
+                return self.send_json({"ok": False}, 503)
+            if created is None:
+                return self.send_json({"ok": False, "error": "not_found"}, 404)
             return self.send_json({"campaign": _admin_campaign_json(created)}, 201)
         campaign_status_id = _admin_campaign_status_route(path)
         if campaign_status_id is not None:

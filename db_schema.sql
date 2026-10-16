@@ -116,16 +116,25 @@ BEGIN
         ALTER TABLE campaigns ADD CONSTRAINT campaigns_company_id_fkey
             FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE RESTRICT;
     END IF;
-    IF NOT EXISTS (
+    IF EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conname = 'campaigns_scope_company_consistency_check'
+          AND conrelid = 'campaigns'::regclass
+          AND position('jack' IN pg_get_constraintdef(oid)) = 0
+    ) OR NOT EXISTS (
         SELECT 1 FROM pg_constraint
         WHERE conname = 'campaigns_scope_company_consistency_check'
           AND conrelid = 'campaigns'::regclass
     ) THEN
+        ALTER TABLE campaigns
+            DROP CONSTRAINT IF EXISTS campaigns_scope_company_consistency_check;
         ALTER TABLE campaigns ADD CONSTRAINT campaigns_scope_company_consistency_check
             CHECK (
                 (scope IS NULL AND company_id IS NULL)
-                OR (scope IN ('global', 'store') AND company_id IS NULL)
-                OR (scope = 'company' AND company_id IS NOT NULL)
+                OR (scope IS NOT NULL AND (
+                    (scope IN ('global', 'store', 'jack') AND company_id IS NULL)
+                    OR (scope = 'company' AND company_id IS NOT NULL)
+                ))
             ) NOT VALID;
     END IF;
 END $$;
@@ -136,6 +145,9 @@ CREATE INDEX IF NOT EXISTS campaigns_company_scope_idx
 CREATE UNIQUE INDEX IF NOT EXISTS campaigns_one_active_company_idx
     ON campaigns (company_id)
     WHERE scope = 'company' AND status = 'active' AND company_id IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS campaigns_one_active_jack_idx
+    ON campaigns (scope)
+    WHERE scope = 'jack' AND status = 'active';
 
 CREATE TABLE IF NOT EXISTS coupons (
     id TEXT PRIMARY KEY,
