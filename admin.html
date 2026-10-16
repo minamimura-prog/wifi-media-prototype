@@ -1674,7 +1674,7 @@ let adPcPreviewObserver=null;
 let adCreateIdempotencyKey=null, adCreateAttempt=null, adCreateUncertain=false, adCreateBlocked=false, adCreateStoreId=null;
 let companyAdminData={companies:[],stores:[]}, companyDataLoaded=false, companyDirectoryLoaded=false, companyRequestSeq=0, companyCreateSaving=false, companyAssignSaving=new Set(), companyLifecycleSaving=new Set(), companyDeleting=new Set(), companyShowArchived=false, companyFormNotice='', companyFormNoticeType='', companyLoadError='', companyStoreNotices={}, companyFormValues={name:'',code:'',businessType:'',status:'active'};
 let storeCompanyOptionsData=[], storeCompanyOptionsError='', storeSavePending=false, storeSaveFeedback='', storeSaveFeedbackType='';
-let storePublicCodes=new Map(), storePublicCodeSeq=0, storePublicCodeLoading=false, storePublicCodeError='', storeSearchQuery='', storeListView='normal', storeEditInitialValues=null;
+let storePublicCodes=new Map(), storePublicCodeSeq=0, storePublicCodeLoading=false, storePublicCodeError='', storeSearchQuery='', storeSearchComposing=false, storeListView='normal', storeEditInitialValues=null;
 let couponFormError='', selectedCouponViewId=null, couponShowExpired=false, couponSavePending=false, couponStatusChangePending=false, designSaveError='';
 let dashboardSelectedCompany='all', dashboardStoreSearch='', dashboardSelectedStoreId=null, dashboardDirectoryError='', dashboardKpiRequestSeq=0, dashboardKpiAbortController=null;
 let analyticsCompanies=null, analyticsCompaniesPromise=null, analyticsSelectedCompanyId=null, analyticsSelectedStoreId=null, analyticsSelectedPeriod='30d', analyticsRequestSeq=0;
@@ -3313,7 +3313,7 @@ function renderStores(){
   const emptyRow=rows?'':`<tr><td colspan="${columnCount}" class="store-empty-row">該当する店舗はありません</td></tr>`;
   const normalActive=storeListView==='normal';
   const tableHead=storeListView==='archived'?'<tr><th>店舗 / ID</th><th>企業</th><th>状態</th><th>アーカイブ日時（JST）</th><th>操作</th></tr>':'<tr><th>店舗 / 公開URL</th><th>業態</th><th>Wi-Fi</th><th>月間接続</th><th>状態</th><th>操作</th></tr>';
-  shell('<span class="store-title">STORE MANAGEMENT</span><span class="store-title-ja">店舗管理</span>','Wi-Fiを設置している店舗・ホテル・拠点を管理します.',`<div class="store-management-view"><div class="store-system-status"><div><div class="store-console-name">STORE NETWORK CONTROL</div><div class="store-console-message">Managing registered Wi-Fi locations.</div></div><span class="store-online"><i></i> ONLINE</span></div>${feedback}<section class="card store-panel"><div class="store-panel-head"><div><span class="store-terminal-label">REGISTERED LOCATIONS</span><div class="store-panel-title">店舗一覧</div></div><div class="store-list-toolbar"><div class="store-view-tabs" role="tablist" aria-label="店舗一覧の表示"><button type="button" class="store-view-tab ${normalActive?'is-active':''}" role="tab" aria-selected="${normalActive}" data-store-view="normal">通常店舗 <span class="store-view-tab-count">${normalStores.length}</span></button><button type="button" class="store-view-tab ${!normalActive?'is-active':''}" role="tab" aria-selected="${!normalActive}" data-store-view="archived">アーカイブ済み <span class="store-view-tab-count">${archivedStores.length}</span></button></div>${normalActive?`<div class="actions store-actions" style="justify-content:flex-end;margin-bottom:12px"><button class="store-primary" onclick="addStore()" ${storeSavePending?'disabled':''}>＋ 店舗を追加</button></div>`:''}</div></div><div class="store-search-field"><label for="storeSearch">店舗検索</label><input id="storeSearch" type="search" value="${esc(storeSearchQuery)}" placeholder="店舗名・公開コードで検索" autocomplete="off" oninput="setStoreSearch(this.value)"></div><div class="store-table-scroll"><table class="store-data-table"><thead>${tableHead}</thead><tbody>${rows||emptyRow}</tbody></table></div></section></div>`);
+  shell('<span class="store-title">STORE MANAGEMENT</span><span class="store-title-ja">店舗管理</span>','Wi-Fiを設置している店舗・ホテル・拠点を管理します.',`<div class="store-management-view"><div class="store-system-status"><div><div class="store-console-name">STORE NETWORK CONTROL</div><div class="store-console-message">Managing registered Wi-Fi locations.</div></div><span class="store-online"><i></i> ONLINE</span></div>${feedback}<section class="card store-panel"><div class="store-panel-head"><div><span class="store-terminal-label">REGISTERED LOCATIONS</span><div class="store-panel-title">店舗一覧</div></div><div class="store-list-toolbar"><div class="store-view-tabs" role="tablist" aria-label="店舗一覧の表示"><button type="button" class="store-view-tab ${normalActive?'is-active':''}" role="tab" aria-selected="${normalActive}" data-store-view="normal">通常店舗 <span class="store-view-tab-count">${normalStores.length}</span></button><button type="button" class="store-view-tab ${!normalActive?'is-active':''}" role="tab" aria-selected="${!normalActive}" data-store-view="archived">アーカイブ済み <span class="store-view-tab-count">${archivedStores.length}</span></button></div>${normalActive?`<div class="actions store-actions" style="justify-content:flex-end;margin-bottom:12px"><button class="store-primary" onclick="addStore()" ${storeSavePending?'disabled':''}>＋ 店舗を追加</button></div>`:''}</div></div><div class="store-search-field"><label for="storeSearch">店舗検索</label><input id="storeSearch" type="search" value="${esc(storeSearchQuery)}" placeholder="店舗名・公開コードで検索" autocomplete="off" oninput="handleStoreSearchInput(event)" oncompositionstart="storeSearchComposing=true" oncompositionend="handleStoreSearchCompositionEnd(event)" onsearch="handleStoreSearchClear(event)"></div><div class="store-table-scroll"><table class="store-data-table"><thead>${tableHead}</thead><tbody>${rows||emptyRow}</tbody></table></div></section></div>`);
   document.querySelectorAll('[data-store-view]').forEach(button=>button.addEventListener('click',event=>{
     event.preventDefault();event.stopPropagation();setStoreListView(button.dataset.storeView);
   }));
@@ -3340,10 +3340,25 @@ function renderStores(){
   }));
 }
 function stores(){storeListView='normal';renderStores();loadStorePublicCodes();loadStoreCompanyOptions().then(()=>{if(location.hash==='#stores')renderStores();});}
+function handleStoreSearchInput(event){
+  if(event?.isComposing||storeSearchComposing)return;
+  setStoreSearch(event?.target?.value??'');
+}
+function handleStoreSearchCompositionEnd(event){
+  storeSearchComposing=false;
+  setStoreSearch(event?.target?.value??'');
+}
+function handleStoreSearchClear(event){
+  if(String(event?.target?.value??'')!=='')return;
+  storeSearchComposing=false;
+  setStoreSearch('');
+}
 function setStoreSearch(value){
+  const nextQuery=String(value??'');
+  if(nextQuery===storeSearchQuery)return;
   const input=document.getElementById('storeSearch');
   const selectionStart=input?.selectionStart,selectionEnd=input?.selectionEnd;
-  storeSearchQuery=String(value??'');
+  storeSearchQuery=nextQuery;
   renderStores();
   const refreshedInput=document.getElementById('storeSearch');
   if(refreshedInput){refreshedInput.focus();if(typeof selectionStart==='number'&&typeof selectionEnd==='number')refreshedInput.setSelectionRange(selectionStart,selectionEnd);}
