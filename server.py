@@ -76,6 +76,21 @@ def _admin_company_delete_route(path):
     return _safe_admin_route_id(parts[4])
 
 
+def _admin_coupon_update_route(path):
+    parts = path.split("/")
+    if len(parts) != 4 or parts[:3] != ["", "api", "coupons"]:
+        return None
+    return _safe_admin_route_id(parts[3])
+
+
+def _admin_coupon_status_route(path):
+    parts = path.split("/")
+    if (len(parts) != 5 or parts[:3] != ["", "api", "coupons"]
+            or parts[4] != "status"):
+        return None
+    return _safe_admin_route_id(parts[3])
+
+
 def _admin_campaign_status_route(path):
     parts = path.split("/")
     if (len(parts) != 6 or parts[:4] != ["", "api", "admin", "campaigns"]
@@ -169,6 +184,46 @@ def _parse_admin_campaign_date(value, field_name):
         return date.fromisoformat(value)
     except ValueError as exc:
         raise ValueError(f"invalid {field_name}") from exc
+
+
+def _validate_admin_coupon_update(payload):
+    allowed = {
+        "name", "code", "description", "discount_type", "discount_value",
+        "store_id", "starts_on", "ends_on", "terms",
+    }
+    if not isinstance(payload, dict) or set(payload) != allowed:
+        raise ValueError("invalid coupon fields")
+    name = payload["name"]
+    code = payload["code"]
+    if not isinstance(name, str) or not name.strip():
+        raise ValueError("coupon name is required")
+    if not isinstance(code, str) or not code.strip():
+        raise ValueError("coupon code is required")
+    if any(not isinstance(payload[field], str) for field in ("description", "discount_value", "terms")):
+        raise ValueError("invalid coupon text")
+    discount_type = payload["discount_type"]
+    if not isinstance(discount_type, str) or discount_type not in {"text", "percent", "amount"}:
+        raise ValueError("invalid discount type")
+    raw_store_id = payload["store_id"]
+    if raw_store_id is None or raw_store_id == "":
+        store_id = None
+    elif isinstance(raw_store_id, bool) or not isinstance(raw_store_id, (str, int)):
+        raise ValueError("invalid store id")
+    else:
+        store_id = str(raw_store_id)
+        if (not store_id.strip() or len(store_id) > 256
+                or any(ord(char) < 32 or ord(char) == 127 for char in store_id)):
+            raise ValueError("invalid store id")
+    starts_on = _parse_admin_campaign_date(payload["starts_on"], "starts_on")
+    ends_on = _parse_admin_campaign_date(payload["ends_on"], "ends_on")
+    if starts_on and ends_on and starts_on > ends_on:
+        raise ValueError("coupon start date is after end date")
+    return {
+        "title": name.strip(), "code": code.strip(),
+        "description": payload["description"], "discount_type": discount_type,
+        "discount_value": payload["discount_value"], "store_id": store_id,
+        "starts_on": starts_on, "ends_on": ends_on, "terms": payload["terms"],
+    }
 
 
 def _validate_admin_campaign(payload):
@@ -1108,6 +1163,94 @@ def public_coupons_for_store(public_code):
             matched.append(coupon)
     return matched
 
+def update_coupon_content(coupon_id, coupon):
+    """Update coupon content without changing status or coupon event history."""
+    coupon_id = str(coupon_id)
+    if database.database_enabled():
+        return database.update_coupon_content(coupon_id, coupon)
+    with LOCK, STATE_SAVE_LOCK:
+        data = load_state()
+        coupons = data.get("coupons", [])
+        target = next((item for item in coupons if str(item.get("id")) == coupon_id), None)
+        if not target or target.get("deletedAt", target.get("deleted_at")) is not None:
+            return None
+        store_id = coupon.get("store_id")
+        if store_id is not None:
+            store = next((item for item in data.get("stores", [])
+                          if str(item.get("id")) == str(store_id)), None)
+            if store is None:
+                raise database.CouponStoreNotFoundError("coupon store not found")
+            if store.get("archivedAt", store.get("archived_at")) is not None:
+                raise database.CouponStoreArchivedError("coupon store is archived")
+        requested_code = coupon["code"].strip().casefold()
+        duplicate = next((item for item in coupons
+                          if str(item.get("id")) != coupon_id
+                          and item.get("deletedAt", item.get("deleted_at")) is None
+                          and str(item.get("code", "")).strip().casefold() == requested_code), None)
+        if duplicate:
+            raise database.CouponCodeConflictError("coupon code already exists")
+        target.update({
+            "title": coupon["title"], "code": coupon["code"],
+            "description": coupon["description"],
+            "discountType": coupon["discount_type"],
+            "discountValue": coupon["discount_value"], "storeId": store_id,
+            "start": database._date(coupon.get("starts_on")),
+            "end": database._date(coupon.get("ends_on")), "terms": coupon["terms"],
+        })
+        _write_json_state(data)
+        return {
+            "id": target.get("id"), "ad_id": target.get("adId"),
+            "store_id": target.get("storeId"), "title": target.get("title", ""),
+            "code": target.get("code", ""), "description": target.get("description", ""),
+            "discount_type": target.get("discountType", "text"),
+            "discount_value": target.get("discountValue", ""), "terms": target.get("terms", ""),
+            "starts_on": target.get("start"), "ends_on": target.get("end"),
+            "status": target.get("status", "draft"),
+        }
+
+def change_coupon_status(coupon_id, requested_status):
+    """Change coupon status without changing content or coupon event history."""
+    coupon_id = str(coupon_id)
+    if database.database_enabled():
+        return database.change_coupon_status(coupon_id, requested_status)
+    transitions = {"draft": {"active"}, "active": {"paused"}, "paused": {"active"}}
+    with LOCK, STATE_SAVE_LOCK:
+        data = load_state()
+        target = next(
+            (item for item in data.get("coupons", [])
+             if str(item.get("id")) == coupon_id),
+            None,
+        )
+        if not target or target.get("deletedAt", target.get("deleted_at")) is not None:
+            return None
+        if requested_status not in transitions.get(target.get("status"), set()):
+            raise database.CouponStatusTransitionError("coupon status transition is not permitted")
+        if requested_status == "active":
+            today = datetime.now(ZoneInfo("Asia/Tokyo")).date()
+            try:
+                starts_on = date.fromisoformat(target["start"]) if target.get("start") else None
+                ends_on = date.fromisoformat(target["end"]) if target.get("end") else None
+            except (TypeError, ValueError) as exc:
+                raise database.CouponStatusPeriodError("invalid coupon period") from exc
+            if ((starts_on and ends_on and starts_on > ends_on)
+                    or (ends_on and ends_on < today)):
+                raise database.CouponStatusPeriodError("coupon period has ended or is invalid")
+            store_id = target.get("storeId", target.get("store_id"))
+            if store_id is not None:
+                store = next(
+                    (item for item in data.get("stores", [])
+                     if str(item.get("id")) == str(store_id)),
+                    None,
+                )
+                if store is None:
+                    raise database.CouponStoreNotFoundError("coupon store not found")
+                if store.get("archivedAt", store.get("archived_at")) is not None:
+                    raise database.CouponStoreArchivedError("coupon store is archived")
+        target["status"] = requested_status
+        _write_json_state(data)
+        return {"id": target.get("id"), "status": requested_status}
+
+
 def delete_draft_coupon(coupon_id):
     """Delete only a draft coupon; coupon_events remain available as history."""
     coupon_id = str(coupon_id)
@@ -1133,6 +1276,20 @@ def _record_json_coupon_event(coupon_id, event_type, store_code):
         )
         if not current_coupon:
             raise LookupError("coupon not found")
+        if current_coupon.get("deletedAt", current_coupon.get("deleted_at")) is not None:
+            raise database.CouponEventUnavailableError("coupon_deleted")
+        if current_coupon.get("status") != "active":
+            raise database.CouponEventUnavailableError("coupon_not_active")
+        today = datetime.now(ZoneInfo("Asia/Tokyo")).date()
+        try:
+            starts_on = date.fromisoformat(current_coupon["start"]) if current_coupon.get("start") else None
+            ends_on = date.fromisoformat(current_coupon["end"]) if current_coupon.get("end") else None
+        except (TypeError, ValueError) as exc:
+            raise database.CouponEventUnavailableError("coupon_out_of_period") from exc
+        if ((starts_on and ends_on and starts_on > ends_on)
+                or (starts_on and starts_on > today)
+                or (ends_on and ends_on < today)):
+            raise database.CouponEventUnavailableError("coupon_out_of_period")
 
         stores = data.get("stores", [])
         target_type, target_store = _public_coupon_store_target(current_coupon, stores)
@@ -1988,6 +2145,41 @@ class Handler(BaseHTTPRequestHandler):
             if updated is None:
                 return self.send_json({"ok": False, "error": "not_found"}, 404)
             return self.send_json({"campaign": _admin_campaign_json(updated)})
+        coupon_id = _admin_coupon_update_route(path)
+        if coupon_id is not None:
+            if not self.require_admin_session(): return
+            if not self.require_same_origin(): return
+            payload, error_status = self.read_admin_json_payload()
+            if error_status:
+                return self.send_json({"ok": False, "error": "invalid_request"}, error_status)
+            try:
+                coupon = _validate_admin_coupon_update(payload)
+            except (TypeError, ValueError):
+                return self.send_json({"ok": False, "error": "invalid_request"}, 400)
+            try:
+                updated = update_coupon_content(coupon_id, coupon)
+            except database.CouponCodeConflictError:
+                return self.send_json({"ok": False, "error": "coupon_code_conflict"}, 409)
+            except database.CouponStoreNotFoundError:
+                return self.send_json({"ok": False, "error": "store_not_found"}, 404)
+            except database.CouponStoreArchivedError:
+                return self.send_json({"ok": False, "error": "coupon_store_archived"}, 409)
+            except Exception:
+                return self.send_json({"ok": False}, 503)
+            if updated is None:
+                return self.send_json({"ok": False, "error": "coupon_not_found"}, 404)
+            return self.send_json({"ok": True, "coupon": {
+                "id": updated["id"], "adId": updated.get("ad_id"),
+                "storeId": updated.get("store_id"), "title": updated.get("title", ""),
+                "code": updated.get("code", ""), "description": updated.get("description", ""),
+                "discountType": updated.get("discount_type", "text"),
+                "discountValue": updated.get("discount_value", ""),
+                "terms": updated.get("terms", ""),
+                "start": database._date(updated.get("starts_on")),
+                "end": database._date(updated.get("ends_on")),
+                "status": updated.get("status", "draft"),
+            }})
+
         store_route = _admin_store_campaign_route(path, include_campaign=True)
         if not store_route:
             return self.send_json({"ok": False, "error": "not found"}, 404)
@@ -2071,6 +2263,37 @@ class Handler(BaseHTTPRequestHandler):
         path = urlparse(self.path).path
         if path == "/api/admin/login": return self.handle_admin_login()
         if path == "/api/admin/logout": return self.handle_admin_logout()
+        coupon_status_id = _admin_coupon_status_route(path)
+        if coupon_status_id is not None:
+            if not self.require_admin_session(): return
+            if not self.require_same_origin(): return
+            payload, error_status = self.read_admin_json_payload()
+            if error_status:
+                return self.send_json({"ok": False, "error": "invalid_request"}, error_status)
+            if not isinstance(payload, dict) or set(payload) != {"status"}:
+                return self.send_json({"ok": False, "error": "invalid_request"}, 400)
+            requested_status = payload.get("status")
+            if not isinstance(requested_status, str) or requested_status not in {"active", "paused"}:
+                return self.send_json({"ok": False, "error": "invalid_status"}, 400)
+            try:
+                changed = change_coupon_status(coupon_status_id, requested_status)
+            except database.CouponStatusTransitionError:
+                return self.send_json({"ok": False, "error": "coupon_status_conflict"}, 409)
+            except database.CouponStatusPeriodError:
+                return self.send_json({"ok": False, "error": "coupon_period_invalid"}, 409)
+            except database.CouponStoreNotFoundError:
+                return self.send_json({"ok": False, "error": "store_not_found"}, 404)
+            except database.CouponStoreArchivedError:
+                return self.send_json({"ok": False, "error": "coupon_store_archived"}, 409)
+            except Exception:
+                return self.send_json({"ok": False}, 503)
+            if changed is None:
+                return self.send_json({"ok": False, "error": "coupon_not_found"}, 404)
+            return self.send_json({
+                "ok": True,
+                "couponId": str(changed["id"]),
+                "status": changed["status"],
+            })
         company_lifecycle_route = _admin_company_lifecycle_route(path)
         if company_lifecycle_route:
             if not self.require_admin_session(): return
@@ -2349,6 +2572,8 @@ class Handler(BaseHTTPRequestHandler):
                 payload = json.loads(self.read_body().decode("utf-8"))
                 record_coupon_event(payload)
                 return self.send_json({"ok": True})
+            except database.CouponEventUnavailableError as e:
+                return self.send_json({"ok": False, "error": e.reason}, 409)
             except database.StoreInactiveError:
                 return self.send_json({"ok": False, "error": "store_inactive"}, 409)
             except database.StoreMismatchError:

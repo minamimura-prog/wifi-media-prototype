@@ -75,6 +75,34 @@ class StoreMismatchError(Exception):
     """Raised when a store coupon is used from a different public store page."""
 
 
+class CouponCodeConflictError(Exception):
+    """Raised when another non-deleted coupon already uses the requested code."""
+
+
+class CouponStoreNotFoundError(Exception):
+    """Raised when a coupon update targets a store that does not exist."""
+
+
+class CouponStoreArchivedError(Exception):
+    """Raised when a coupon update targets an archived store."""
+
+
+class CouponStatusTransitionError(Exception):
+    """Raised when a coupon status transition is not permitted."""
+
+
+class CouponStatusPeriodError(Exception):
+    """Raised when a coupon cannot be activated because its period has ended or is invalid."""
+
+
+class CouponEventUnavailableError(Exception):
+    """Raised when a coupon event targets a coupon that is not currently deliverable."""
+
+    def __init__(self, reason="coupon_not_active"):
+        super().__init__(reason)
+        self.reason = reason
+
+
 CAMPAIGN_STATUSES = frozenset({"draft", "active", "paused", "archived"})
 
 
@@ -2340,6 +2368,108 @@ def save_state(data):
             )
 
 
+def update_coupon_content(coupon_id, coupon):
+    """Update coupon content while preserving its ID, status, and event history."""
+    coupon_id = str(coupon_id)
+    if not coupon_id or not isinstance(coupon, dict):
+        raise ValueError("invalid coupon")
+    required_text = ("title", "code", "description", "discount_type", "discount_value", "terms")
+    if any(not isinstance(coupon.get(key), str) for key in required_text):
+        raise ValueError("invalid coupon fields")
+    if not coupon["title"].strip() or not coupon["code"].strip():
+        raise ValueError("coupon name and code are required")
+    if coupon["discount_type"] not in {"text", "percent", "amount"}:
+        raise ValueError("invalid discount type")
+    store_id = coupon.get("store_id")
+    starts_on = _date(coupon.get("starts_on"))
+    ends_on = _date(coupon.get("ends_on"))
+    if starts_on and ends_on and starts_on > ends_on:
+        raise ValueError("coupon start date is after end date")
+
+    with pool().connection() as conn:
+        with conn.transaction():
+            current = conn.execute(
+                "SELECT id FROM coupons WHERE id = %s AND deleted_at IS NULL FOR UPDATE",
+                (coupon_id,),
+            ).fetchone()
+            if current is None:
+                return None
+
+            if store_id is not None:
+                store = conn.execute(
+                    "SELECT id, archived_at FROM stores WHERE id = %s FOR UPDATE",
+                    (str(store_id),),
+                ).fetchone()
+                if store is None:
+                    raise CouponStoreNotFoundError("coupon store not found")
+                if store.get("archived_at") is not None:
+                    raise CouponStoreArchivedError("coupon store is archived")
+
+            duplicate = conn.execute(
+                "SELECT id FROM coupons WHERE deleted_at IS NULL AND id <> %s "
+                "AND lower(btrim(code)) = lower(btrim(%s)) LIMIT 1",
+                (coupon_id, coupon["code"]),
+            ).fetchone()
+            if duplicate is not None:
+                raise CouponCodeConflictError("coupon code already exists")
+
+            return conn.execute(
+                "UPDATE coupons SET title = %s, code = %s, description = %s, "
+                "discount_type = %s, discount_value = %s, store_id = %s, "
+                "starts_on = %s, ends_on = %s, terms = %s, updated_at = now() "
+                "WHERE id = %s AND deleted_at IS NULL "
+                "RETURNING id, ad_id, store_id, title, code, description, discount_type, "
+                "discount_value, terms, starts_on, ends_on, status",
+                (coupon["title"].strip(), coupon["code"].strip(), coupon["description"],
+                 coupon["discount_type"], coupon["discount_value"], store_id, starts_on,
+                 ends_on, coupon["terms"], coupon_id),
+            ).fetchone()
+
+
+def change_coupon_status(coupon_id, requested_status):
+    """Change only coupon status, preserving its identity and event history."""
+    coupon_id = str(coupon_id)
+    if not isinstance(requested_status, str) or requested_status not in {"active", "paused"}:
+        raise ValueError("invalid coupon status")
+    transitions = {"draft": {"active"}, "active": {"paused"}, "paused": {"active"}}
+    today = datetime.now(ZoneInfo("Asia/Tokyo")).date()
+    with pool().connection() as conn:
+        with conn.transaction():
+            current = conn.execute(
+                "SELECT id, status, deleted_at, store_id, starts_on, ends_on "
+                "FROM coupons WHERE id = %s FOR UPDATE",
+                (coupon_id,),
+            ).fetchone()
+            if current is None or current.get("deleted_at") is not None:
+                return None
+            if requested_status not in transitions.get(current.get("status"), set()):
+                raise CouponStatusTransitionError("coupon status transition is not permitted")
+
+            if requested_status == "active":
+                starts_on, ends_on = current.get("starts_on"), current.get("ends_on")
+                if starts_on and ends_on and starts_on > ends_on:
+                    raise CouponStatusPeriodError("coupon start date is after end date")
+                if ends_on and ends_on < today:
+                    raise CouponStatusPeriodError("coupon period has ended")
+                store_id = current.get("store_id")
+                if store_id is not None:
+                    store = conn.execute(
+                        "SELECT id, archived_at FROM stores WHERE id = %s FOR SHARE",
+                        (str(store_id),),
+                    ).fetchone()
+                    if store is None:
+                        raise CouponStoreNotFoundError("coupon store not found")
+                    if store.get("archived_at") is not None:
+                        raise CouponStoreArchivedError("coupon store is archived")
+
+            return conn.execute(
+                "UPDATE coupons SET status = %s, updated_at = now() "
+                "WHERE id = %s AND deleted_at IS NULL "
+                "RETURNING id, status",
+                (requested_status, coupon_id),
+            ).fetchone()
+
+
 def delete_draft_coupon(coupon_id):
     """Delete a draft coupon while retaining its coupon event history."""
     with pool().connection() as conn:
@@ -3030,8 +3160,20 @@ def record_coupon_event(event, *, legacy_import=False):
     with pool().connection() as conn:
         with conn.transaction():
             coupon = conn.execute(
-                "SELECT store_id FROM coupons WHERE id = %s FOR SHARE", (event.get("couponId"),)
+                "SELECT id, store_id, status, starts_on, ends_on, deleted_at "
+                "FROM coupons WHERE id = %s FOR SHARE", (event.get("couponId"),)
             ).fetchone() if event.get("couponId") else None
+            if not legacy_import:
+                if coupon is None or coupon.get("deleted_at") is not None:
+                    raise CouponEventUnavailableError("coupon_deleted")
+                if coupon.get("status") != "active":
+                    raise CouponEventUnavailableError("coupon_not_active")
+                today = datetime.now(ZoneInfo("Asia/Tokyo")).date()
+                starts_on, ends_on = coupon.get("starts_on"), coupon.get("ends_on")
+                if ((starts_on and ends_on and starts_on > ends_on)
+                        or (starts_on and starts_on > today)
+                        or (ends_on and ends_on < today)):
+                    raise CouponEventUnavailableError("coupon_out_of_period")
             store_ids = set()
             if coupon and coupon.get("store_id"):
                 store_ids.add(coupon["store_id"])
