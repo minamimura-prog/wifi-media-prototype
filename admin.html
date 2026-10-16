@@ -1501,6 +1501,105 @@ body:has(.ad-management-view){background-color:#070b0d;background-image:radial-g
 
 .ad-management-view .ad-config-panel .ad-actions{justify-content:flex-end;gap:12px;flex-wrap:wrap}
 @media(max-width:700px){.ad-management-view .ad-config-panel .ad-actions{justify-content:flex-start}}
+
+/* Cross-page hierarchy aligned to Ad Management */
+.company-management-view .field>label,
+.store-management-view .store-search-field label,
+.store-management-view .modal .field>label,
+.coupon-management-view .field>label,
+.web-design-view .field>label,
+.analytics-view .analytics-conditions-panel .analytics-scope-toolbar label,
+.analytics-view .analytics-condition-label,
+.dashboard-view .dashboard-filter-field>span{
+  padding-left:9px;
+  border-left:3px solid rgba(76,229,255,.78);
+  color:#d1e9eb;
+  font-size:14px;
+  font-weight:800;
+  letter-spacing:.015em;
+  line-height:1.45;
+  text-shadow:0 0 7px rgba(76,229,255,.12);
+}
+.company-management-view .field,
+.coupon-management-view .field,
+.web-design-view .field{gap:7px;margin-bottom:14px}
+.company-management-view .company-data-table td:first-child b,
+.store-management-view .store-data-table td:first-child b,
+.coupon-management-view .coupon-data-table td:first-child b{
+  display:inline-block;
+  color:#f1fbfb;
+  font-size:16px;
+  font-weight:800;
+  line-height:1.35;
+}
+.company-management-view .company-code,
+.company-management-view .company-business-type,
+.store-management-view .store-identity-meta,
+.store-management-view .store-public-url,
+.coupon-management-view .coupon-data-table td small{font-size:11px;color:#9db4b8}
+.company-management-view .company-panel-heading .section,
+.store-management-view .store-panel-heading .section,
+.coupon-management-view .coupon-panel-heading .section,
+.web-design-view .web-design-panel-heading .section{font-size:17px;font-weight:800}
+.company-management-view .company-create-heading{gap:12px;align-items:center}
+.company-management-view .company-create-heading .company-primary,
+.store-management-view .store-primary,
+.coupon-management-view .coupon-primary{font-size:14px;font-weight:800}
+.store-management-view .store-panel-head{gap:12px}
+.store-management-view .store-actions{justify-content:flex-end}
+.dashboard-view .dashboard-filter-field{display:grid;grid-template-columns:max-content minmax(150px,280px);align-items:center;gap:12px;min-width:0;color:#cbe4e7;font-size:14px;font-weight:800}
+.dashboard-view .dashboard-search-field{grid-template-columns:max-content minmax(220px,1fr);flex:1}
+.dashboard-view .dashboard-filter-field select,.dashboard-view .dashboard-filter-field input{width:100%;font-size:14px;font-weight:500}
+.dashboard-view .dashboard-store-identity b{color:#f0fbfc;font-size:16px;font-weight:800;line-height:1.35}
+.dashboard-view .dashboard-store-identity small{font-size:11px}
+.dashboard-view .dashboard-quick-actions{padding:14px 16px}
+.dashboard-view .dashboard-quick-actions-label{font-size:11px}
+.store-management-view .store-search-field{display:grid;grid-template-columns:max-content minmax(220px,360px);align-items:center;gap:12px}
+.store-management-view .store-search-field input{width:100%;font-size:14px}
+.coupon-management-view .coupon-registration-panel>.twocol:has(#cStart){display:grid;grid-template-columns:minmax(0,1fr) 24px minmax(0,1fr);align-items:end;gap:10px 8px}
+.coupon-management-view .coupon-registration-panel>.twocol:has(#cStart)::after{grid-column:2;grid-row:1;align-self:center;justify-self:center;margin-top:21px;color:var(--signal-cyan);font-size:19px;font-weight:700;text-shadow:0 0 8px rgba(76,229,255,.35);content:"→"}
+.coupon-management-view .coupon-registration-panel>.twocol:has(#cStart)>.field:first-child{grid-column:1;grid-row:1}
+.coupon-management-view .coupon-registration-panel>.twocol:has(#cStart)>.field:last-child{grid-column:3;grid-row:1}
+.coupon-management-view .coupon-registration-panel>.twocol:has(#cStart) .field>label{font-size:14px}
+.coupon-management-view .coupon-registration-panel>.coupon-primary{display:block;margin:12px 0 0 auto;padding:10px 16px;font-size:14px;font-weight:800}
+.coupon-management-view .coupon-data-table td:first-child{min-width:145px}
+.web-design-view #dBrand,
+.web-design-view #dTitle{font-size:15px;font-weight:600}
+.web-design-view .web-design-actions{display:flex;justify-content:flex-end;flex-wrap:wrap;gap:10px}
+.web-design-view .web-design-actions button{min-height:42px;padding:10px 15px;font-size:14px;font-weight:800}
+.analytics-view .analytics-conditions-panel .analytics-scope-toolbar{grid-template-columns:100px minmax(0,360px);gap:8px 12px}
+.analytics-view .analytics-conditions-panel .analytics-scope-toolbar select{font-size:14px;font-weight:600}
+.analytics-view .analytics-condition-period{display:grid;grid-template-columns:100px minmax(0,1fr);align-items:center;gap:12px}
+.analytics-view .analytics-condition-label{margin:0}
+.analytics-view .analytics-period-tabs{gap:7px}
+.analytics-view .analytics-period-tab{font-size:13px}
+.analytics-view .analytics-section-heading .section{font-size:17px;font-weight:800;line-height:1.4}
+.analytics-view .analytics-section-heading .analytics-terminal-label{font-size:10px}
+.analytics-view .analytics-detail-context,
+.analytics-view .analytics-ranking-method,
+.analytics-view .analytics-scope-tag{font-size:10px}
+@media(max-width:700px){
+  .dashboard-view .dashboard-filter-field,
+  .dashboard-view .dashboard-search-field,
+  .store-management-view .store-search-field{grid-template-columns:minmax(0,1fr);gap:6px}
+  .dashboard-view .dashboard-filter-field select,
+  .dashboard-view .dashboard-filter-field input,
+  .store-management-view .store-search-field input{max-width:none}
+  .company-management-view .company-create-heading,
+  .store-management-view .store-panel-heading,
+  .coupon-management-view .coupon-panel-heading{align-items:flex-start;flex-wrap:wrap}
+  .company-management-view #companyCreateForm>.company-primary,
+  .store-management-view .store-primary,
+  .coupon-management-view .coupon-registration-panel>.coupon-primary{align-self:stretch;margin-left:0}
+  .coupon-management-view .coupon-registration-panel>.twocol:has(#cStart){grid-template-columns:minmax(0,1fr);gap:8px}
+  .coupon-management-view .coupon-registration-panel>.twocol:has(#cStart)::after{grid-column:1;grid-row:2;content:"↓";margin:0}
+  .coupon-management-view .coupon-registration-panel>.twocol:has(#cStart)>.field:first-child{grid-column:1;grid-row:1}
+  .coupon-management-view .coupon-registration-panel>.twocol:has(#cStart)>.field:last-child{grid-column:1;grid-row:3}
+  .analytics-view .analytics-conditions-panel .analytics-scope-toolbar,
+  .analytics-view .analytics-condition-period{grid-template-columns:minmax(0,1fr);gap:6px}
+  .web-design-view .web-design-actions{justify-content:stretch}
+  .web-design-view .web-design-actions button{flex:1 1 190px}
+}
 </style></head><body><div class="app"><aside class="side"><div class="logo">Wi-Fi MEDIA<small>広告・店舗・効果測定</small></div><div class="nav active" data-page="dashboard" onclick="navigateTo('dashboard')">ダッシュボード</div><div class="nav" data-page="companies" onclick="navigateTo('companies')">企業管理</div><div class="nav" data-page="stores" onclick="navigateTo('stores')">店舗管理</div><div class="nav" data-page="ads" onclick="navigateTo('ads')">広告管理</div><div class="nav" data-page="coupons" onclick="navigateTo('coupons')">クーポン管理</div><div class="nav" data-page="analytics" onclick="navigateTo('analytics')">効果測定</div><div class="nav" data-page="design" onclick="navigateTo('design')">Webデザイン</div><div class="side-logout"><button class="logout-button" id="logout-button" type="button" onclick="logout()">LOGOUT</button></div></aside><main class="main" id="main"></main></div><div class="modalbg" id="modal"><div class="modal"><button class="close" onclick="closeModal()">閉じる</button><h2 id="modalTitle">編集</h2><div id="modalBody"></div></div></div><script src="/static/qrcode-generator-2.0.4.js"></script><script>let S=null;
 let adTarget='global', adStores=null, adStoreId=null, adCampaigns=[], selectedCampaignId=null, adCampaign=null, adCreatingNew=false, adCampaignCount=0, adStoreLoading=false, adStoreError='', adStoreRequestSeq=0, adStoresLoading=false, adStoresRequestSeq=0, adCompanies=[], adCompaniesLoading=false, adCompaniesLoaded=false, adCompaniesError='', adCompanyId=null, adCompanyCampaigns=[], adCompanyShowArchived=false, adCompanyLoading=false, adCompanyError='', adCompanyRequestSeq=0, adCompaniesRequestSeq=0, adSaving=false, adStatusSaving=false, adSaveError='';
 const AD_COMPANY_TARGET_VALUE='__company_scope__';
