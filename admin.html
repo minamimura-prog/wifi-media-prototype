@@ -3346,7 +3346,8 @@ function handleStoreSearchInput(event){
 }
 function handleStoreSearchCompositionEnd(event){
   storeSearchComposing=false;
-  setStoreSearch(event?.target?.value??'');
+  const input=event?.currentTarget||event?.target;
+  renderStoreSearchValue(input?.value??'');
 }
 function handleStoreSearchClear(event){
   if(String(event?.target?.value??'')!=='')return;
@@ -3356,9 +3357,12 @@ function handleStoreSearchClear(event){
 function setStoreSearch(value){
   const nextQuery=String(value??'');
   if(nextQuery===storeSearchQuery)return;
+  renderStoreSearchValue(nextQuery);
+}
+function renderStoreSearchValue(value){
   const input=document.getElementById('storeSearch');
   const selectionStart=input?.selectionStart,selectionEnd=input?.selectionEnd;
-  storeSearchQuery=nextQuery;
+  storeSearchQuery=String(value??'');
   renderStores();
   const refreshedInput=document.getElementById('storeSearch');
   if(refreshedInput){refreshedInput.focus();if(typeof selectionStart==='number'&&typeof selectionEnd==='number')refreshedInput.setSelectionRange(selectionStart,selectionEnd);}
