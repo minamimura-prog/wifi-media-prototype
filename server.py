@@ -1183,12 +1183,14 @@ def update_coupon_content(coupon_id, coupon):
             if store.get("archivedAt", store.get("archived_at")) is not None:
                 raise database.CouponStoreArchivedError("coupon store is archived")
         requested_code = coupon["code"].strip().casefold()
-        duplicate = next((item for item in coupons
-                          if str(item.get("id")) != coupon_id
-                          and item.get("deletedAt", item.get("deleted_at")) is None
-                          and str(item.get("code", "")).strip().casefold() == requested_code), None)
-        if duplicate:
-            raise database.CouponCodeConflictError("coupon code already exists")
+        current_code = str(target.get("code", "")).strip().casefold()
+        if requested_code != current_code:
+            duplicate = next((item for item in coupons
+                              if str(item.get("id")) != coupon_id
+                              and item.get("deletedAt", item.get("deleted_at")) is None
+                              and str(item.get("code", "")).strip().casefold() == requested_code), None)
+            if duplicate:
+                raise database.CouponCodeConflictError("coupon code already exists")
         target.update({
             "title": coupon["title"], "code": coupon["code"],
             "description": coupon["description"],

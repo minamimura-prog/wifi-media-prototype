@@ -2389,7 +2389,7 @@ def update_coupon_content(coupon_id, coupon):
     with pool().connection() as conn:
         with conn.transaction():
             current = conn.execute(
-                "SELECT id FROM coupons WHERE id = %s AND deleted_at IS NULL FOR UPDATE",
+                "SELECT id, code FROM coupons WHERE id = %s AND deleted_at IS NULL FOR UPDATE",
                 (coupon_id,),
             ).fetchone()
             if current is None:
@@ -2405,13 +2405,16 @@ def update_coupon_content(coupon_id, coupon):
                 if store.get("archived_at") is not None:
                     raise CouponStoreArchivedError("coupon store is archived")
 
-            duplicate = conn.execute(
-                "SELECT id FROM coupons WHERE deleted_at IS NULL AND id <> %s "
-                "AND lower(btrim(code)) = lower(btrim(%s)) LIMIT 1",
-                (coupon_id, coupon["code"]),
-            ).fetchone()
-            if duplicate is not None:
-                raise CouponCodeConflictError("coupon code already exists")
+            current_code = str(current.get("code") or "").strip().casefold()
+            requested_code = coupon["code"].strip().casefold()
+            if requested_code != current_code:
+                duplicate = conn.execute(
+                    "SELECT id FROM coupons WHERE deleted_at IS NULL AND id <> %s "
+                    "AND lower(btrim(code)) = lower(btrim(%s)) LIMIT 1",
+                    (coupon_id, coupon["code"]),
+                ).fetchone()
+                if duplicate is not None:
+                    raise CouponCodeConflictError("coupon code already exists")
 
             return conn.execute(
                 "UPDATE coupons SET title = %s, code = %s, description = %s, "
