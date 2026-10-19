@@ -3,9 +3,11 @@
 from datetime import date, datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 import hashlib
+import hmac
 import json
 import os
 import re
+import secrets
 from pathlib import Path
 
 import psycopg
@@ -23,6 +25,8 @@ ADMIN_LOGIN_FAILURE_WINDOW = timedelta(minutes=15)
 ADMIN_LOGIN_MAX_FAILURES = 10
 ADMIN_LOGIN_LOCK_DURATION = timedelta(minutes=15)
 _PUBLIC_CODE_RE = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
+_WIFI_SESSION_ID_RE = re.compile(r"^[A-Za-z0-9_-]{40,64}$")
+WIFI_SESSION_TTL_SECONDS = 600
 
 
 def _coupon_image_url_value(coupon):
@@ -653,6 +657,75 @@ def get_store_by_public_code(public_code):
             (public_code,),
         ).fetchone()
     return dict(row) if row else None
+
+
+def create_wifi_session(public_code, ttl_seconds=WIFI_SESSION_TTL_SECONDS):
+    """Create a short-lived pending session for an active, non-archived store."""
+    if not isinstance(public_code, str) or not _PUBLIC_CODE_RE.fullmatch(public_code):
+        return None
+    if (not isinstance(ttl_seconds, int) or isinstance(ttl_seconds, bool)
+            or ttl_seconds < 60 or ttl_seconds > 3600):
+        raise ValueError("invalid Wi-Fi session lifetime")
+
+    session_id = secrets.token_urlsafe(32)
+    public_token = secrets.token_urlsafe(32)
+    token_hash = hashlib.sha256(public_token.encode("utf-8")).hexdigest()
+    with pool().connection() as conn:
+        store = conn.execute(
+            "SELECT id, status, archived_at FROM stores "
+            "WHERE public_code = %s FOR UPDATE",
+            (public_code,),
+        ).fetchone()
+        if not store:
+            return None
+        if store["status"] != "稼働中" or store["archived_at"] is not None:
+            raise StoreInactiveError("store_inactive")
+        row = conn.execute(
+            "INSERT INTO wifi_sessions "
+            "(id, store_id, public_token_hash, status, expires_at) "
+            "VALUES (%s, %s, %s, 'pending', now() + (%s * interval '1 second')) "
+            "RETURNING id, status, created_at, expires_at",
+            (session_id, str(store["id"]), token_hash, ttl_seconds),
+        ).fetchone()
+    return {
+        "session_id": row["id"],
+        "token": public_token,
+        "status": row["status"],
+        "created_at": row["created_at"],
+        "expires_at": row["expires_at"],
+    }
+
+
+def get_wifi_session_status(session_id, public_token):
+    """Return a session's public state only when its bearer token matches."""
+    if (not isinstance(session_id, str) or not _WIFI_SESSION_ID_RE.fullmatch(session_id)
+            or not isinstance(public_token, str) or not public_token
+            or len(public_token) > 128):
+        return None
+    token_hash = hashlib.sha256(public_token.encode("utf-8")).hexdigest()
+    with pool().connection() as conn:
+        row = conn.execute(
+            "SELECT id, public_token_hash, status, expires_at, completed_at, "
+            "expires_at <= now() AS is_expired "
+            "FROM wifi_sessions WHERE id = %s",
+            (session_id,),
+        ).fetchone()
+        if not row or not hmac.compare_digest(row["public_token_hash"], token_hash):
+            return None
+        status = row["status"]
+        if status == "pending" and row["is_expired"]:
+            conn.execute(
+                "UPDATE wifi_sessions SET status = 'expired' "
+                "WHERE id = %s AND status = 'pending' AND expires_at <= now()",
+                (session_id,),
+            )
+            status = "expired"
+        return {
+            "session_id": row["id"],
+            "status": status,
+            "expires_at": row["expires_at"],
+            "completed_at": row["completed_at"],
+        }
 
 
 def get_store_by_id(store_id):

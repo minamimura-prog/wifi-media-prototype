@@ -70,6 +70,27 @@ $$;
 
 CREATE UNIQUE INDEX IF NOT EXISTS stores_public_code_uidx ON stores (public_code);
 
+-- Short-lived public Wi-Fi sessions. The browser receives the raw token once;
+-- only its SHA-256 hash is stored for later status checks.
+CREATE TABLE IF NOT EXISTS wifi_sessions (
+    id TEXT PRIMARY KEY,
+    store_id TEXT NOT NULL REFERENCES stores(id) ON DELETE CASCADE,
+    public_token_hash TEXT NOT NULL UNIQUE
+        CHECK (public_token_hash ~ '^[0-9a-f]{64}$'),
+    status TEXT NOT NULL DEFAULT 'pending'
+        CHECK (status IN ('pending', 'completed', 'failed', 'expired')),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    expires_at TIMESTAMPTZ NOT NULL,
+    completed_at TIMESTAMPTZ,
+    CHECK (expires_at > created_at)
+);
+
+CREATE INDEX IF NOT EXISTS wifi_sessions_store_created_idx
+    ON wifi_sessions (store_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS wifi_sessions_pending_expiry_idx
+    ON wifi_sessions (expires_at)
+    WHERE status = 'pending';
+
 CREATE TABLE IF NOT EXISTS ads (
     id TEXT PRIMARY KEY,
     store_id TEXT REFERENCES stores(id) ON DELETE SET NULL,

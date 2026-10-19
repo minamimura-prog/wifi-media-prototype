@@ -1602,7 +1602,8 @@ def _events_for_store(events, store_id):
 class Handler(BaseHTTPRequestHandler):
     server_version = "WiFiMedia/2.0"
     def log_message(self, fmt, *args):
-        print("[%s] %s" % (self.address_string(), fmt % args))
+        message = re.sub(r"([?&]token=)[^&\s]*", r"\1[redacted]", fmt % args)
+        print("[%s] %s" % (self.address_string(), message))
     def send_bytes(self, body, status=200, content_type="text/html; charset=utf-8", extra_headers=None):
         self.send_response(status)
         self.send_header("Content-Type", content_type)
@@ -1941,6 +1942,37 @@ class Handler(BaseHTTPRequestHandler):
             if config is None:
                 return self.send_json({"ok": False, "error": "store_not_found"}, 404)
             return self.send_json(config)
+        wifi_session_parts = path.split("/")
+        if (len(wifi_session_parts) == 5
+                and wifi_session_parts[:4] == ["", "api", "wifi", "sessions"]):
+            session_id = wifi_session_parts[4]
+            if not re.fullmatch(r"[A-Za-z0-9_-]{40,64}", session_id):
+                return self.send_json({"ok": False, "error": "not_found"}, 404)
+            if not database.database_enabled():
+                return self.send_json({"ok": False, "error": "wifi_session_unavailable"}, 503)
+            try:
+                query = parse_qs(urlparse(self.path).query, keep_blank_values=True, max_num_fields=4)
+            except ValueError:
+                return self.send_json({"ok": False, "error": "invalid_request"}, 400)
+            tokens = query.get("token", [])
+            if set(query) != {"token"} or len(tokens) != 1 or not tokens[0]:
+                return self.send_json({"ok": False, "error": "not_found"}, 404)
+            try:
+                session = database.get_wifi_session_status(session_id, tokens[0])
+            except Exception:
+                return self.send_json({"ok": False}, 503)
+            if session is None:
+                return self.send_json({"ok": False, "error": "not_found"}, 404)
+            return self.send_json({
+                "ok": True,
+                "sessionId": session["session_id"],
+                "status": session["status"],
+                "expiresAt": session["expires_at"].isoformat(),
+                "completedAt": (
+                    session["completed_at"].isoformat()
+                    if session["completed_at"] else None
+                ),
+            }, extra_headers={"Referrer-Policy": "no-referrer"})
         if path == "/api/coupons":
             query = parse_qs(urlparse(self.path).query, keep_blank_values=True)
             if "store" in query:
@@ -2280,6 +2312,33 @@ class Handler(BaseHTTPRequestHandler):
         path = urlparse(self.path).path
         if path == "/api/admin/login": return self.handle_admin_login()
         if path == "/api/admin/logout": return self.handle_admin_logout()
+        if path == "/api/wifi/sessions":
+            if not self.require_same_origin(): return
+            if not database.database_enabled():
+                return self.send_json({"ok": False, "error": "wifi_session_unavailable"}, 503)
+            payload, error_status = self.read_admin_json_payload(max_bytes=4096)
+            if error_status:
+                return self.send_json({"ok": False, "error": "invalid_request"}, error_status)
+            if (not isinstance(payload, dict) or set(payload) != {"storeCode"}
+                    or not isinstance(payload.get("storeCode"), str)
+                    or len(payload["storeCode"]) > PUBLIC_CODE_MAX_LENGTH
+                    or not PUBLIC_CODE_PATTERN.fullmatch(payload["storeCode"] or "")):
+                return self.send_json({"ok": False, "error": "invalid_request"}, 400)
+            try:
+                session = database.create_wifi_session(payload["storeCode"])
+            except database.StoreInactiveError:
+                return self.send_json({"ok": False, "error": "store_inactive"}, 409)
+            except Exception:
+                return self.send_json({"ok": False}, 503)
+            if session is None:
+                return self.send_json({"ok": False, "error": "store_not_found"}, 404)
+            return self.send_json({
+                "ok": True,
+                "sessionId": session["session_id"],
+                "token": session["token"],
+                "status": session["status"],
+                "expiresAt": session["expires_at"].isoformat(),
+            }, 201, extra_headers={"Referrer-Policy": "no-referrer"})
         coupon_status_id = _admin_coupon_status_route(path)
         if coupon_status_id is not None:
             if not self.require_admin_session(): return
