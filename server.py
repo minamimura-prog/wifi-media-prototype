@@ -187,12 +187,16 @@ def _parse_admin_campaign_date(value, field_name):
 
 
 def _validate_admin_coupon_update(payload):
-    allowed = {
+    required = {
         "name", "code", "description", "discount_type", "discount_value",
         "store_id", "starts_on", "ends_on", "terms",
     }
-    if not isinstance(payload, dict) or set(payload) != allowed:
+    allowed = required | {"imageUrl"}
+    if (not isinstance(payload, dict) or not required.issubset(payload)
+            or not set(payload).issubset(allowed)):
         raise ValueError("invalid coupon fields")
+    if "imageUrl" in payload and not isinstance(payload["imageUrl"], str):
+        raise ValueError("invalid coupon image URL")
     name = payload["name"]
     code = payload["code"]
     if not isinstance(name, str) or not name.strip():
@@ -218,12 +222,15 @@ def _validate_admin_coupon_update(payload):
     ends_on = _parse_admin_campaign_date(payload["ends_on"], "ends_on")
     if starts_on and ends_on and starts_on > ends_on:
         raise ValueError("coupon start date is after end date")
-    return {
+    coupon = {
         "title": name.strip(), "code": code.strip(),
         "description": payload["description"], "discount_type": discount_type,
         "discount_value": payload["discount_value"], "store_id": store_id,
         "starts_on": starts_on, "ends_on": ends_on, "terms": payload["terms"],
     }
+    if "imageUrl" in payload:
+        coupon["image_url"] = payload["imageUrl"]
+    return coupon
 
 
 def _validate_admin_campaign(payload):
@@ -1160,7 +1167,11 @@ def public_coupons_for_store(public_code):
             target_type == "store"
             and str(target_store.get("id")) == str(store_id)
         ):
-            matched.append(coupon)
+            public_coupon = dict(coupon)
+            public_coupon["imageUrl"] = (
+                coupon.get("imageUrl", coupon.get("image_url", "")) or ""
+            )
+            matched.append(public_coupon)
     return matched
 
 def update_coupon_content(coupon_id, coupon):
@@ -1199,6 +1210,8 @@ def update_coupon_content(coupon_id, coupon):
             "start": database._date(coupon.get("starts_on")),
             "end": database._date(coupon.get("ends_on")), "terms": coupon["terms"],
         })
+        if "image_url" in coupon:
+            target["imageUrl"] = coupon["image_url"]
         _write_json_state(data)
         return {
             "id": target.get("id"), "ad_id": target.get("adId"),
@@ -1208,6 +1221,7 @@ def update_coupon_content(coupon_id, coupon):
             "discount_value": target.get("discountValue", ""), "terms": target.get("terms", ""),
             "starts_on": target.get("start"), "ends_on": target.get("end"),
             "status": target.get("status", "draft"),
+            "image_url": target.get("imageUrl", target.get("image_url", "")) or "",
         }
 
 def change_coupon_status(coupon_id, requested_status):
@@ -2180,6 +2194,7 @@ class Handler(BaseHTTPRequestHandler):
                 "start": database._date(updated.get("starts_on")),
                 "end": database._date(updated.get("ends_on")),
                 "status": updated.get("status", "draft"),
+                "imageUrl": updated.get("image_url") or "",
             }})
 
         store_route = _admin_store_campaign_route(path, include_campaign=True)

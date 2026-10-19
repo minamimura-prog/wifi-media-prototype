@@ -25,6 +25,20 @@ ADMIN_LOGIN_LOCK_DURATION = timedelta(minutes=15)
 _PUBLIC_CODE_RE = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 
 
+def _coupon_image_url_value(coupon):
+    """Return whether a coupon image URL was supplied and its string value."""
+    has_camel = "imageUrl" in coupon
+    has_snake = "image_url" in coupon
+    if has_camel and has_snake and coupon["imageUrl"] != coupon["image_url"]:
+        raise ValueError("conflicting coupon image URL values")
+    if not has_camel and not has_snake:
+        return False, ""
+    value = coupon["imageUrl"] if has_camel else coupon["image_url"]
+    if not isinstance(value, str):
+        raise ValueError("coupon image URL must be a string")
+    return True, value
+
+
 class StoreCampaignConflictError(Exception):
     """Raised when a store already has a publicly deliverable campaign in the same period."""
 
@@ -1867,7 +1881,8 @@ def load_state():
         ).fetchall()
         coupons = conn.execute(
             "SELECT id, ad_id, store_id, title, code, description, discount_type, discount_value, "
-            "terms, starts_on, ends_on, status FROM coupons WHERE deleted_at IS NULL "
+            "terms, starts_on, ends_on, status, COALESCE(image_url, '') AS image_url "
+            "FROM coupons WHERE deleted_at IS NULL "
             "ORDER BY created_at, id"
         ).fetchall()
         coupon_events = conn.execute(
@@ -1908,6 +1923,7 @@ def load_state():
             "discountType": row["discount_type"], "discountValue": row["discount_value"],
             "terms": row["terms"], "start": _date(row["starts_on"]),
             "end": _date(row["ends_on"]), "status": row["status"],
+            "imageUrl": row.get("image_url") or "",
         } for row in coupons],
         "coupon_events": [{
             "couponId": row["coupon_id"], "couponCode": row["coupon_code"], "storeId": row["store_id"],
@@ -2345,21 +2361,24 @@ def save_state(data):
                 coupon_id = str(coupon.get("id") or "")
                 if not coupon_id:
                     continue
+                has_image_url, image_url = _coupon_image_url_value(coupon)
                 coupon_store_id = coupon_store_targets[coupon_id]
                 conn.execute(
                     "INSERT INTO coupons (id, ad_id, store_id, title, code, description, discount_type, "
-                    "discount_value, terms, starts_on, ends_on, status) "
-                    "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) "
+                    "discount_value, terms, starts_on, ends_on, status, image_url) "
+                    "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) "
                     "ON CONFLICT (id) DO UPDATE SET ad_id=EXCLUDED.ad_id, store_id=EXCLUDED.store_id, "
                     "title=EXCLUDED.title, code=EXCLUDED.code, description=EXCLUDED.description, "
                     "discount_type=EXCLUDED.discount_type, discount_value=EXCLUDED.discount_value, "
                     "terms=EXCLUDED.terms, starts_on=EXCLUDED.starts_on, ends_on=EXCLUDED.ends_on, "
-                    "status=EXCLUDED.status, updated_at=now() WHERE coupons.deleted_at IS NULL",
+                    "status=EXCLUDED.status, "
+                    "image_url=CASE WHEN %s THEN EXCLUDED.image_url ELSE coupons.image_url END, "
+                    "updated_at=now() WHERE coupons.deleted_at IS NULL",
                     (coupon_id, coupon.get("adId") or ad_id, coupon_store_id, coupon.get("title", ""),
                      coupon.get("code", ""), coupon.get("description", ""),
                      coupon.get("discountType", "text"), str(coupon.get("discountValue", "")),
                      coupon.get("terms", ""), _date(coupon.get("start")), _date(coupon.get("end")),
-                     coupon.get("status", "draft")),
+                     coupon.get("status", "draft"), image_url, has_image_url),
                 )
             conn.execute(
                 "INSERT INTO store_settings (id, store_id, settings) VALUES ('global', NULL, %s) "
@@ -2383,6 +2402,7 @@ def update_coupon_content(coupon_id, coupon):
     store_id = coupon.get("store_id")
     starts_on = _date(coupon.get("starts_on"))
     ends_on = _date(coupon.get("ends_on"))
+    has_image_url, image_url = _coupon_image_url_value(coupon)
     if starts_on and ends_on and starts_on > ends_on:
         raise ValueError("coupon start date is after end date")
 
@@ -2416,16 +2436,23 @@ def update_coupon_content(coupon_id, coupon):
                 if duplicate is not None:
                     raise CouponCodeConflictError("coupon code already exists")
 
+            image_update = ", image_url = %s" if has_image_url else ""
+            update_values = [
+                coupon["title"].strip(), coupon["code"].strip(), coupon["description"],
+                coupon["discount_type"], coupon["discount_value"], store_id, starts_on,
+                ends_on, coupon["terms"],
+            ]
+            if has_image_url:
+                update_values.append(image_url)
+            update_values.append(coupon_id)
             return conn.execute(
                 "UPDATE coupons SET title = %s, code = %s, description = %s, "
                 "discount_type = %s, discount_value = %s, store_id = %s, "
-                "starts_on = %s, ends_on = %s, terms = %s, updated_at = now() "
+                "starts_on = %s, ends_on = %s, terms = %s" + image_update + ", updated_at = now() "
                 "WHERE id = %s AND deleted_at IS NULL "
                 "RETURNING id, ad_id, store_id, title, code, description, discount_type, "
-                "discount_value, terms, starts_on, ends_on, status",
-                (coupon["title"].strip(), coupon["code"].strip(), coupon["description"],
-                 coupon["discount_type"], coupon["discount_value"], store_id, starts_on,
-                 ends_on, coupon["terms"], coupon_id),
+                "discount_value, terms, starts_on, ends_on, status, image_url",
+                tuple(update_values),
             ).fetchone()
 
 
