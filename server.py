@@ -162,6 +162,52 @@ def _validate_admin_company(payload):
     }
 
 
+def _validate_admin_registration(payload):
+    if (not isinstance(payload, dict)
+            or not {"companyName", "storeName"}.issubset(payload)
+            or not set(payload).issubset({"companyName", "storeName", "ad", "coupon"})):
+        raise ValueError("invalid fields")
+    company_name = payload.get("companyName")
+    store_name = payload.get("storeName")
+    if (not isinstance(company_name, str) or not company_name.strip()
+            or len(company_name.strip()) > 200
+            or not isinstance(store_name, str) or not store_name.strip()
+            or len(store_name.strip()) > 200):
+        raise ValueError("invalid names")
+    result = {"company_name": company_name.strip(), "store_name": store_name.strip()}
+    if "ad" in payload:
+        ad = payload["ad"]
+        if not isinstance(ad, dict) or set(ad) != {"title", "landingUrl", "mediaUrl"}:
+            raise ValueError("invalid ad fields")
+        if not isinstance(ad["title"], str) or not ad["title"].strip():
+            raise ValueError("ad title is required")
+        campaign = _validate_admin_campaign({
+            "name": ad["title"].strip(),
+            "status": "draft",
+            "startsOn": None,
+            "endsOn": None,
+            "title": ad["title"].strip(),
+            "body": "",
+            "landingUrl": ad["landingUrl"],
+            "mediaUrl": ad["mediaUrl"],
+            "published": False,
+        })
+        result["campaign"] = campaign
+    if "coupon" in payload:
+        coupon = payload["coupon"]
+        if (not isinstance(coupon, dict) or set(coupon) != {"title", "imageUrl"}
+                or not isinstance(coupon.get("title"), str)
+                or not coupon["title"].strip() or len(coupon["title"].strip()) > 200
+                or not isinstance(coupon.get("imageUrl"), str)
+                or len(coupon["imageUrl"]) > 4096):
+            raise ValueError("invalid coupon fields")
+        result["coupon"] = {
+            "title": coupon["title"].strip(),
+            "image_url": coupon["imageUrl"],
+        }
+    return result
+
+
 def _admin_store_campaign_route(path, include_campaign=False):
     parts = path.split("/")
     expected_length = 7 if include_campaign else 6
@@ -2575,6 +2621,68 @@ class Handler(BaseHTTPRequestHandler):
                 "ok": True, "campaignId": result["campaign_id"],
                 "status": result["status"], "published": result["published"],
             })
+        if path == "/api/admin/registrations":
+            if not self.require_admin_session(): return
+            if not self.require_same_origin(): return
+            if not database.database_enabled():
+                return self.send_json({"ok": False, "error": "admin_data_unavailable"}, 503)
+            raw_payload, error_status = self.read_admin_json_payload()
+            if error_status:
+                return self.send_json({"ok": False, "error": "invalid_request"}, error_status)
+            try:
+                registration = _validate_admin_registration(raw_payload)
+            except (TypeError, ValueError):
+                return self.send_json({"ok": False, "error": "invalid_request"}, 400)
+            created = None
+            for _ in range(3):
+                company_id = "company-" + uuid.uuid4().hex
+                company_code = "company-" + uuid.uuid4().hex
+                store_id = "store-" + uuid.uuid4().hex
+                campaign_id = "campaign-" + uuid.uuid4().hex
+                ad_id = "ad-" + uuid.uuid4().hex
+                coupon_id = "coupon-" + uuid.uuid4().hex
+                try:
+                    created = database.create_company_with_store(
+                        company_id, company_code, store_id,
+                        registration["company_name"], registration["store_name"],
+                        campaign=registration.get("campaign"),
+                        campaign_id=campaign_id if "campaign" in registration else None,
+                        ad_id=ad_id if "campaign" in registration else None,
+                        coupon=registration.get("coupon"),
+                        coupon_id=coupon_id if "coupon" in registration else None,
+                    )
+                    break
+                except (database.CompanyCodeConflictError, database.StorePublicCodeConflictError):
+                    continue
+                except Exception:
+                    return self.send_json({"ok": False, "error": "registration_failed"}, 503)
+            if created is None:
+                return self.send_json({"ok": False, "error": "registration_conflict"}, 409)
+            company, store = created["company"], created["store"]
+            response = {
+                "ok": True,
+                "company": {
+                    "id": company["id"], "name": company["name"],
+                    "code": company["code"], "status": company["status"],
+                },
+                "store": {
+                    "id": store["id"], "name": store["name"],
+                    "companyId": store["company_id"],
+                    "publicCode": store["public_code"], "status": store["status"],
+                },
+            }
+            if created.get("campaign") is not None:
+                response["campaign"] = _admin_campaign_json(created["campaign"])
+            if created.get("coupon") is not None:
+                coupon = created["coupon"]
+                response["coupon"] = {
+                    "id": coupon["id"],
+                    "title": coupon["title"],
+                    "code": coupon["code"],
+                    "status": coupon["status"],
+                    "imageUrl": coupon.get("image_url") or "",
+                }
+            return self.send_json(response, 201)
         if path == "/api/admin/companies":
             if not self.require_admin_session(): return
             if not self.require_same_origin(): return

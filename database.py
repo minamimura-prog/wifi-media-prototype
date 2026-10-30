@@ -75,6 +75,10 @@ class CompanyCodeConflictError(Exception):
     """Raised when a company code is already assigned to another company."""
 
 
+class StorePublicCodeConflictError(ValueError):
+    """Raised when a generated public store code collides with an existing code."""
+
+
 class StoreInactiveError(Exception):
     """Raised when a new public event targets a stopped store."""
 
@@ -642,8 +646,21 @@ def _unique_public_code(conn, store_id):
         "SELECT 1 FROM stores WHERE public_code = %s AND id <> %s LIMIT 1",
         (candidate, stable_id),
     ).fetchone():
-        raise ValueError("publicCode hash collision")
+        raise StorePublicCodeConflictError("publicCode hash collision")
     return candidate
+
+
+def _unique_registration_coupon_code(conn):
+    """Generate an opaque coupon code and check it against active history."""
+    for _ in range(10):
+        candidate = "WFM-" + secrets.token_hex(8).upper()
+        if conn.execute(
+            "SELECT 1 FROM coupons WHERE deleted_at IS NULL "
+            "AND lower(btrim(code)) = lower(btrim(%s)) LIMIT 1",
+            (candidate,),
+        ).fetchone() is None:
+            return candidate
+    raise RuntimeError("could not generate a unique coupon code")
 
 
 def get_store_by_public_code(public_code):
@@ -1162,6 +1179,97 @@ def create_company(company_id, name, code, business_type="", status="active"):
             raise CompanyCodeConflictError from exc
         raise
     return dict(row)
+
+
+def create_company_with_store(
+    company_id, company_code, store_id, company_name, store_name,
+    campaign=None, campaign_id=None, ad_id=None, coupon=None, coupon_id=None,
+):
+    """Atomically create a company, store, and optional campaign/coupon records."""
+    if ((campaign is None and (campaign_id is not None or ad_id is not None))
+            or (campaign is not None and (campaign_id is None or ad_id is None))):
+        raise ValueError("campaign and campaign identifiers must be provided together")
+    if ((coupon is None and coupon_id is not None)
+            or (coupon is not None and coupon_id is None)):
+        raise ValueError("coupon and coupon identifier must be provided together")
+    if campaign is not None:
+        if campaign_id == "default" or ad_id == "main":
+            raise ValueError("reserved identifiers")
+        _validate_campaign_for_write(campaign)
+    if coupon is not None:
+        if (not isinstance(coupon, dict)
+                or not isinstance(coupon.get("title"), str)
+                or not coupon["title"].strip()
+                or not isinstance(coupon.get("image_url", ""), str)):
+            raise ValueError("invalid registration coupon")
+    try:
+        with pool().connection() as conn:
+            with conn.transaction():
+                company = conn.execute(
+                    "INSERT INTO companies (id, name, code, business_type, status) "
+                    "VALUES (%s, %s, %s, '', 'active') "
+                    "RETURNING id, name, code, business_type, status",
+                    (str(company_id), company_name, company_code),
+                ).fetchone()
+                public_code = _unique_public_code(conn, store_id)
+                store = conn.execute(
+                    "INSERT INTO stores (id, company_id, public_code, name, status) "
+                    "VALUES (%s, %s, %s, %s, '稼働中') "
+                    "RETURNING id, company_id, public_code, name, status",
+                    (str(store_id), str(company_id), public_code, store_name),
+                ).fetchone()
+                created_campaign = None
+                created_coupon = None
+                if campaign is not None:
+                    _ensure_store_campaign_period_available(conn, store_id, campaign)
+                    # Match ordinary STORE campaign storage: assignment is held
+                    # only in campaign_stores and ads.store_id remains NULL.
+                    conn.execute(
+                        "INSERT INTO ads "
+                        "(id, store_id, title, body, landing_url, media_url, media_url_mobile, published) "
+                        "VALUES (%s, NULL, %s, %s, %s, %s, %s, %s)",
+                        (ad_id, campaign["title"], campaign["body"],
+                         campaign["landing_url"], campaign["media_url"],
+                         campaign.get("media_url_mobile") or "", campaign["published"]),
+                    )
+                    conn.execute(
+                        "INSERT INTO campaigns "
+                        "(id, ad_id, scope, company_id, name, starts_on, ends_on, status) "
+                        "VALUES (%s, %s, 'store', NULL, %s, %s, %s, %s)",
+                        (campaign_id, ad_id, campaign["name"], campaign["starts_on"],
+                         campaign["ends_on"], campaign["status"]),
+                    )
+                    conn.execute(
+                        "INSERT INTO campaign_stores (campaign_id, store_id) VALUES (%s, %s)",
+                        (campaign_id, str(store_id)),
+                    )
+                    created_campaign = _admin_campaign_result(campaign_id, ad_id, campaign)
+                if coupon is not None:
+                    coupon_code = _unique_registration_coupon_code(conn)
+                    coupon_ad_id = ad_id if campaign is not None else "main"
+                    created_coupon = conn.execute(
+                        "INSERT INTO coupons "
+                        "(id, ad_id, store_id, title, code, description, discount_type, "
+                        "discount_value, terms, starts_on, ends_on, status, image_url) "
+                        "VALUES (%s, %s, %s, %s, %s, '', 'text', '', '', NULL, NULL, 'draft', %s) "
+                        "RETURNING id, ad_id, store_id, title, code, description, discount_type, "
+                        "discount_value, terms, starts_on, ends_on, status, image_url",
+                        (coupon_id, coupon_ad_id, str(store_id), coupon["title"].strip(),
+                         coupon_code, coupon.get("image_url", "")),
+                    ).fetchone()
+        result = {"company": dict(company), "store": dict(store)}
+        if created_campaign is not None:
+            result["campaign"] = created_campaign
+        if created_coupon is not None:
+            result["coupon"] = dict(created_coupon)
+        return result
+    except psycopg.errors.UniqueViolation as exc:
+        constraint = getattr(getattr(exc, "diag", None), "constraint_name", None)
+        if constraint == "companies_code_key":
+            raise CompanyCodeConflictError from exc
+        if constraint in {"stores_public_code_uidx", "stores_public_code_key"}:
+            raise StorePublicCodeConflictError from exc
+        raise
 
 
 def assign_store_company(store_id, company_id):
