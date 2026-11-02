@@ -1593,7 +1593,7 @@ body:has(.ad-management-view){background-color:#070b0d;background-image:radial-g
 .dashboard-view .dashboard-store-identity small{font-size:11px}
 .dashboard-view .dashboard-quick-actions{padding:14px 16px}
 .dashboard-view .dashboard-quick-actions-label{font-size:11px}
-.store-management-view .store-search-field{display:grid;grid-template-columns:max-content minmax(220px,360px);align-items:center;gap:12px}
+.store-management-view .store-search-field{display:grid;grid-template-columns:max-content minmax(220px,1fr);align-items:center;gap:12px}
 .store-management-view .store-search-field input{width:100%;font-size:14px}
 .coupon-management-view .coupon-registration-panel>.twocol:has(#cStart){display:grid;grid-template-columns:minmax(0,1fr) 24px minmax(0,1fr);align-items:end;gap:10px 8px}
 .coupon-management-view .coupon-registration-panel>.twocol:has(#cStart)::after{grid-column:2;grid-row:1;align-self:center;justify-self:center;margin-top:21px;color:var(--signal-cyan);font-size:19px;font-weight:700;text-shadow:0 0 8px rgba(76,229,255,.35);content:"→"}
@@ -1617,6 +1617,29 @@ body:has(.ad-management-view){background-color:#070b0d;background-image:radial-g
 .analytics-view .analytics-detail-context,
 .analytics-view .analytics-ranking-method,
 .analytics-view .analytics-scope-tag{font-size:10px}
+.store-management-view .store-data-table tbody tr.store-row-selected{background:rgba(76,229,255,.075);box-shadow:inset 3px 0 0 rgba(76,229,255,.78),inset 0 0 18px rgba(76,229,255,.035)}
+.store-management-view .store-data-table tbody tr.store-row-selected td{background:transparent;border-top:1px solid rgba(76,229,255,.48);border-bottom:1px solid rgba(76,229,255,.48)}
+.store-management-view .store-data-table tbody tr.store-row-selected td:first-child{border-left:1px solid rgba(76,229,255,.48)}
+.store-management-view .store-data-table tbody tr.store-row-selected td:last-child{border-right:1px solid rgba(76,229,255,.48)}
+.store-company-accordion{display:grid;gap:9px;margin:2px 0 4px}
+.store-company-folder{overflow:hidden;border:1px solid rgba(76,229,255,.28);border-radius:6px;background:rgba(4,12,15,.64);transition:border-color .14s ease,background .14s ease,box-shadow .14s ease}
+.store-company-folder:hover{border-color:rgba(76,229,255,.5);background:rgba(7,17,20,.82)}
+.store-company-folder.is-open{border-color:rgba(76,229,255,.54);box-shadow:inset 0 0 14px rgba(76,229,255,.035)}
+.store-company-trigger{display:flex;width:100%;min-height:54px;align-items:center;justify-content:space-between;gap:12px;padding:12px 15px;color:#e7f0f2;background:transparent;border:0;text-align:left;cursor:pointer;font:600 14px "IBM Plex Sans JP",sans-serif}
+.store-company-trigger:hover{color:#f4ffff;background:rgba(76,229,255,.035)}
+.store-company-trigger:focus-visible{outline:2px solid rgba(76,229,255,.68);outline-offset:-3px}
+.store-company-trigger-main{display:flex;min-width:0;align-items:center;gap:11px}
+.store-company-chevron{width:17px;flex:none;color:var(--signal-cyan);font:700 12px ui-monospace,SFMono-Regular,Menlo,monospace;transition:transform .14s ease}
+.store-company-folder.is-open .store-company-chevron{transform:rotate(90deg)}
+.store-company-name{overflow-wrap:anywhere;color:#e4f3f3;font-weight:700}
+.store-company-count{flex:none;padding:3px 8px;color:#bceff1;border:1px solid rgba(76,229,255,.26);border-radius:999px;background:rgba(76,229,255,.045);font:600 10px "IBM Plex Sans JP",sans-serif;white-space:nowrap}
+.store-company-content{padding:0 11px 11px;border-top:1px solid rgba(76,229,255,.14)}
+.store-company-content[hidden]{display:none}
+.store-company-content .store-table-scroll{margin-top:10px}
+.store-company-empty{margin:12px 2px 2px;padding:20px 12px;color:#a8c6c5;border:1px dashed rgba(76,229,255,.2);border-radius:5px;text-align:center;font-size:12px}
+.store-folders-empty{margin:4px 0 0;padding:28px 12px;color:#a8c6c5;border:1px dashed rgba(76,229,255,.24);border-radius:6px;text-align:center;font-size:13px}
+.store-management-view .store-data-table tbody tr[data-store-row]{cursor:pointer}
+.store-management-view .store-data-table tbody tr[data-store-row]:focus-visible{outline:2px solid rgba(76,229,255,.7);outline-offset:-2px}
 @media(max-width:700px){
   .dashboard-view .dashboard-filter-field,
   .dashboard-view .dashboard-search-field,
@@ -1688,10 +1711,6 @@ body:has(.ad-management-view){background-color:#070b0d;background-image:radial-g
 .company-management-view .company-detail-store-table{min-width:520px}
 .company-management-view .company-detail-store-table .company-status{white-space:nowrap}
 .company-management-view .company-list-table{min-width:700px}
-.store-management-view .store-data-table tbody tr.store-row-selected{background:rgba(76,229,255,.075);box-shadow:inset 3px 0 0 rgba(76,229,255,.78),inset 0 0 18px rgba(76,229,255,.035)}
-.store-management-view .store-data-table tbody tr.store-row-selected td{background:transparent;border-top:1px solid rgba(76,229,255,.48);border-bottom:1px solid rgba(76,229,255,.48)}
-.store-management-view .store-data-table tbody tr.store-row-selected td:first-child{border-left:1px solid rgba(76,229,255,.48)}
-.store-management-view .store-data-table tbody tr.store-row-selected td:last-child{border-right:1px solid rgba(76,229,255,.48)}
 .company-management-view .company-edit-button{min-height:30px;padding:5px 9px;border-color:rgba(76,229,255,.34);background:rgba(9,25,29,.75);color:#bdebf0;font-size:11px;box-shadow:none}
 .company-management-view .company-edit-button:hover:not(:disabled){border-color:var(--signal-cyan);background:rgba(76,229,255,.08);box-shadow:0 0 8px rgba(76,229,255,.12);transform:none}
 .company-edit-modal{display:grid;gap:14px;min-width:min(420px,calc(100vw - 48px));padding:4px 0 2px}
@@ -1713,7 +1732,8 @@ let adPcPreviewObserver=null;
 let adCreateIdempotencyKey=null, adCreateAttempt=null, adCreateUncertain=false, adCreateBlocked=false, adCreateStoreId=null;
 let companyAdminData={companies:[],stores:[]}, companyDataLoaded=false, companyDirectoryLoaded=false, companyRequestSeq=0, companyCreateSaving=false, companyAssignSaving=new Set(), companyLifecycleSaving=new Set(), companyDeleting=new Set(), companyProfileSaving=false, companyProfileTargetId=null, companyShowArchived=false, companyFormNotice='', companyFormNoticeType='', companyLoadError='', companyStoreNotices={}, companyFormValues={name:'',code:'',businessType:'',status:'active'};
 let storeCompanyOptionsData=[], storeCompanyOptionsError='', storeSavePending=false, storeSaveFeedback='', storeSaveFeedbackType='';
-let storePublicCodes=new Map(), storePublicCodeSeq=0, storePublicCodeLoading=false, storePublicCodeError='', storeSearchQuery='', storeSearchComposing=false, storeListView='normal', storeEditInitialValues=null, storeAutoScrollPendingId=null;
+let storePublicCodes=new Map(), storePublicCodeSeq=0, storePublicCodeLoading=false, storePublicCodeError='', storeSearchQuery='', storeSearchComposing=false, storeListView='normal', storeEditInitialValues=null, storeAutoScrollPendingId=null, openStoreCompanyKeys=new Set(), storeSearchAutoOpenSignature=null;
+let lastRenderedAdminPage=null;
 let couponFormError='', selectedCouponViewId=null, couponShowExpired=false, couponSavePending=false, couponStatusChangePending=false, couponImageDraftUrl=null, couponImageUploadPending=false, couponImageEditorGeneration=0, designSaveError='';
 let dashboardSelectedCompany='all', dashboardStoreSearch='', dashboardSelectedStoreId=null, dashboardDirectoryError='', dashboardKpiRequestSeq=0, dashboardKpiAbortController=null;
 let analyticsCompanies=null, analyticsCompaniesPromise=null, analyticsSelectedCompanyId=null, analyticsSelectedStoreId=null, analyticsSelectedPeriod='30d', analyticsRequestSeq=0;
@@ -1727,7 +1747,7 @@ async function apiFetch(url, options){
   return response;
 }
 const ADMIN_PAGE_HISTORY_KEY='__wifiMediaAdminPageHistory';let adminPageHistoryPosition=null,adminPageHistoryChain=null,adminPageHistoryHash=location.hash,pendingAdminHistoryRestore=null;const suppressedAdminHashChanges=new Set();function createAdminPageHistoryChain(){return typeof crypto?.randomUUID==='function'?crypto.randomUUID():`admin-${Date.now()}-${Math.random().toString(36).slice(2)}`}function makeAdminPageHistoryState(position,chain=adminPageHistoryChain,baseState=history.state){const current=baseState&&typeof baseState==='object'?{...baseState}:{};current[ADMIN_PAGE_HISTORY_KEY]={version:2,position,chain};return current}function readAdminPageHistoryEntry(state){const value=state&&typeof state==='object'?state[ADMIN_PAGE_HISTORY_KEY]:null;return value&&value.version===2&&Number.isInteger(value.position)&&typeof value.chain==='string'&&value.chain?{position:value.position,chain:value.chain}:null}function initializeAdminPageHistory(){const entry=readAdminPageHistoryEntry(history.state);if(entry){adminPageHistoryPosition=entry.position;adminPageHistoryChain=entry.chain}else{adminPageHistoryPosition=0;adminPageHistoryChain=createAdminPageHistoryChain();history.replaceState(makeAdminPageHistoryState(0,adminPageHistoryChain),'',location.href)}adminPageHistoryHash=location.hash}function ensureAdminPageHistoryEntry(){if(Number.isInteger(adminPageHistoryPosition)&&adminPageHistoryChain)return;adminPageHistoryPosition=0;adminPageHistoryChain=createAdminPageHistoryChain();history.replaceState(makeAdminPageHistoryState(0,adminPageHistoryChain),'',location.href)}function historyUrlHash(url){try{return new URL(url,location.href).hash}catch(_){return ''}}function suppressAdminHashChange(url){const hash=historyUrlHash(url);if(hash)suppressedAdminHashChanges.add(hash)}function rebaseAdminPageHistoryEntry(){adminPageHistoryPosition=0;adminPageHistoryChain=createAdminPageHistoryChain();history.replaceState(makeAdminPageHistoryState(0,adminPageHistoryChain),'',location.href)}function restoreUnknownAdminHistoryTarget(previousHash){const state=history.state&&typeof history.state==='object'?{...history.state}:{};delete state[ADMIN_PAGE_HISTORY_KEY];const url=location.pathname+location.search+previousHash;history.replaceState(state,'',url);adminPageHistoryPosition=null;adminPageHistoryChain=null;adminPageHistoryHash=previousHash}
-const PAGE_RENDERERS={dashboard:()=>dashboard(),registration:()=>renderRegistration(),ads:()=>ads(),stores:()=>stores(),companies:()=>companyManagement(),analytics:()=>reports(),coupons:()=>couponManager(),design:()=>design()};function navigateToStoreCoupons(storeId){const id=String(storeId??'');if(!id)return;const current=parseAdminRoute();if(current.page==='coupons'&&current.params.get('store')===id)return;ensureAdminPageHistoryEntry();adminPageHistoryPosition++;const targetHash=buildAdminHash('coupons',{store:id});history.pushState(makeAdminPageHistoryState(adminPageHistoryPosition,adminPageHistoryChain),'',targetHash);if(S)renderCurrentPage()}function navigateToStoreAnalytics(storeId){const id=String(storeId??'');if(!id)return;const current=parseAdminRoute();if(current.page==='analytics'&&current.params.get('store')===id)return;ensureAdminPageHistoryEntry();adminPageHistoryPosition++;const targetHash=buildAdminHash('analytics',{store:id});history.pushState(makeAdminPageHistoryState(adminPageHistoryPosition,adminPageHistoryChain),'',targetHash);if(S)renderCurrentPage()}function setActivePage(page){document.querySelectorAll('.side .nav').forEach(item=>item.classList.toggle('active',item.dataset.page===page))}function parseAdminRoute(hash=location.hash){const route=String(hash||'').replace(/^#/,'');const queryIndex=route.indexOf('?');return {page:queryIndex<0?route:route.slice(0,queryIndex),params:new URLSearchParams(queryIndex<0?'':route.slice(queryIndex+1))}}function isAdminRoute(page,hash=location.hash){return parseAdminRoute(hash).page===page}function buildAdminHash(page,params){const query=params instanceof URLSearchParams?params.toString():new URLSearchParams(params||{}).toString();return '#'+page+(query?'?'+query:'')}function setAdminRouteHash(hash){if(location.hash===hash)return;history.replaceState(makeAdminPageHistoryState(adminPageHistoryPosition,adminPageHistoryChain),'',location.pathname+location.search+hash);adminPageHistoryHash=hash}function resolvePage(){const page=parseAdminRoute().page;if(Object.prototype.hasOwnProperty.call(PAGE_RENDERERS,page))return page;history.replaceState(makeAdminPageHistoryState(adminPageHistoryPosition,adminPageHistoryChain),'',location.pathname+location.search+'#dashboard');return 'dashboard'}function renderCurrentPage(){if(!S)return;const page=resolvePage();adminPageHistoryHash=location.hash;if(page!=='coupons')couponImageEditorGeneration++;if(page!=='ads')clearAdLocalPreviewUrls();if(page!=='dashboard')disposeDashboardPcPreviewScale();document.body.classList.toggle('dashboard-layout-active',page==='dashboard');document.querySelector('.app')?.classList.toggle('dashboard-layout-active',page==='dashboard');setActivePage(page);PAGE_RENDERERS[page]()}function navigateTo(page){if(adSaving&&(adTarget==='company'||adTarget==='jack'||adTarget==='store'&&adCreatingNew))return;if(!Object.prototype.hasOwnProperty.call(PAGE_RENDERERS,page))return;if(isAdminRoute(page))return;if(isAdminRoute('ads')&&!confirmDiscardAdChanges())return;const targetHash='#'+page;ensureAdminPageHistoryEntry();adminPageHistoryPosition++;history.pushState(makeAdminPageHistoryState(adminPageHistoryPosition,adminPageHistoryChain),'',targetHash);if(S)renderCurrentPage()}function navigateToStoreAds(storeId){const id=String(storeId??'');if(!id)return;if(adSaving&&(adTarget==='company'||adTarget==='jack'||adTarget==='store'&&adCreatingNew))return;const current=parseAdminRoute();if(current.page==='ads'&&current.params.get('store')===id)return;if(current.page==='ads'&&!confirmDiscardAdChanges())return;ensureAdminPageHistoryEntry();adminPageHistoryPosition++;const targetHash=buildAdminHash('ads',{store:id});history.pushState(makeAdminPageHistoryState(adminPageHistoryPosition,adminPageHistoryChain),'',targetHash);if(S)renderCurrentPage()}function getDashboardQuickActionStoreId(){
+const PAGE_RENDERERS={dashboard:()=>dashboard(),registration:()=>renderRegistration(),ads:()=>ads(),stores:()=>stores(),companies:()=>companyManagement(),analytics:()=>reports(),coupons:()=>couponManager(),design:()=>design()};function navigateToStoreCoupons(storeId){const id=String(storeId??'');if(!id)return;const current=parseAdminRoute();if(current.page==='coupons'&&current.params.get('store')===id)return;ensureAdminPageHistoryEntry();adminPageHistoryPosition++;const targetHash=buildAdminHash('coupons',{store:id});history.pushState(makeAdminPageHistoryState(adminPageHistoryPosition,adminPageHistoryChain),'',targetHash);if(S)renderCurrentPage()}function navigateToStoreAnalytics(storeId){const id=String(storeId??'');if(!id)return;const current=parseAdminRoute();if(current.page==='analytics'&&current.params.get('store')===id)return;ensureAdminPageHistoryEntry();adminPageHistoryPosition++;const targetHash=buildAdminHash('analytics',{store:id});history.pushState(makeAdminPageHistoryState(adminPageHistoryPosition,adminPageHistoryChain),'',targetHash);if(S)renderCurrentPage()}function setActivePage(page){document.querySelectorAll('.side .nav').forEach(item=>item.classList.toggle('active',item.dataset.page===page))}function parseAdminRoute(hash=location.hash){const route=String(hash||'').replace(/^#/,'');const queryIndex=route.indexOf('?');return {page:queryIndex<0?route:route.slice(0,queryIndex),params:new URLSearchParams(queryIndex<0?'':route.slice(queryIndex+1))}}function isAdminRoute(page,hash=location.hash){return parseAdminRoute(hash).page===page}function buildAdminHash(page,params){const query=params instanceof URLSearchParams?params.toString():new URLSearchParams(params||{}).toString();return '#'+page+(query?'?'+query:'')}function setAdminRouteHash(hash){if(location.hash===hash)return;history.replaceState(makeAdminPageHistoryState(adminPageHistoryPosition,adminPageHistoryChain),'',location.pathname+location.search+hash);adminPageHistoryHash=hash}function resolvePage(){const page=parseAdminRoute().page;if(Object.prototype.hasOwnProperty.call(PAGE_RENDERERS,page))return page;history.replaceState(makeAdminPageHistoryState(adminPageHistoryPosition,adminPageHistoryChain),'',location.pathname+location.search+'#dashboard');return 'dashboard'}function renderCurrentPage(){if(!S)return;const page=resolvePage();adminPageHistoryHash=location.hash;if(page==='stores'&&lastRenderedAdminPage!=='stores')storeListView='normal';lastRenderedAdminPage=page;if(page!=='coupons')couponImageEditorGeneration++;if(page!=='ads')clearAdLocalPreviewUrls();if(page!=='dashboard')disposeDashboardPcPreviewScale();document.body.classList.toggle('dashboard-layout-active',page==='dashboard');document.querySelector('.app')?.classList.toggle('dashboard-layout-active',page==='dashboard');setActivePage(page);PAGE_RENDERERS[page]()}function navigateTo(page){if(adSaving&&(adTarget==='company'||adTarget==='jack'||adTarget==='store'&&adCreatingNew))return;if(!Object.prototype.hasOwnProperty.call(PAGE_RENDERERS,page))return;if(isAdminRoute(page))return;if(isAdminRoute('ads')&&!confirmDiscardAdChanges())return;const targetHash='#'+page;ensureAdminPageHistoryEntry();adminPageHistoryPosition++;history.pushState(makeAdminPageHistoryState(adminPageHistoryPosition,adminPageHistoryChain),'',targetHash);if(S)renderCurrentPage()}function navigateToStoreAds(storeId){const id=String(storeId??'');if(!id)return;if(adSaving&&(adTarget==='company'||adTarget==='jack'||adTarget==='store'&&adCreatingNew))return;const current=parseAdminRoute();if(current.page==='ads'&&current.params.get('store')===id)return;if(current.page==='ads'&&!confirmDiscardAdChanges())return;ensureAdminPageHistoryEntry();adminPageHistoryPosition++;const targetHash=buildAdminHash('ads',{store:id});history.pushState(makeAdminPageHistoryState(adminPageHistoryPosition,adminPageHistoryChain),'',targetHash);if(S)renderCurrentPage()}function getDashboardQuickActionStoreId(){
   if(!dashboardSelectedStoreId)return null;
   const id=String(dashboardSelectedStoreId);
   return dashboardStoresForView().some(store=>String(store.id)===id)?id:null;
@@ -3483,6 +3503,16 @@ function setStoreListView(view){
   storeListView=view;
   renderStores();
 }
+function navigateToStoreFolder(companyId,storeId=null){
+  const params={};
+  if(companyId!==null&&companyId!==undefined)params.company=String(companyId);
+  if(storeId!==null&&storeId!==undefined&&String(storeId))params.store=String(storeId);
+  const targetHash=buildAdminHash('stores',params);
+  if(location.hash===targetHash)return;
+  ensureAdminPageHistoryEntry();adminPageHistoryPosition++;
+  history.pushState(makeAdminPageHistoryState(adminPageHistoryPosition,adminPageHistoryChain),'',targetHash);
+  if(S)renderCurrentPage();
+}
 function renderStores(){
   const feedback=storeSaveFeedback?`<div class="company-notice ${storeSaveFeedbackType==='error'?'is-error':''}" role="${storeSaveFeedbackType==='error'?'alert':'status'}">${esc(storeSaveFeedback)}</div>`:'';
   const route=parseAdminRoute();
@@ -3492,16 +3522,45 @@ function renderStores(){
   const normalStores=allStores.filter(store=>store?.archivedAt===null||store?.archivedAt===undefined);
   const archivedStores=allStores.filter(store=>store?.archivedAt!==null&&store?.archivedAt!==undefined);
   const tabStores=storeListView==='archived'?archivedStores:normalStores;
-  const visibleStores=tabStores.filter(store=>{
+  const companies=Array.isArray(storeCompanyOptionsData)?storeCompanyOptionsData:[];
+  const companyById=new Map(companies.map(company=>[String(company.id),company]));
+  const groupKeyForStore=store=>store?.companyId===null||store?.companyId===undefined||store?.companyId===''?'unassigned':String(store.companyId);
+  const requestedCompanyParam=route.page==='stores'?route.params.get('company'):null;
+  const requestedStore=requestedStoreId!==null?allStores.find(store=>String(store.id)===requestedStoreId):null;
+  const storeMatches=store=>{
     if(!query)return true;
     const publicCode=storePublicCodes instanceof Map?storePublicCodes.get(String(store.id))||'':'';
-    const companyName=storeCompanyLabel(store);
-    return [store.name,publicCode,store.id,companyName,store.companyId].some(value=>String(value??'').toLocaleLowerCase().includes(query));
+    return [store.name,publicCode,store.id,store.companyId].some(value=>String(value??'').toLocaleLowerCase().includes(query));
+  };
+  const groupStoreMap=new Map(companies.map(company=>[String(company.id),[]]));
+  groupStoreMap.set('unassigned',[]);
+  tabStores.forEach(store=>{
+    const key=groupKeyForStore(store);
+    if(!groupStoreMap.has(key))groupStoreMap.set(key,[]);
+    groupStoreMap.get(key).push(store);
   });
-  const selectedStoreId=requestedStoreId!==null&&visibleStores.some(store=>String(store.id)===requestedStoreId)?requestedStoreId:null;
-  const rows=visibleStores.map(x=>{
+  const groups=companies.map(company=>({key:String(company.id),name:company.name||`企業ID: ${company.id}`,stores:groupStoreMap.get(String(company.id))||[]}));
+  for(const [key,groupStores] of groupStoreMap){
+    if(key!=='unassigned'&&!companyById.has(key))groups.push({key,name:`企業ID: ${key}`,stores:groupStores});
+  }
+  groups.push({key:'unassigned',name:'未所属',stores:groupStoreMap.get('unassigned')||[]});
+  if(requestedCompanyParam!==null&&groupStoreMap.has(String(requestedCompanyParam)))openStoreCompanyKeys.add(String(requestedCompanyParam));
+  if(requestedStore)openStoreCompanyKeys.add(groupKeyForStore(requestedStore));
+  const visibleGroups=groups.map(group=>{
+    const companyMatches=Boolean(query&&[group.name,group.key].some(value=>String(value??'').toLocaleLowerCase().includes(query)));
+    const matchingStores=!query||companyMatches?group.stores:group.stores.filter(storeMatches);
+    return {...group,matchingStores,companyMatches};
+  }).filter(group=>!query||group.companyMatches||group.matchingStores.length>0);
+  const autoOpenSignature=`${query}::${visibleGroups.map(group=>group.key).join('|')}`;
+  if(autoOpenSignature!==storeSearchAutoOpenSignature){
+    storeSearchAutoOpenSignature=autoOpenSignature;
+    if(query&&visibleGroups.length===1)openStoreCompanyKeys.add(visibleGroups[0].key);
+  }
+  const selectedStoreId=requestedStoreId!==null&&tabStores.some(store=>String(store.id)===requestedStoreId)?requestedStoreId:null;
+  const normalActive=storeListView==='normal';
+  const renderStoreRows=groupStores=>groupStores.map(x=>{
     const storeId=String(x.id??'');
-    const selectedClass=selectedStoreId===storeId?' class="store-row-selected" data-store-row="'+esc(storeId)+'"':' data-store-row="'+esc(storeId)+'"';
+    const selectedClass=selectedStoreId===storeId?' class="store-row-selected" data-store-row="'+esc(storeId)+'" tabindex="0"':' data-store-row="'+esc(storeId)+'" tabindex="0"';
     const companyLabel=storeCompanyLabel(x);
     const statusMarkup=`<span class="store-state ${x.status==='停止中'?'is-off':'is-online'}"><i></i>${esc(x.status||'状態不明')}</span>`;
     if(storeListView==='archived')return `<tr${selectedClass}><td><b>${esc(x.name||'')}</b><span class="store-state is-archived"><i></i>アーカイブ済み</span><div class="store-identity-meta">店舗ID: ${esc(storeId||'—')}</div></td><td>${esc(companyLabel)}</td><td>${statusMarkup}</td><td class="store-archived-date">${esc(formatStoreArchivedAt(x.archivedAt))}</td><td class="store-row-actions"><button type="button" class="secondary store-restore" data-store-restore="${esc(storeId)}" ${storeSavePending||!storeId?'disabled':''}>${storeSavePending?'処理中…':'復元'}</button></td></tr>`;
@@ -3511,11 +3570,17 @@ function renderStores(){
     const disabled=storeId?'':'disabled';
     return `<tr${selectedClass}><td><b>${esc(x.name)}</b><div class="store-identity-meta">店舗ID: ${esc(storeId||'—')} · 企業: ${esc(companyLabel)}</div><div class="store-public-url" title="${esc(urlLabel)}">${esc(fullUrl?urlLabel:'')}</div>${unavailableNote}</td><td>${esc(x.type)}</td><td>${esc(x.wifi)}</td><td class="store-users">${Number(x.users||0).toLocaleString()}</td><td>${statusMarkup}</td><td class="store-row-actions store-row-actions-normal"><div class="store-row-action-group"><div class="store-public-actions"><button type="button" class="secondary" data-store-copy="${esc(storeId)}" ${fullUrl&&storeId?'':'disabled'}>URLコピー</button><button type="button" class="secondary" data-store-qr="${esc(storeId)}" ${fullUrl&&storeId?'':'disabled'}>QR</button></div><button type="button" class="secondary store-edit" data-store-edit="${esc(storeId)}" ${disabled}>編集</button><button type="button" class="secondary store-archive" data-store-archive="${esc(storeId)}" ${disabled}>アーカイブ</button></div></td></tr>`;
   }).join('');
-  const columnCount=storeListView==='archived'?5:6;
-  const emptyRow=rows?'':`<tr><td colspan="${columnCount}" class="store-empty-row">該当する店舗はありません</td></tr>`;
-  const normalActive=storeListView==='normal';
-  const tableHead=storeListView==='archived'?'<tr><th>店舗 / ID</th><th>企業</th><th>状態</th><th>アーカイブ日時（JST）</th><th>操作</th></tr>':'<tr><th>店舗 / 公開URL</th><th>業態</th><th>Wi-Fi</th><th>月間接続</th><th>状態</th><th>操作</th></tr>';
-  shell('<span class="store-title">STORE MANAGEMENT</span><span class="store-title-ja">店舗管理</span>','Wi-Fiを設置している店舗・ホテル・拠点を管理します.',`<div class="store-management-view"><div class="store-system-status"><div><div class="store-console-name">STORE NETWORK CONTROL</div><div class="store-console-message">Managing registered Wi-Fi locations.</div></div><span class="store-online"><i></i> ONLINE</span></div>${feedback}<section class="card store-panel"><div class="store-panel-head"><div><span class="store-terminal-label">REGISTERED LOCATIONS</span><div class="store-panel-title">店舗一覧</div></div><div class="store-list-toolbar"><div class="store-view-tabs" role="tablist" aria-label="店舗一覧の表示"><button type="button" class="store-view-tab ${normalActive?'is-active':''}" role="tab" aria-selected="${normalActive}" data-store-view="normal">通常店舗 <span class="store-view-tab-count">${normalStores.length}</span></button><button type="button" class="store-view-tab ${!normalActive?'is-active':''}" role="tab" aria-selected="${!normalActive}" data-store-view="archived">アーカイブ済み <span class="store-view-tab-count">${archivedStores.length}</span></button></div>${normalActive?`<div class="actions store-actions" style="justify-content:flex-end;margin-bottom:12px"><button class="store-primary" onclick="addStore()" ${storeSavePending?'disabled':''}>＋ 店舗を追加</button></div>`:''}</div></div><div class="store-search-field"><label for="store-search-input">店舗検索</label><input id="store-search-input" type="search" value="${esc(storeSearchQuery)}" placeholder="店舗名・公開コードで検索" autocomplete="off"></div><div class="store-table-scroll"><table class="store-data-table"><thead>${tableHead}</thead><tbody>${rows||emptyRow}</tbody></table></div></section></div>`);
+  const tableHeadMarkup=storeListView==='archived'?'<tr><th>店舗 / ID</th><th>企業</th><th>状態</th><th>アーカイブ日時（JST）</th><th>操作</th></tr>':'<tr><th>店舗 / 公開URL</th><th>業態</th><th>Wi-Fi</th><th>月間接続</th><th>状態</th><th>操作</th></tr>';
+  const folderMarkup=visibleGroups.map((group,index)=>{
+    const isOpen=openStoreCompanyKeys.has(group.key);
+    const folderStores=group.matchingStores;
+    const rows=renderStoreRows(folderStores);
+    const body=folderStores.length?`<div class="store-table-scroll"><table class="store-data-table"><thead>${tableHeadMarkup}</thead><tbody>${rows}</tbody></table></div>`:`<div class="store-company-empty">${query?'検索条件に一致する店舗はありません':'このフォルダには店舗が登録されていません'}</div>`;
+    const contentId=`store-company-content-${index}`;
+    return `<section class="store-company-folder${isOpen?' is-open':''}"><button type="button" class="store-company-trigger" data-store-company-folder="${esc(group.key)}" aria-expanded="${isOpen}" aria-controls="${contentId}"><span class="store-company-trigger-main"><span class="store-company-chevron" aria-hidden="true">▶</span><span class="store-company-name">${esc(group.name)}</span></span><span class="store-company-count">${folderStores.length}店舗</span></button><div class="store-company-content" id="${contentId}" ${isOpen?'':'hidden'}>${body}</div></section>`;
+  }).join('');
+  const foldersEmpty=visibleGroups.length?'':`<div class="store-folders-empty" role="status">検索条件に一致する企業・店舗はありません</div>`;
+  shell('<span class="store-title">STORE MANAGEMENT</span><span class="store-title-ja">店舗管理</span>','登録済み店舗を企業ごとにまとめて管理できます.',`<div class="store-management-view"><div class="store-system-status"><div><div class="store-console-name">STORE NETWORK CONTROL</div><div class="store-console-message">Managing registered Wi-Fi locations.</div></div><span class="store-online"><i></i> ONLINE</span></div>${feedback}<section class="card store-panel"><div class="store-panel-head"><div><span class="store-terminal-label">REGISTERED LOCATIONS</span><div class="store-panel-title">店舗一覧</div></div><div class="store-list-toolbar"><div class="store-view-tabs" role="tablist" aria-label="店舗一覧の表示"><button type="button" class="store-view-tab ${normalActive?'is-active':''}" role="tab" aria-selected="${normalActive}" data-store-view="normal">通常店舗 <span class="store-view-tab-count">${normalStores.length}</span></button><button type="button" class="store-view-tab ${!normalActive?'is-active':''}" role="tab" aria-selected="${!normalActive}" data-store-view="archived">アーカイブ済み <span class="store-view-tab-count">${archivedStores.length}</span></button></div></div></div><div class="store-search-field"><label for="store-search-input">店舗検索</label><input id="store-search-input" type="search" value="${esc(storeSearchQuery)}" placeholder="企業名・店舗名・公開コード・店舗IDで検索" autocomplete="off"></div><div class="store-company-accordion" aria-label="企業別店舗一覧">${folderMarkup||foldersEmpty}</div></section></div>`);
   if(storeAutoScrollPendingId&&selectedStoreId===storeAutoScrollPendingId){
     const targetId=storeAutoScrollPendingId;storeAutoScrollPendingId=null;
     requestAnimationFrame(()=>{
@@ -3526,6 +3591,22 @@ function renderStores(){
   document.querySelectorAll('[data-store-view]').forEach(button=>button.addEventListener('click',event=>{
     event.preventDefault();event.stopPropagation();setStoreListView(button.dataset.storeView);
   }));
+  document.querySelectorAll('[data-store-company-folder]').forEach(button=>button.addEventListener('click',event=>{
+    event.preventDefault();event.stopPropagation();
+    const key=button.dataset.storeCompanyFolder;
+    if(openStoreCompanyKeys.has(key))openStoreCompanyKeys.delete(key);else openStoreCompanyKeys.add(key);
+    renderStores();
+  }));
+  document.querySelectorAll('[data-store-row]').forEach(row=>{
+    const openStore=event=>{
+      if(event.target.closest('button,a,input,select,textarea'))return;
+      event.preventDefault();event.stopPropagation();
+      const store=findStoreById(row.dataset.storeRow);
+      if(store){const key=groupKeyForStore(store);openStoreCompanyKeys.add(key);navigateToStoreFolder(key,store.id);}
+    };
+    row.addEventListener('click',openStore);
+    row.addEventListener('keydown',event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();openStore(event);}});
+  });
   document.querySelectorAll('[data-store-copy]').forEach(button=>button.addEventListener('click',async event=>{
     event.preventDefault();event.stopPropagation();
     const store=findStoreById(button.dataset.storeCopy);
@@ -3550,7 +3631,7 @@ function renderStores(){
 }
 function stores(){
   const route=parseAdminRoute(),requestedStoreId=route.page==='stores'?route.params.get('store'):null;
-  storeListView='normal';storeAutoScrollPendingId=null;
+  storeAutoScrollPendingId=null;
   if(requestedStoreId!==null){
     storeSearchQuery='';
     const target=Array.isArray(S?.stores)?S.stores.find(store=>String(store.id)===requestedStoreId):null;
