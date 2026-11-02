@@ -76,6 +76,13 @@ def _admin_company_delete_route(path):
     return _safe_admin_route_id(parts[4])
 
 
+def _admin_company_profile_route(path):
+    parts = path.split("/")
+    if len(parts) != 5 or parts[:4] != ["", "api", "admin", "companies"]:
+        return None
+    return _safe_admin_route_id(parts[4])
+
+
 def _admin_coupon_update_route(path):
     parts = path.split("/")
     if len(parts) != 4 or parts[:3] != ["", "api", "coupons"]:
@@ -2146,6 +2153,36 @@ class Handler(BaseHTTPRequestHandler):
         return self.send_bytes(b"not found", 404, "text/plain; charset=utf-8")
     def do_PUT(self):
         path = urlparse(self.path).path
+        company_id = _admin_company_profile_route(path)
+        if company_id is not None:
+            if not self.require_admin_session(): return
+            if not self.require_same_origin(): return
+            if not database.database_enabled():
+                return self.send_json({"ok": False, "error": "admin_data_unavailable"}, 503)
+            payload, error_status = self.read_admin_json_payload(ADMIN_COMPANY_MAX_BYTES)
+            if error_status:
+                return self.send_json({"ok": False, "error": "invalid_request"}, error_status)
+            if not isinstance(payload, dict) or set(payload) != {"name", "industry"}:
+                return self.send_json({"ok": False, "error": "invalid_request"}, 400)
+            name, industry = payload["name"], payload["industry"]
+            if not isinstance(name, str) or not name.strip() or len(name.strip()) > 200:
+                return self.send_json({"ok": False, "error": "company_name_required"}, 400)
+            if not isinstance(industry, str) or len(industry.strip()) > 100:
+                return self.send_json({"ok": False, "error": "invalid_industry"}, 400)
+            try:
+                updated = database.update_company_profile(company_id, name, industry)
+            except (TypeError, ValueError):
+                return self.send_json({"ok": False, "error": "invalid_request"}, 400)
+            except Exception:
+                return self.send_json({"ok": False}, 503)
+            if updated is None:
+                return self.send_json({"ok": False, "error": "company_not_found"}, 404)
+            return self.send_json({"ok": True, "company": {
+                "id": updated["id"], "name": updated["name"],
+                "code": updated["code"], "businessType": updated["business_type"],
+                "status": updated["status"],
+                "archivedAt": updated["archived_at"].isoformat() if updated.get("archived_at") else None,
+            }})
         company_store_id = _admin_store_company_route(path)
         if company_store_id is not None:
             if not self.require_admin_session(): return

@@ -1039,6 +1039,24 @@ def get_company(company_id):
     return dict(row) if row else None
 
 
+def update_company_profile(company_id, name, industry):
+    """Update only a company's display name and industry/business type."""
+    if not isinstance(company_id, str) or not company_id.strip():
+        raise ValueError("company id is required")
+    if not isinstance(name, str) or not name.strip() or len(name.strip()) > 200:
+        raise ValueError("company name is required")
+    if not isinstance(industry, str) or len(industry.strip()) > 100:
+        raise ValueError("invalid industry")
+    with pool().connection() as conn:
+        row = conn.execute(
+            "UPDATE companies SET name = %s, business_type = %s, updated_at = now() "
+            "WHERE id = %s "
+            "RETURNING id, name, code, business_type, status, archived_at, created_at, updated_at",
+            (name.strip(), industry.strip(), company_id.strip()),
+        ).fetchone()
+    return dict(row) if row else None
+
+
 def archive_company(company_id):
     """Archive one company without changing its status, stores, or event history."""
     with pool().connection() as conn:

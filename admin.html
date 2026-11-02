@@ -1669,6 +1669,40 @@ body:has(.ad-management-view){background-color:#070b0d;background-image:radial-g
 .registration-nav{color:#d7f7a7!important}.registration-nav::before{content:"";display:inline-block;width:6px;height:6px;margin:0 9px 2px 0;border-radius:50%;background:var(--neon-green);box-shadow:0 0 8px rgba(183,255,86,.45)}
 .registration-view{max-width:920px;margin:0 auto;padding:8px 0 34px}.registration-progress{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:0;margin:22px auto 30px;max-width:800px}.registration-progress-step{position:relative;display:flex;flex-direction:column;align-items:center;gap:8px;color:#818992;font-size:12px;text-align:center}.registration-progress-step:not(:last-child)::after{content:"";position:absolute;left:calc(50% + 22px);right:calc(-50% + 22px);top:13px;border-top:1px solid #414751}.registration-progress-step.is-current,.registration-progress-step.is-done{color:#dce9d2}.registration-progress-dot{position:relative;z-index:1;display:grid;place-items:center;width:28px;height:28px;border:1px solid #525a64;border-radius:50%;background:#1b1e23;color:#9199a3;font:600 12px ui-monospace,monospace}.registration-progress-step.is-current .registration-progress-dot{border-color:var(--neon-green);background:#25331c;color:var(--neon-green);box-shadow:0 0 14px #b7ff5638}.registration-progress-step.is-done .registration-progress-dot{border-color:#789b53;color:#caff8e}.registration-panel{max-width:720px;min-height:390px;margin:0 auto;padding:clamp(22px,5vw,42px);border:1px solid rgba(76,229,255,.22);border-radius:10px;background:linear-gradient(145deg,rgba(35,39,45,.97),rgba(25,28,33,.98));box-shadow:0 12px 34px #0005,0 0 22px #4ce5ff0b}.registration-panel-head{margin-bottom:28px}.registration-step-kicker{margin:0 0 8px;color:var(--signal-cyan);font:600 10px ui-monospace,monospace;letter-spacing:.16em}.registration-panel h2{margin:0;color:#f3f6f7;font-size:clamp(22px,3vw,28px)}.registration-fields{max-width:540px;margin:0 auto}.registration-fields .field{margin:0 0 20px}.registration-fields .field label{color:#e5eaee;font-size:13px}.registration-fields input{min-height:48px;border-color:#48515b;background:#171a1f;color:#f1f3f6}.registration-fields input:focus{outline:2px solid rgba(76,229,255,.45);outline-offset:1px;border-color:var(--signal-cyan)}.registration-fields input[type=file]{padding:9px;color:#bfc7cf}.registration-help-icon{display:inline-grid;place-items:center;width:17px;height:17px;margin-left:5px;border:1px solid #68737d;border-radius:50%;color:#aab4bd;font-size:11px;cursor:help}.registration-skip{display:flex;align-items:center;gap:10px;margin:0 0 18px;color:#dce3e8;font-size:14px;font-weight:600}.registration-skip input{width:18px;height:18px;min-height:0;accent-color:var(--neon-green)}.registration-file-name{margin:-10px 0 18px;color:#a6adb7;font-size:12px;overflow-wrap:anywhere}.registration-actions{display:flex;justify-content:space-between;gap:12px;margin-top:34px;padding-top:20px;border-top:1px solid #383e46}.registration-actions .registration-next{border-color:#91c94c;background:#a9ed50;color:#17200f;box-shadow:0 0 14px #b7ff5624}.registration-actions .registration-next:hover{background:#c0ff77}.registration-actions button:disabled{opacity:.35;cursor:not-allowed}.registration-review{display:grid;gap:10px;max-width:560px;margin:0 auto}.registration-review-row{display:grid;grid-template-columns:100px minmax(0,1fr);gap:15px;padding:13px 0;border-bottom:1px solid #3a4048}.registration-review-label{color:#a6adb7;font-size:12px}.registration-review-value{color:#f1f3f6;font-weight:600;overflow-wrap:anywhere}.registration-review-edit{justify-self:start;padding:5px 9px;border-color:#45515a;background:transparent;color:#a9edf6;font-size:11px}.registration-prototype-note{margin:18px 0 0;color:#c7d3b7;font-size:13px;text-align:center}.registration-prototype-note strong{color:var(--neon-green)}
 @media(max-width:700px){.registration-view{padding-top:0}.registration-progress{margin:18px 0 22px}.registration-progress-step{gap:6px;font-size:10px}.registration-progress-dot{width:25px;height:25px;font-size:11px}.registration-progress-step:not(:last-child)::after{left:calc(50% + 18px);right:calc(-50% + 18px);top:12px}.registration-panel{min-height:0;padding:22px 18px}.registration-panel-head{margin-bottom:24px}.registration-actions{margin-top:26px}.registration-actions button{min-width:0;padding:10px 12px}.registration-review-row{grid-template-columns:78px minmax(0,1fr);gap:10px}}
+
+.company-management-view .company-select-button{display:inline-flex;align-items:center;min-height:0;padding:2px 0;border:0;border-radius:0;background:transparent;box-shadow:none;color:#e5f4f4;font:700 15px/1.5 "IBM Plex Sans JP",sans-serif;text-align:left;cursor:pointer}
+.company-management-view .company-select-button:hover{color:#8af4fb;text-decoration:underline;text-underline-offset:3px;background:transparent;box-shadow:none;transform:none}
+.company-management-view .company-select-button:active{transform:none;box-shadow:none}
+.company-management-view .company-select-button:focus-visible{outline:2px solid rgba(76,229,255,.7);outline-offset:3px}
+.company-management-view .company-overflow-actions{position:relative;display:inline-block}
+.company-management-view .company-overflow-actions summary{padding:5px 8px;color:#a8c6c5;font-size:12px;cursor:pointer;list-style:none}
+.company-management-view .company-overflow-actions summary::-webkit-details-marker{display:none}
+.company-management-view .company-overflow-actions summary::after{content:"⌄";margin-left:5px;color:#8fdde3}
+.company-management-view .company-overflow-actions[open] summary::after{content:"⌃"}
+.company-management-view .company-overflow-actions .company-company-actions{display:flex;flex-direction:column;align-items:stretch;gap:5px;min-width:120px;padding:7px;background:#0b1519;border:1px solid rgba(76,229,255,.26)}
+.company-management-view .company-overflow-actions .company-lifecycle-button{min-height:30px;padding:5px 8px;font-size:11px}
+.company-management-view .company-detail-heading{display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:14px;margin-bottom:18px}
+.company-management-view .company-back-button{min-height:32px;padding:6px 9px;color:#a8eaf0;background:transparent;border:1px solid rgba(76,229,255,.28);box-shadow:none;font-size:12px}
+.company-management-view .company-back-button:hover{background:rgba(76,229,255,.06);box-shadow:0 0 8px rgba(76,229,255,.1);transform:none}
+.company-management-view .company-detail-name{margin:5px 0 0;color:#f0fbfc;font-size:clamp(22px,3vw,30px);font-weight:800;line-height:1.3;overflow-wrap:anywhere}
+.company-management-view .company-detail-store-table{min-width:520px}
+.company-management-view .company-detail-store-table .company-status{white-space:nowrap}
+.company-management-view .company-list-table{min-width:700px}
+.store-management-view .store-data-table tbody tr.store-row-selected{background:rgba(76,229,255,.075);box-shadow:inset 3px 0 0 rgba(76,229,255,.78),inset 0 0 18px rgba(76,229,255,.035)}
+.store-management-view .store-data-table tbody tr.store-row-selected td{background:transparent;border-top:1px solid rgba(76,229,255,.48);border-bottom:1px solid rgba(76,229,255,.48)}
+.store-management-view .store-data-table tbody tr.store-row-selected td:first-child{border-left:1px solid rgba(76,229,255,.48)}
+.store-management-view .store-data-table tbody tr.store-row-selected td:last-child{border-right:1px solid rgba(76,229,255,.48)}
+.company-management-view .company-edit-button{min-height:30px;padding:5px 9px;border-color:rgba(76,229,255,.34);background:rgba(9,25,29,.75);color:#bdebf0;font-size:11px;box-shadow:none}
+.company-management-view .company-edit-button:hover:not(:disabled){border-color:var(--signal-cyan);background:rgba(76,229,255,.08);box-shadow:0 0 8px rgba(76,229,255,.12);transform:none}
+.company-edit-modal{display:grid;gap:14px;min-width:min(420px,calc(100vw - 48px));padding:4px 0 2px}
+.company-edit-modal .field{display:grid;gap:7px}
+.company-edit-modal label{padding-left:8px;border-left:3px solid rgba(76,229,255,.72);color:#cbe4e7;font-size:13px;font-weight:700}
+.company-edit-modal input{width:100%;min-height:42px;padding:10px 12px;border:1px solid #38515a;border-radius:5px;background:#071116;color:#f0fbfc;font:14px "IBM Plex Sans JP",sans-serif}
+.company-edit-modal input:focus{outline:2px solid rgba(76,229,255,.38);border-color:#8af4fb}
+.company-edit-actions{display:flex;justify-content:flex-end;gap:9px;margin-top:6px}
+.company-edit-actions .company-edit-cancel{background:transparent;color:#b9c6c9;border-color:#536168;box-shadow:none}
+.modalbg:has(#companyProfileEditForm) .close{display:none}
+@media(max-width:700px){.company-management-view .company-detail-heading{align-items:stretch;flex-direction:column}.company-management-view .company-back-button{align-self:flex-start}.company-management-view .company-select-button{font-size:14px}}
 </style></head><body><div class="app"><aside class="side"><div class="logo">Wi-Fi MEDIA<small>広告・店舗・効果測定</small></div><div class="nav active" data-page="dashboard" onclick="navigateTo('dashboard')">ダッシュボード</div><div class="nav nav-onboarding registration-nav" data-page="registration" onclick="navigateTo('registration')">＋ 新規登録</div><div class="nav" data-page="companies" onclick="navigateTo('companies')">企業管理</div><div class="nav" data-page="stores" onclick="navigateTo('stores')">店舗管理</div><div class="nav" data-page="ads" onclick="navigateTo('ads')">広告管理</div><div class="nav" data-page="coupons" onclick="navigateTo('coupons')">クーポン管理</div><div class="nav" data-page="analytics" onclick="navigateTo('analytics')">効果測定</div><div class="nav" data-page="design" onclick="navigateTo('design')">Webデザイン</div><div class="side-logout"><button class="logout-button" id="logout-button" type="button" onclick="logout()">LOGOUT</button></div></aside><main class="main" id="main"></main></div><div class="modalbg" id="modal"><div class="modal"><button class="close" onclick="closeModal()">閉じる</button><h2 id="modalTitle">編集</h2><div id="modalBody"></div></div></div><script src="/static/qrcode-generator-2.0.4.js"></script><script>let S=null;let registrationStep=0,registrationSaving=false,registrationSaveError='',registrationSavedResult=null;const registrationDraft={companyName:'',storeName:'',adTitle:'',adImage:null,adLink:'',skipAd:false,couponName:'',couponImage:null,skipCoupon:false};
 let adTarget='global', adStores=null, adStoreId=null, adCampaigns=[], selectedCampaignId=null, adCampaign=null, adCreatingNew=false, adCampaignCount=0, adStoreLoading=false, adStoreError='', adStoreRequestSeq=0, adStoresLoading=false, adStoresRequestSeq=0, adCompanies=[], adCompaniesLoading=false, adCompaniesLoaded=false, adCompaniesError='', adCompanyId=null, adCompanyCampaigns=[], adCompanyShowArchived=false, adCompanyShowExpired=false, adCompanyLoading=false, adCompanyError='', adCompanyRequestSeq=0, adCompaniesRequestSeq=0, adJackCampaigns=[], adJackShowArchived=false, adJackShowExpired=false, adStoreShowExpired=false, adJackLoading=false, adJackError='', adJackRequestSeq=0, adSaving=false, adStatusSaving=false, adSaveError='';
 const AD_COMPANY_TARGET_VALUE='__company_scope__';
@@ -1677,9 +1711,9 @@ let adEditorBaseline=null, adEditorBaselineKey=null;
 let adLocalPreviewUrls={pc:'',mobile:''};
 let adPcPreviewObserver=null;
 let adCreateIdempotencyKey=null, adCreateAttempt=null, adCreateUncertain=false, adCreateBlocked=false, adCreateStoreId=null;
-let companyAdminData={companies:[],stores:[]}, companyDataLoaded=false, companyDirectoryLoaded=false, companyRequestSeq=0, companyCreateSaving=false, companyAssignSaving=new Set(), companyLifecycleSaving=new Set(), companyDeleting=new Set(), companyShowArchived=false, companyFormNotice='', companyFormNoticeType='', companyLoadError='', companyStoreNotices={}, companyFormValues={name:'',code:'',businessType:'',status:'active'};
+let companyAdminData={companies:[],stores:[]}, companyDataLoaded=false, companyDirectoryLoaded=false, companyRequestSeq=0, companyCreateSaving=false, companyAssignSaving=new Set(), companyLifecycleSaving=new Set(), companyDeleting=new Set(), companyProfileSaving=false, companyProfileTargetId=null, companyShowArchived=false, companyFormNotice='', companyFormNoticeType='', companyLoadError='', companyStoreNotices={}, companyFormValues={name:'',code:'',businessType:'',status:'active'};
 let storeCompanyOptionsData=[], storeCompanyOptionsError='', storeSavePending=false, storeSaveFeedback='', storeSaveFeedbackType='';
-let storePublicCodes=new Map(), storePublicCodeSeq=0, storePublicCodeLoading=false, storePublicCodeError='', storeSearchQuery='', storeSearchComposing=false, storeListView='normal', storeEditInitialValues=null;
+let storePublicCodes=new Map(), storePublicCodeSeq=0, storePublicCodeLoading=false, storePublicCodeError='', storeSearchQuery='', storeSearchComposing=false, storeListView='normal', storeEditInitialValues=null, storeAutoScrollPendingId=null;
 let couponFormError='', selectedCouponViewId=null, couponShowExpired=false, couponSavePending=false, couponStatusChangePending=false, couponImageDraftUrl=null, couponImageUploadPending=false, couponImageEditorGeneration=0, designSaveError='';
 let dashboardSelectedCompany='all', dashboardStoreSearch='', dashboardSelectedStoreId=null, dashboardDirectoryError='', dashboardKpiRequestSeq=0, dashboardKpiAbortController=null;
 let analyticsCompanies=null, analyticsCompaniesPromise=null, analyticsSelectedCompanyId=null, analyticsSelectedStoreId=null, analyticsSelectedPeriod='30d', analyticsRequestSeq=0;
@@ -3134,22 +3168,29 @@ async function updateCoupon(){
   }catch(_){setCouponFormError('通信に失敗しました。入力内容を確認して再度お試しください。')}
   finally{setCouponSavePending(false)}
 }
-async function addCoupon(){clearCouponFormError();const title=document.getElementById('cTitle').value.trim(),code=document.getElementById('cCode').value.trim();if(!title||!code){setCouponFormError('クーポン名とクーポンコードを入力してください。');return}S.coupons=S.coupons||[];const previousCoupons=S.coupons.slice();const storeId=document.getElementById('cStore').value;if(storeId&&isArchivedStore(S.stores.find(store=>String(store.id)===String(storeId)))){setCouponFormError('アーカイブ済み店舗は新しいクーポンの対象にできません。');return}S.coupons.push({id:Date.now().toString(),adId:S.ad.id||'main',storeId:storeId||null,title,code,description:document.getElementById('cDescription').value.trim(),discountType:document.getElementById('cDiscountType').value,discountValue:document.getElementById('cDiscountValue').value.trim(),terms:document.getElementById('cTerms').value.trim(),start:document.getElementById('cStart').value,end:document.getElementById('cEnd').value,status:document.getElementById('cStatus').value,imageUrl:couponImageDraftUrl===null?'':couponImageDraftUrl});const saved=await save({preserveFormOnFailure:true,onFailure:setCouponFormError});if(!saved){S.coupons=previousCoupons;return}couponImageDraftUrl=null;couponFormError='';couponManager()}async function companyManagement(){
+async function addCoupon(){clearCouponFormError();const title=document.getElementById('cTitle').value.trim(),code=document.getElementById('cCode').value.trim();if(!title||!code){setCouponFormError('クーポン名とクーポンコードを入力してください。');return}S.coupons=S.coupons||[];const previousCoupons=S.coupons.slice();const storeId=document.getElementById('cStore').value;if(storeId&&isArchivedStore(S.stores.find(store=>String(store.id)===String(storeId)))){setCouponFormError('アーカイブ済み店舗は新しいクーポンの対象にできません。');return}S.coupons.push({id:Date.now().toString(),adId:S.ad.id||'main',storeId:storeId||null,title,code,description:document.getElementById('cDescription').value.trim(),discountType:document.getElementById('cDiscountType').value,discountValue:document.getElementById('cDiscountValue').value.trim(),terms:document.getElementById('cTerms').value.trim(),start:document.getElementById('cStart').value,end:document.getElementById('cEnd').value,status:document.getElementById('cStatus').value,imageUrl:couponImageDraftUrl===null?'':couponImageDraftUrl});const saved=await save({preserveFormOnFailure:true,onFailure:setCouponFormError});if(!saved){S.coupons=previousCoupons;return}couponImageDraftUrl=null;couponFormError='';couponManager()}function navigateCompanyRoute(companyId=null){
+  const id=companyId===null||companyId===undefined?'':String(companyId);
+  const targetHash=id?buildAdminHash('companies',{company:id}):'#companies';
+  if(location.hash===targetHash)return;
+  ensureAdminPageHistoryEntry();
+  adminPageHistoryPosition++;
+  history.pushState(makeAdminPageHistoryState(adminPageHistoryPosition,adminPageHistoryChain),'',targetHash);
+  adminPageHistoryHash=targetHash;
+  if(S)renderCurrentPage();
+}
+async function companyManagement(){
   const seq=++companyRequestSeq;
   companyLoadError='';
   renderCompanyManagement();
   try{
-    const [companyResponse,storeResponse]=await Promise.all([
-      companyApiFetch('/api/admin/companies'),companyApiFetch('/api/admin/stores')
-    ]);
+    const [companyResponse,storeResponse]=await Promise.all([companyApiFetch('/api/admin/companies'),companyApiFetch('/api/admin/stores')]);
     if(!companyResponse.ok||!storeResponse.ok)throw new Error(String(!companyResponse.ok?companyResponse.status:storeResponse.status));
     const [companyPayload,storePayload]=await Promise.all([companyResponse.json(),storeResponse.json()]);
-    if(seq!==companyRequestSeq||location.hash!=='#companies')return;
+    if(seq!==companyRequestSeq||!isAdminRoute('companies'))return;
     companyAdminData={companies:Array.isArray(companyPayload.companies)?companyPayload.companies:[],stores:Array.isArray(storePayload.stores)?storePayload.stores:[]};
-    companyDataLoaded=true;companyDirectoryLoaded=true;
-    companyLoadError='';
+    companyDataLoaded=true;companyDirectoryLoaded=true;companyLoadError='';
   }catch(error){
-    if(seq!==companyRequestSeq||location.hash!=='#companies')return;
+    if(seq!==companyRequestSeq||!isAdminRoute('companies'))return;
     companyLoadError=companyApiError(error,'一覧を読み込めませんでした。');
   }
   renderCompanyManagement();
@@ -3169,33 +3210,103 @@ function captureCompanyCreateFormValues(){
   const businessType=document.getElementById('companyBusinessType'),status=document.getElementById('companyStatus');
   if(name&&code&&businessType&&status)companyFormValues={name:name.value,code:code.value,businessType:businessType.value,status:status.value};
 }
-function setCompanyArchivedVisible(visible){
-  captureCompanyCreateFormValues();
-  companyShowArchived=Boolean(visible);
-  renderCompanyManagement();
-}
+function setCompanyArchivedVisible(visible){companyShowArchived=Boolean(visible);renderCompanyManagement()}
 function companyCountById(companyId){
   if(companyId===null||companyId===undefined)return 0;
   return companyAdminData.stores.filter(store=>store.companyId!==null&&store.companyId!==undefined&&String(store.companyId)===String(companyId)).length;
 }
 function renderCompanyManagement(){
+  const route=parseAdminRoute();
+  const selectedCompanyId=route.page==='companies'?route.params.get('company'):null;
   const companies=companyAdminData.companies;
-  const visibleCompanies=companies.filter(company=>companyShowArchived||!company.archivedAt);
-  const companyRows=visibleCompanies.length?`<div class="company-table-scroll"><table class="company-data-table"><thead><tr><th>企業名</th><th>企業コード</th><th>業種</th><th>状態</th><th>店舗数</th><th>操作</th></tr></thead><tbody>${visibleCompanies.map(company=>{const archived=Boolean(company.archivedAt),busy=companyLifecycleSaving.has(String(company.id)),deleting=companyDeleting.has(String(company.id)),eligibility=company.deleteEligibility,references=eligibility&&eligibility.references||{},canDelete=eligibility&&eligibility.canDelete===true,referenceTitle=[['店舗',references.stores],['広告履歴',references.adEvents],['クーポン履歴',references.couponEvents]].filter(([,count])=>Number(count)>0).map(([label,count])=>`${label} ${Number(count)}件`).join(' / '),eligibilityTitle=referenceTitle||'削除可否を確認できませんでした';return `<tr><td><b>${esc(company.name||'')}</b></td><td><span class="company-code">${esc(company.code||'')}</span></td><td><span class="company-business-type">${esc(company.businessType||'—')}</span></td><td>${archived?'<span class="company-status is-archived"><i></i>アーカイブ済み</span>':''}<span class="company-status ${company.status==='active'?'is-active':'is-inactive'}"><i></i>${company.status==='active'?'ACTIVE':'INACTIVE'}</span></td><td>${companyCountById(company.id).toLocaleString()}</td><td><div class="company-company-actions">${archived?`<button class="company-lifecycle-button is-restore" type="button" data-company-restore="${esc(company.id)}" ${busy||deleting?'disabled':''}>${busy?'処理中…':'復元'}</button>${canDelete?`<button class="company-lifecycle-button is-delete" type="button" data-company-delete="${esc(company.id)}" ${busy||deleting?'disabled':''} title="削除可能">${deleting?'削除中…':'削除'}</button>`:`<button class="company-lifecycle-button is-unavailable" type="button" disabled title="${esc(eligibilityTitle)}">削除不可</button>`}`:`<button class="company-lifecycle-button is-archive" type="button" data-company-archive="${esc(company.id)}" ${busy||deleting?'disabled':''}>${busy?'処理中…':'アーカイブ'}</button>`}</div></td></tr>`}).join('')}</tbody></table></div>`:companyDataLoaded?`<div class="company-empty">${companies.length?'表示する企業はありません。':'企業がまだ登録されていません。'}</div>`:'<div class="company-loading">企業一覧を読み込んでいます…</div>';
-  const storeRows=companyAdminData.stores.length?`<div class="company-table-scroll"><table class="company-data-table company-store-table"><thead><tr><th>店舗</th><th>現在の所属</th><th>企業所属を変更</th></tr></thead><tbody>${companyAdminData.stores.map(store=>{
-    const current=companies.find(company=>store.companyId!==null&&store.companyId!==undefined&&String(company.id)===String(store.companyId));
-    const currentValue=current?String(current.id):'';
-    const archived=isArchivedStore(store);
-    const busy=companyAssignSaving.has(String(store.id));
-    const notice=companyStoreNotices[String(store.id)]||'';
-    const selectOptions=`<option value="" ${currentValue===''?'selected':''}>未所属</option>${companies.map(company=>`<option value="${esc(company.id)}" ${currentValue===String(company.id)?'selected':''}>${esc(company.name||'')}</option>`).join('')}`;
-    return `<tr><td><span class="company-store-name">${esc(store.name||'')}</span><span class="company-store-code">${esc(store.publicCode||'public code未設定')}</span>${archived?'<span class="company-status is-archived"><i></i>アーカイブ済み</span>':''}</td><td>${current?esc(current.name):'<span class="company-business-type">未所属</span>'}</td><td><div class="company-store-controls"><select data-company-select="${esc(store.id)}" aria-label="${esc(store.name||'店舗')}の所属企業" ${busy||archived?'disabled':''}>${selectOptions}</select><button class="company-row-save" type="button" data-company-assign="${esc(store.id)}" ${busy||archived?'disabled':''}>${busy?'保存中…':archived?'アーカイブ済み（変更不可）':'変更を保存'}</button></div>${notice?`<span class="company-row-notice ${notice.startsWith('企業所属を更新しました')?'':'is-error'}" role="status">${esc(notice)}</span>`:''}</td></tr>`;
-  }).join('')}</tbody></table></div>`:companyDataLoaded?'<div class="company-empty">店舗がまだ登録されていません。</div>':'<div class="company-loading">店舗一覧を読み込んでいます…</div>';
-  shell('<span class="company-management-title">COMPANY MANAGEMENT</span><span class="company-management-title-ja">企業管理</span>','企業情報を登録し、店舗の所属企業を管理します。',`<div class="company-management-view"><div class="company-system-status"><div><div class="company-console-name">ORGANIZATION CONTROL</div><div class="company-console-message">Manage companies and store assignments.</div></div><span class="company-ready">READY</span></div>${companyLoadError?`<div class="company-notice is-error" role="alert">${esc(companyLoadError)}</div>`:''}<div class="company-layout"><section class="card company-panel"><form id="companyCreateForm" onsubmit="createCompany(event)"><div class="company-panel-heading company-create-heading"><div class="company-create-heading-copy"><span class="company-terminal-label">COMPANY MANAGEMENT</span><div class="section">企業管理</div></div><button class="company-primary" type="submit" ${companyCreateSaving?'disabled':''}>${companyCreateSaving?'登録中…':'企業を登録'}</button></div><div class="field"><label for="companyName">企業名 <span class="required-label">必須</span></label><input id="companyName" name="name" maxlength="200" required value="${esc(companyFormValues.name)}" placeholder="例：どうとんぼり神座" ${companyCreateSaving?'disabled':''}></div><div class="field"><label for="companyCode">企業コード <span class="required-label">必須</span></label><input id="companyCode" name="code" maxlength="100" pattern="[a-z0-9]+(-[a-z0-9]+)*" required value="${esc(companyFormValues.code)}" placeholder="例：kamukura" ${companyCreateSaving?'disabled':''}><small>英小文字・数字・ハイフンで入力してください。</small></div><div class="field"><label for="companyBusinessType">業種</label><input id="companyBusinessType" name="businessType" maxlength="100" value="${esc(companyFormValues.businessType)}" placeholder="例：飲食、ホテル、タクシー、小売" ${companyCreateSaving?'disabled':''}></div><div class="field"><label for="companyStatus">ステータス</label><select id="companyStatus" name="status" ${companyCreateSaving?'disabled':''}><option value="active" ${companyFormValues.status==='active'?'selected':''}>active（有効）</option><option value="inactive" ${companyFormValues.status==='inactive'?'selected':''}>inactive（停止）</option></select></div><div id="companyFormFeedback" class="company-notice ${companyFormNoticeType==='error'?'is-error':''}" role="status" ${companyFormNotice?'':'hidden'}>${esc(companyFormNotice)}</div></form></section><section class="card company-panel"><div class="company-panel-heading company-list-heading"><div class="company-list-heading-copy"><span class="company-terminal-label">REGISTERED COMPANIES</span><div class="section">企業一覧</div></div><label class="company-archived-toggle"><input type="checkbox" ${companyShowArchived?'checked':''} onchange="setCompanyArchivedVisible(this.checked)">アーカイブ済みを表示</label></div>${companyRows}</section></div><section class="card company-panel" style="margin-top:16px"><div class="company-panel-heading"><span class="company-terminal-label">STORE ASSIGNMENT</span><div class="section">店舗の企業所属</div></div>${storeRows}</section></div>`);
-  document.querySelectorAll('[data-company-assign]').forEach(button=>button.addEventListener('click',()=>saveStoreCompany(button.dataset.companyAssign)));
+  const selectedCompany=selectedCompanyId===null?null:companies.find(company=>String(company.id)===String(selectedCompanyId));
+  const systemStatus='<div class="company-system-status"><div><div class="company-console-name">ORGANIZATION CONTROL</div><div class="company-console-message">Manage companies and store assignments.</div></div><span class="company-ready">READY</span></div>';
+  let content='';
+  if(selectedCompanyId!==null){
+    const detailStores=selectedCompany?companyAdminData.stores.filter(store=>store.companyId!==null&&store.companyId!==undefined&&String(store.companyId)===String(selectedCompanyId)):[];
+    let storeRows='';
+    if(detailStores.length){
+      const rows=detailStores.map(store=>{
+        const archived=isArchivedStore(store);
+        const statusLabel=archived?'アーカイブ済み':store.status==='active'?'稼働中':store.status==='inactive'?'停止中':String(store.status||'状態不明');
+        const statusClass=archived||store.status!=='active'?'is-inactive':'is-active';
+        return '<tr><td><button type="button" class="company-select-button" data-company-store-open="'+esc(store.id)+'" aria-label="'+esc(store.name||'店舗')+'を店舗管理で開く">'+esc(store.name||'名称未設定')+'</button></td><td><span class="company-status '+statusClass+'"><i></i>'+esc(statusLabel)+'</span></td><td><span class="company-code">'+esc(store.publicCode||'未設定')+'</span></td></tr>';
+      }).join('');
+      storeRows='<div class="company-table-scroll"><table class="company-data-table company-detail-store-table"><thead><tr><th>店舗名</th><th>状態</th><th>公開コード</th></tr></thead><tbody>'+rows+'</tbody></table></div>';
+    }else storeRows=companyDataLoaded?'<div class="company-empty">この企業には店舗が登録されていません。</div>':'<div class="company-loading">店舗一覧を読み込んでいます…</div>';
+    const companyHeading='<div class="company-detail-heading"><div><span class="company-terminal-label">SELECTED COMPANY</span><h2 class="company-detail-name">'+esc(selectedCompany?selectedCompany.name||'名称未設定':'企業情報')+'</h2></div><button type="button" class="company-back-button" data-company-back>← 企業一覧へ戻る</button></div>';
+    let detailContent='';
+    if(companyLoadError)detailContent='<div class="company-notice is-error" role="alert">'+esc(companyLoadError)+'</div>';
+    else if(!companyDataLoaded)detailContent='<div class="company-loading">企業・店舗一覧を読み込んでいます…</div>';
+    else if(!selectedCompany)detailContent='<div class="company-empty">企業が見つかりません。</div>';
+    else detailContent='<section class="card company-panel"><div class="company-panel-heading"><div><span class="company-terminal-label">COMPANY STORES</span><div class="section">店舗一覧</div></div></div>'+storeRows+'</section>';
+    const detailBody=companyHeading+detailContent;
+    content=systemStatus+detailBody;
+  }else{
+    const visibleCompanies=companies.filter(company=>companyShowArchived||!company.archivedAt);
+    let companyRows='';
+    if(visibleCompanies.length){
+      const rows=visibleCompanies.map(company=>{
+        const id=String(company.id),archived=Boolean(company.archivedAt),busy=companyLifecycleSaving.has(id),deleting=companyDeleting.has(id),eligibility=company.deleteEligibility,references=eligibility&&eligibility.references||{},canDelete=eligibility&&eligibility.canDelete===true;
+        const referenceTitle=[['店舗',references.stores],['広告履歴',references.adEvents],['クーポン履歴',references.couponEvents]].filter(pair=>Number(pair[1])>0).map(pair=>pair[0]+' '+Number(pair[1])+'件').join(' / ');
+        const eligibilityTitle=referenceTitle||'削除可否を確認できませんでした';
+        let actions='';
+        if(archived){
+          actions='<button class="company-lifecycle-button is-restore" type="button" data-company-restore="'+esc(id)+'" '+(busy||deleting?'disabled':'')+'>'+(busy?'処理中…':'復元')+'</button>';
+          actions+=canDelete?'<button class="company-lifecycle-button is-delete" type="button" data-company-delete="'+esc(id)+'" '+(busy||deleting?'disabled':'')+' title="削除可能">'+(deleting?'削除中…':'削除')+'</button>':'<button class="company-lifecycle-button is-unavailable" type="button" disabled title="'+esc(eligibilityTitle)+'">削除不可</button>';
+        }else actions='<button class="company-lifecycle-button is-archive" type="button" data-company-archive="'+esc(id)+'" '+(busy||deleting?'disabled':'')+'>'+(busy?'処理中…':'アーカイブ')+'</button>';
+        const state=(archived?'<span class="company-status is-archived"><i></i>アーカイブ済み</span>':'')+'<span class="company-status '+(company.status==='active'?'is-active':'is-inactive')+'"><i></i>'+(company.status==='active'?'稼働中':'停止中')+'</span>';
+        return '<tr><td><button type="button" class="company-select-button" data-company-open="'+esc(id)+'" aria-label="'+esc(company.name||'企業')+'の店舗一覧を開く">'+esc(company.name||'名称未設定')+'</button></td><td><span class="company-business-type">'+esc(company.businessType||'—')+'</span></td><td>'+companyCountById(id).toLocaleString()+'</td><td>'+state+'</td><td><button type="button" class="company-edit-button" data-company-edit="'+esc(id)+'" '+(companyProfileSaving&&companyProfileTargetId===id?'disabled':'')+'>編集</button></td><td><details class="company-overflow-actions"><summary>操作</summary><div class="company-company-actions">'+actions+'</div></details></td></tr>';
+      }).join('');
+      companyRows='<div class="company-table-scroll"><table class="company-data-table company-list-table"><thead><tr><th>企業名</th><th>業種</th><th>店舗数</th><th>状態</th><th>編集</th><th>操作</th></tr></thead><tbody>'+rows+'</tbody></table></div>';
+    }else companyRows=companyDataLoaded?'<div class="company-empty">'+(companies.length?'表示する企業はありません。':'企業がまだ登録されていません。')+'</div>':'<div class="company-loading">企業一覧を読み込んでいます…</div>';
+    content=systemStatus+(companyLoadError?'<div class="company-notice is-error" role="alert">'+esc(companyLoadError)+'</div>':'')+'<section class="card company-panel"><div class="company-panel-heading company-list-heading"><div class="company-list-heading-copy"><span class="company-terminal-label">REGISTERED COMPANIES</span><div class="section">企業一覧</div></div><label class="company-archived-toggle"><input type="checkbox" '+(companyShowArchived?'checked':'')+' onchange="setCompanyArchivedVisible(this.checked)">アーカイブ済みを表示</label></div>'+companyRows+'</section>';
+  }
+  const description=selectedCompanyId!==null?'選択した企業に所属する店舗を表示します。':'企業を選択すると、その企業の店舗一覧を確認できます。';
+  shell('<span class="company-management-title">COMPANY MANAGEMENT</span><span class="company-management-title-ja">企業管理</span>',description,'<div class="company-management-view">'+content+'</div>');
+  document.querySelectorAll('[data-company-open]').forEach(button=>button.addEventListener('click',()=>navigateCompanyRoute(button.dataset.companyOpen)));
+  document.querySelectorAll('[data-company-edit]').forEach(button=>button.addEventListener('click',event=>{event.stopPropagation();openCompanyEditModal(button.dataset.companyEdit)}));
+  document.querySelectorAll('[data-company-back]').forEach(button=>button.addEventListener('click',()=>navigateCompanyRoute()));
+  document.querySelectorAll('[data-company-store-open]').forEach(button=>button.addEventListener('click',()=>navigateToAdminHash(buildAdminHash('stores',{store:button.dataset.companyStoreOpen}))));
   document.querySelectorAll('[data-company-archive]').forEach(button=>button.addEventListener('click',()=>changeCompanyArchive(button.dataset.companyArchive,'archive')));
   document.querySelectorAll('[data-company-restore]').forEach(button=>button.addEventListener('click',()=>changeCompanyArchive(button.dataset.companyRestore,'restore')));
   document.querySelectorAll('[data-company-delete]').forEach(button=>button.addEventListener('click',()=>deleteCompany(button.dataset.companyDelete)));
+}
+function openCompanyEditModal(companyId){
+  const id=String(companyId),company=companyAdminData.companies.find(item=>String(item.id)===id);
+  if(!company||companyProfileSaving)return;
+  companyProfileTargetId=id;
+  openModal('企業情報を編集','<form id="companyProfileEditForm" class="company-edit-modal" novalidate><div class="field"><label for="companyEditName">企業名</label><input id="companyEditName" name="name" value="'+esc(company.name||'')+'" maxlength="200" required autocomplete="organization"></div><div class="field"><label for="companyEditIndustry">業種</label><input id="companyEditIndustry" name="industry" value="'+esc(company.businessType||'')+'" maxlength="100"></div><div id="companyProfileEditError" class="company-notice is-error" role="alert" hidden></div><div class="company-edit-actions"><button type="button" class="company-edit-cancel" data-company-edit-cancel>キャンセル</button><button type="submit" class="company-primary" data-company-edit-save>保存</button></div></form>');
+  const form=document.getElementById('companyProfileEditForm');
+  form?.addEventListener('submit',event=>saveCompanyProfile(event,id));
+  form?.querySelector('[data-company-edit-cancel]')?.addEventListener('click',()=>closeModal(true));
+  document.getElementById('companyEditName')?.focus();
+}
+async function saveCompanyProfile(event,companyId){
+  event.preventDefault();
+  const id=String(companyId),nameInput=document.getElementById('companyEditName'),industryInput=document.getElementById('companyEditIndustry'),error=document.getElementById('companyProfileEditError');
+  if(companyProfileSaving||companyProfileTargetId!==id)return;
+  const name=String(nameInput?.value||'').trim(),industry=String(industryInput?.value||'').trim();
+  if(!name){if(error){error.textContent='企業名を入力してください。';error.hidden=false}nameInput?.focus();return}
+  companyProfileSaving=true;
+  const saveButton=document.querySelector('[data-company-edit-save]'),cancelButton=document.querySelector('[data-company-edit-cancel]');
+  if(saveButton){saveButton.disabled=true;saveButton.textContent='保存中…'}if(cancelButton)cancelButton.disabled=true;
+  try{
+    const response=await companyApiFetch(`/api/admin/companies/${encodeURIComponent(id)}`,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({name,industry})});
+    const payload=await response.json().catch(()=>({}));
+    if(!response.ok){
+      const messages={company_name_required:'企業名を入力してください。',invalid_industry:'業種の入力を確認してください。',company_not_found:'企業が見つかりません。'};
+      throw new Error(messages[payload.error]||(response.status===503?'企業情報を保存できませんでした。時間をおいて再度お試しください。':'企業情報を保存できませんでした。入力内容を確認してください。'));
+    }
+    const updated=payload.company;
+    if(!updated||String(updated.id)!==id)throw new Error('保存結果を確認できませんでした。企業一覧を更新してください。');
+    companyAdminData.companies=companyAdminData.companies.map(item=>String(item.id)===id?{...item,name:updated.name,businessType:updated.businessType}:item);
+    closeModal(true);companyProfileTargetId=null;companyProfileSaving=false;renderCompanyManagement();toast('企業情報を保存しました');
+  }catch(errorValue){
+    if(error){error.textContent=errorValue?.message||'企業情報を保存できませんでした。';error.hidden=false}
+    companyProfileSaving=false;
+    if(saveButton){saveButton.disabled=false;saveButton.textContent='保存'}if(cancelButton)cancelButton.disabled=false;
+  }
 }
 async function changeCompanyArchive(companyId,action){
   const id=String(companyId),company=companyAdminData.companies.find(item=>String(item.id)===id);
@@ -3374,6 +3485,8 @@ function setStoreListView(view){
 }
 function renderStores(){
   const feedback=storeSaveFeedback?`<div class="company-notice ${storeSaveFeedbackType==='error'?'is-error':''}" role="${storeSaveFeedbackType==='error'?'alert':'status'}">${esc(storeSaveFeedback)}</div>`:'';
+  const route=parseAdminRoute();
+  const requestedStoreId=route.page==='stores'?route.params.get('store'):null;
   const query=String(storeSearchQuery||'').trim().toLocaleLowerCase();
   const allStores=Array.isArray(S?.stores)?S.stores:[];
   const normalStores=allStores.filter(store=>store?.archivedAt===null||store?.archivedAt===undefined);
@@ -3385,22 +3498,31 @@ function renderStores(){
     const companyName=storeCompanyLabel(store);
     return [store.name,publicCode,store.id,companyName,store.companyId].some(value=>String(value??'').toLocaleLowerCase().includes(query));
   });
+  const selectedStoreId=requestedStoreId!==null&&visibleStores.some(store=>String(store.id)===requestedStoreId)?requestedStoreId:null;
   const rows=visibleStores.map(x=>{
     const storeId=String(x.id??'');
+    const selectedClass=selectedStoreId===storeId?' class="store-row-selected" data-store-row="'+esc(storeId)+'"':' data-store-row="'+esc(storeId)+'"';
     const companyLabel=storeCompanyLabel(x);
     const statusMarkup=`<span class="store-state ${x.status==='停止中'?'is-off':'is-online'}"><i></i>${esc(x.status||'状態不明')}</span>`;
-    if(storeListView==='archived')return `<tr><td><b>${esc(x.name||'')}</b><span class="store-state is-archived"><i></i>アーカイブ済み</span><div class="store-identity-meta">店舗ID: ${esc(storeId||'—')}</div></td><td>${esc(companyLabel)}</td><td>${statusMarkup}</td><td class="store-archived-date">${esc(formatStoreArchivedAt(x.archivedAt))}</td><td class="store-row-actions"><button type="button" class="secondary store-restore" data-store-restore="${esc(storeId)}" ${storeSavePending||!storeId?'disabled':''}>${storeSavePending?'処理中…':'復元'}</button></td></tr>`;
+    if(storeListView==='archived')return `<tr${selectedClass}><td><b>${esc(x.name||'')}</b><span class="store-state is-archived"><i></i>アーカイブ済み</span><div class="store-identity-meta">店舗ID: ${esc(storeId||'—')}</div></td><td>${esc(companyLabel)}</td><td>${statusMarkup}</td><td class="store-archived-date">${esc(formatStoreArchivedAt(x.archivedAt))}</td><td class="store-row-actions"><button type="button" class="secondary store-restore" data-store-restore="${esc(storeId)}" ${storeSavePending||!storeId?'disabled':''}>${storeSavePending?'処理中…':'復元'}</button></td></tr>`;
     const fullUrl=storePublicUrlForId(x.id);
     const urlLabel=fullUrl|| (storePublicCodeLoading?'確認中…':storePublicCodeError?'取得できません':'公開URL未設定');
     const unavailableNote=fullUrl?'':`<small class="store-public-notice">${esc(urlLabel)}</small>`;
     const disabled=storeId?'':'disabled';
-    return `<tr><td><b>${esc(x.name)}</b><div class="store-identity-meta">店舗ID: ${esc(storeId||'—')} · 企業: ${esc(companyLabel)}</div><div class="store-public-url" title="${esc(urlLabel)}">${esc(fullUrl?urlLabel:'')}</div>${unavailableNote}</td><td>${esc(x.type)}</td><td>${esc(x.wifi)}</td><td class="store-users">${Number(x.users||0).toLocaleString()}</td><td>${statusMarkup}</td><td class="store-row-actions store-row-actions-normal"><div class="store-row-action-group"><div class="store-public-actions"><button type="button" class="secondary" data-store-copy="${esc(storeId)}" ${fullUrl&&storeId?'':'disabled'}>URLコピー</button><button type="button" class="secondary" data-store-qr="${esc(storeId)}" ${fullUrl&&storeId?'':'disabled'}>QR</button></div><button type="button" class="secondary store-edit" data-store-edit="${esc(storeId)}" ${disabled}>編集</button><button type="button" class="secondary store-archive" data-store-archive="${esc(storeId)}" ${disabled}>アーカイブ</button></div></td></tr>`;
+    return `<tr${selectedClass}><td><b>${esc(x.name)}</b><div class="store-identity-meta">店舗ID: ${esc(storeId||'—')} · 企業: ${esc(companyLabel)}</div><div class="store-public-url" title="${esc(urlLabel)}">${esc(fullUrl?urlLabel:'')}</div>${unavailableNote}</td><td>${esc(x.type)}</td><td>${esc(x.wifi)}</td><td class="store-users">${Number(x.users||0).toLocaleString()}</td><td>${statusMarkup}</td><td class="store-row-actions store-row-actions-normal"><div class="store-row-action-group"><div class="store-public-actions"><button type="button" class="secondary" data-store-copy="${esc(storeId)}" ${fullUrl&&storeId?'':'disabled'}>URLコピー</button><button type="button" class="secondary" data-store-qr="${esc(storeId)}" ${fullUrl&&storeId?'':'disabled'}>QR</button></div><button type="button" class="secondary store-edit" data-store-edit="${esc(storeId)}" ${disabled}>編集</button><button type="button" class="secondary store-archive" data-store-archive="${esc(storeId)}" ${disabled}>アーカイブ</button></div></td></tr>`;
   }).join('');
   const columnCount=storeListView==='archived'?5:6;
   const emptyRow=rows?'':`<tr><td colspan="${columnCount}" class="store-empty-row">該当する店舗はありません</td></tr>`;
   const normalActive=storeListView==='normal';
   const tableHead=storeListView==='archived'?'<tr><th>店舗 / ID</th><th>企業</th><th>状態</th><th>アーカイブ日時（JST）</th><th>操作</th></tr>':'<tr><th>店舗 / 公開URL</th><th>業態</th><th>Wi-Fi</th><th>月間接続</th><th>状態</th><th>操作</th></tr>';
   shell('<span class="store-title">STORE MANAGEMENT</span><span class="store-title-ja">店舗管理</span>','Wi-Fiを設置している店舗・ホテル・拠点を管理します.',`<div class="store-management-view"><div class="store-system-status"><div><div class="store-console-name">STORE NETWORK CONTROL</div><div class="store-console-message">Managing registered Wi-Fi locations.</div></div><span class="store-online"><i></i> ONLINE</span></div>${feedback}<section class="card store-panel"><div class="store-panel-head"><div><span class="store-terminal-label">REGISTERED LOCATIONS</span><div class="store-panel-title">店舗一覧</div></div><div class="store-list-toolbar"><div class="store-view-tabs" role="tablist" aria-label="店舗一覧の表示"><button type="button" class="store-view-tab ${normalActive?'is-active':''}" role="tab" aria-selected="${normalActive}" data-store-view="normal">通常店舗 <span class="store-view-tab-count">${normalStores.length}</span></button><button type="button" class="store-view-tab ${!normalActive?'is-active':''}" role="tab" aria-selected="${!normalActive}" data-store-view="archived">アーカイブ済み <span class="store-view-tab-count">${archivedStores.length}</span></button></div>${normalActive?`<div class="actions store-actions" style="justify-content:flex-end;margin-bottom:12px"><button class="store-primary" onclick="addStore()" ${storeSavePending?'disabled':''}>＋ 店舗を追加</button></div>`:''}</div></div><div class="store-search-field"><label for="store-search-input">店舗検索</label><input id="store-search-input" type="search" value="${esc(storeSearchQuery)}" placeholder="店舗名・公開コードで検索" autocomplete="off"></div><div class="store-table-scroll"><table class="store-data-table"><thead>${tableHead}</thead><tbody>${rows||emptyRow}</tbody></table></div></section></div>`);
+  if(storeAutoScrollPendingId&&selectedStoreId===storeAutoScrollPendingId){
+    const targetId=storeAutoScrollPendingId;storeAutoScrollPendingId=null;
+    requestAnimationFrame(()=>{
+      if(!isAdminRoute('stores')||parseAdminRoute().params.get('store')!==targetId)return;
+      document.querySelector(`[data-store-row="${CSS.escape(targetId)}"]`)?.scrollIntoView({behavior:'smooth',block:'center',inline:'nearest'});
+    });
+  }
   document.querySelectorAll('[data-store-view]').forEach(button=>button.addEventListener('click',event=>{
     event.preventDefault();event.stopPropagation();setStoreListView(button.dataset.storeView);
   }));
@@ -3426,7 +3548,16 @@ function renderStores(){
     event.preventDefault();event.stopPropagation();restoreStore(button.dataset.storeRestore);
   }));
 }
-function stores(){storeListView='normal';renderStores();loadStorePublicCodes();loadStoreCompanyOptions().then(()=>{if(location.hash==='#stores')renderStores();});}
+function stores(){
+  const route=parseAdminRoute(),requestedStoreId=route.page==='stores'?route.params.get('store'):null;
+  storeListView='normal';storeAutoScrollPendingId=null;
+  if(requestedStoreId!==null){
+    storeSearchQuery='';
+    const target=Array.isArray(S?.stores)?S.stores.find(store=>String(store.id)===requestedStoreId):null;
+    if(target){storeListView=isArchivedStore(target)?'archived':'normal';storeAutoScrollPendingId=requestedStoreId;}
+  }
+  renderStores();loadStorePublicCodes();loadStoreCompanyOptions().then(()=>{if(isAdminRoute('stores'))renderStores();});
+}
 function setStoreSearch(value){
   const nextQuery=String(value??'');
   if(nextQuery===storeSearchQuery)return;
@@ -3629,7 +3760,7 @@ async function saveStore(event){
     renderStores();
   }finally{storeSavePending=false;}
 }
-async function archiveStore(storeId){const key=String(storeId??'');if(!key||storeSavePending)return;const target=findStoreById(key);if(!target||target.archivedAt!==null&&target.archivedAt!==undefined)return;const message=`「${target.name}」をアーカイブします。\n店舗IDと過去の広告・クーポン・分析履歴は保持されます。\n通常の店舗一覧と新規配信対象からは外れます。\n\n店舗ID: ${key}`;if(!confirm(message))return;storeSavePending=true;try{const response=await apiFetch(`/api/admin/stores/${encodeURIComponent(key)}/archive`,{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});if(!response.ok)throw new Error('アーカイブ状態を保存できませんでした。');await load();toast('店舗をアーカイブしました。',{type:'success'});}catch(error){let refreshed=false;try{await load();refreshed=true;}catch(_){}toast(refreshed?'店舗状態を再取得しました。現在の状態を確認してください。':'保存状態を確認できませんでした。画面を再読み込みして確認してください。',{type:refreshed?'info':'error'});}finally{storeSavePending=false;if(location.hash==='#stores')renderStores()}}
+async function archiveStore(storeId){const key=String(storeId??'');if(!key||storeSavePending)return;const target=findStoreById(key);if(!target||target.archivedAt!==null&&target.archivedAt!==undefined)return;const message=`「${target.name}」をアーカイブします。\n店舗IDと過去の広告・クーポン・分析履歴は保持されます。\n通常の店舗一覧と新規配信対象からは外れます。\n\n店舗ID: ${key}`;if(!confirm(message))return;storeSavePending=true;try{const response=await apiFetch(`/api/admin/stores/${encodeURIComponent(key)}/archive`,{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});if(!response.ok)throw new Error('アーカイブ状態を保存できませんでした。');await load();toast('店舗をアーカイブしました。',{type:'success'});}catch(error){let refreshed=false;try{await load();refreshed=true;}catch(_){}toast(refreshed?'店舗状態を再取得しました。現在の状態を確認してください。':'保存状態を確認できませんでした。画面を再読み込みして確認してください。',{type:refreshed?'info':'error'});}finally{storeSavePending=false;if(isAdminRoute('stores'))renderStores()}}
 async function restoreStore(storeId){
   const key=String(storeId??'');
   if(!key||storeSavePending)return;
@@ -3658,7 +3789,7 @@ async function restoreStore(storeId){
     toast(refreshed?'店舗状態を再取得しました。現在の状態を確認してください。':'保存状態を確認できませんでした。画面を再読み込みして確認してください。',{type:refreshed?'info':'error'});
   }finally{
     storeSavePending=false;
-    if(location.hash==='#stores')renderStores();
+    if(isAdminRoute('stores'))renderStores();
   }
 }
 async function loadAnalyticsCompanies(){
