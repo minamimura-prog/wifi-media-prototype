@@ -1732,7 +1732,7 @@ let adPcPreviewObserver=null;
 let adCreateIdempotencyKey=null, adCreateAttempt=null, adCreateUncertain=false, adCreateBlocked=false, adCreateStoreId=null;
 let companyAdminData={companies:[],stores:[]}, companyDataLoaded=false, companyDirectoryLoaded=false, companyRequestSeq=0, companyCreateSaving=false, companyAssignSaving=new Set(), companyLifecycleSaving=new Set(), companyDeleting=new Set(), companyProfileSaving=false, companyProfileTargetId=null, companyShowArchived=false, companyFormNotice='', companyFormNoticeType='', companyLoadError='', companyStoreNotices={}, companyFormValues={name:'',code:'',businessType:'',status:'active'};
 let storeCompanyOptionsData=[], storeCompanyOptionsError='', storeSavePending=false, storeSaveFeedback='', storeSaveFeedbackType='';
-let storePublicCodes=new Map(), storePublicCodeSeq=0, storePublicCodeLoading=false, storePublicCodeError='', storeSearchQuery='', storeSearchComposing=false, storeListView='normal', storeEditInitialValues=null, storeAutoScrollPendingId=null, openStoreCompanyKeys=new Set(), storeSearchAutoOpenSignature=null;
+let storePublicCodes=new Map(), storePublicCodeSeq=0, storePublicCodeLoading=false, storePublicCodeError='', storeSearchQuery='', storeSearchComposing=false, storeListView='normal', storeEditInitialValues=null, storeAutoScrollPendingId=null, openStoreCompanyKey=null, storeAccordionRouteSignature=null, storeSearchAutoOpenSignature=null;
 let lastRenderedAdminPage=null;
 let couponFormError='', selectedCouponViewId=null, couponShowExpired=false, couponSavePending=false, couponStatusChangePending=false, couponImageDraftUrl=null, couponImageUploadPending=false, couponImageEditorGeneration=0, designSaveError='';
 let dashboardSelectedCompany='all', dashboardStoreSearch='', dashboardSelectedStoreId=null, dashboardDirectoryError='', dashboardKpiRequestSeq=0, dashboardKpiAbortController=null;
@@ -3544,8 +3544,12 @@ function renderStores(){
     if(key!=='unassigned'&&!companyById.has(key))groups.push({key,name:`企業ID: ${key}`,stores:groupStores});
   }
   groups.push({key:'unassigned',name:'未所属',stores:groupStoreMap.get('unassigned')||[]});
-  if(requestedCompanyParam!==null&&groupStoreMap.has(String(requestedCompanyParam)))openStoreCompanyKeys.add(String(requestedCompanyParam));
-  if(requestedStore)openStoreCompanyKeys.add(groupKeyForStore(requestedStore));
+  const routeSignature=`${requestedCompanyParam??''}::${requestedStoreId??''}`;
+  if(routeSignature!==storeAccordionRouteSignature){
+    storeAccordionRouteSignature=routeSignature;
+    const routeOpenKey=requestedStore?groupKeyForStore(requestedStore):requestedCompanyParam!==null&&groupStoreMap.has(String(requestedCompanyParam))?String(requestedCompanyParam):null;
+    openStoreCompanyKey=routeOpenKey;
+  }
   const visibleGroups=groups.map(group=>{
     const companyMatches=Boolean(query&&[group.name,group.key].some(value=>String(value??'').toLocaleLowerCase().includes(query)));
     const matchingStores=!query||companyMatches?group.stores:group.stores.filter(storeMatches);
@@ -3554,7 +3558,7 @@ function renderStores(){
   const autoOpenSignature=`${query}::${visibleGroups.map(group=>group.key).join('|')}`;
   if(autoOpenSignature!==storeSearchAutoOpenSignature){
     storeSearchAutoOpenSignature=autoOpenSignature;
-    if(query&&visibleGroups.length===1)openStoreCompanyKeys.add(visibleGroups[0].key);
+    if(query)openStoreCompanyKey=visibleGroups.length===1?visibleGroups[0].key:null;
   }
   const selectedStoreId=requestedStoreId!==null&&tabStores.some(store=>String(store.id)===requestedStoreId)?requestedStoreId:null;
   const normalActive=storeListView==='normal';
@@ -3572,7 +3576,7 @@ function renderStores(){
   }).join('');
   const tableHeadMarkup=storeListView==='archived'?'<tr><th>店舗 / ID</th><th>企業</th><th>状態</th><th>アーカイブ日時（JST）</th><th>操作</th></tr>':'<tr><th>店舗 / 公開URL</th><th>業態</th><th>Wi-Fi</th><th>月間接続</th><th>状態</th><th>操作</th></tr>';
   const folderMarkup=visibleGroups.map((group,index)=>{
-    const isOpen=openStoreCompanyKeys.has(group.key);
+    const isOpen=openStoreCompanyKey===group.key;
     const folderStores=group.matchingStores;
     const rows=renderStoreRows(folderStores);
     const body=folderStores.length?`<div class="store-table-scroll"><table class="store-data-table"><thead>${tableHeadMarkup}</thead><tbody>${rows}</tbody></table></div>`:`<div class="store-company-empty">${query?'検索条件に一致する店舗はありません':'このフォルダには店舗が登録されていません'}</div>`;
@@ -3594,7 +3598,7 @@ function renderStores(){
   document.querySelectorAll('[data-store-company-folder]').forEach(button=>button.addEventListener('click',event=>{
     event.preventDefault();event.stopPropagation();
     const key=button.dataset.storeCompanyFolder;
-    if(openStoreCompanyKeys.has(key))openStoreCompanyKeys.delete(key);else openStoreCompanyKeys.add(key);
+    openStoreCompanyKey=openStoreCompanyKey===key?null:key;
     renderStores();
   }));
   document.querySelectorAll('[data-store-row]').forEach(row=>{
@@ -3602,7 +3606,7 @@ function renderStores(){
       if(event.target.closest('button,a,input,select,textarea'))return;
       event.preventDefault();event.stopPropagation();
       const store=findStoreById(row.dataset.storeRow);
-      if(store){const key=groupKeyForStore(store);openStoreCompanyKeys.add(key);navigateToStoreFolder(key,store.id);}
+      if(store){const key=groupKeyForStore(store);openStoreCompanyKey=key;navigateToStoreFolder(key,store.id);}
     };
     row.addEventListener('click',openStore);
     row.addEventListener('keydown',event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();openStore(event);}});
