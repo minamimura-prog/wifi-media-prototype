@@ -47,6 +47,15 @@ class StoreCampaignConflictError(Exception):
     """Raised when a store already has a publicly deliverable campaign in the same period."""
 
 
+class CompanyBulkStoreCampaignTargetError(Exception):
+    """Raised when a requested bulk-campaign store is missing, unrelated, or unavailable."""
+
+    def __init__(self, reason, store_ids=None):
+        super().__init__(reason)
+        self.reason = reason
+        self.store_ids = list(store_ids or [])
+
+
 class StoreCampaignIdempotencyMismatchError(Exception):
     """Raised when an idempotency key is reused for another store or payload."""
 
@@ -1414,6 +1423,102 @@ def create_store_campaign(store_id, campaign_id, ad_id, campaign):
                 (campaign_id, str(store_id)),
             )
     return _admin_campaign_result(campaign_id, ad_id, campaign)
+
+
+def create_company_store_campaigns_bulk(company_id, store_ids, campaign):
+    """Create one independent draft ad/campaign pair per eligible company store.
+
+    All target checks and inserts share one transaction. Existing campaigns are
+    never updated, and every campaign receives exactly one campaign_stores row.
+    """
+    _validate_campaign_for_write(campaign)
+    if campaign.get("status") != "draft" or campaign.get("published") is not False:
+        raise ValueError("bulk store campaigns must be unpublished drafts")
+    limits = {"name": 200, "title": 500, "body": 24000,
+              "landing_url": 4096, "media_url": 4096, "media_url_mobile": 4096}
+    for field, limit in limits.items():
+        value = campaign.get(field, "" if field != "name" else None)
+        if not isinstance(value, str) or len(value) > limit:
+            raise ValueError(f"invalid campaign {field}")
+    if not campaign["name"].strip() or not campaign["title"].strip():
+        raise ValueError("campaign name and title are required")
+    starts_on, ends_on = campaign.get("starts_on"), campaign.get("ends_on")
+    if starts_on is not None and not isinstance(starts_on, date):
+        raise ValueError("invalid campaign start date")
+    if ends_on is not None and not isinstance(ends_on, date):
+        raise ValueError("invalid campaign end date")
+    if starts_on is not None and ends_on is not None and starts_on > ends_on:
+        raise ValueError("invalid campaign date range")
+
+    if not isinstance(company_id, str) or not company_id.strip():
+        raise ValueError("company id is required")
+    if not isinstance(store_ids, (list, tuple)) or not store_ids:
+        raise ValueError("at least one target store is required")
+    normalized_ids = [str(store_id) for store_id in store_ids]
+    if (len(normalized_ids) > 200 or len(set(normalized_ids)) != len(normalized_ids)
+            or any(not store_id.strip() or len(store_id) > 256
+                   or any(ord(char) < 32 or ord(char) == 127 for char in store_id)
+                   for store_id in normalized_ids)):
+        raise ValueError("invalid target store ids")
+
+    created = []
+    with pool().connection() as conn:
+        with conn.transaction():
+            company = conn.execute(
+                "SELECT id, archived_at FROM companies WHERE id = %s FOR UPDATE",
+                (str(company_id),),
+            ).fetchone()
+            if not company:
+                return None
+            if company.get("archived_at") is not None:
+                raise CompanyArchivedError("company_archived")
+
+            stores = conn.execute(
+                "SELECT id, company_id, status, archived_at FROM stores "
+                "WHERE id = ANY(%s) ORDER BY id FOR UPDATE",
+                (normalized_ids,),
+            ).fetchall()
+            stores_by_id = {str(row["id"]): row for row in stores}
+            missing = [store_id for store_id in normalized_ids if store_id not in stores_by_id]
+            if missing:
+                raise CompanyBulkStoreCampaignTargetError("store_not_found", missing)
+            unrelated = [store_id for store_id in normalized_ids
+                         if str(stores_by_id[store_id].get("company_id") or "") != str(company_id)]
+            if unrelated:
+                raise CompanyBulkStoreCampaignTargetError("store_not_in_company", unrelated)
+            unavailable = [store_id for store_id in normalized_ids
+                           if stores_by_id[store_id].get("status") != "稼働中"
+                           or stores_by_id[store_id].get("archived_at") is not None]
+            if unavailable:
+                raise CompanyBulkStoreCampaignTargetError("store_inactive", unavailable)
+
+            for store_id in normalized_ids:
+                campaign_id = "campaign-" + secrets.token_hex(16)
+                ad_id = "ad-" + secrets.token_hex(16)
+                _ensure_store_campaign_period_available(conn, store_id, campaign)
+                conn.execute(
+                    "INSERT INTO ads "
+                    "(id, store_id, title, body, landing_url, media_url, media_url_mobile, published) "
+                    "VALUES (%s, NULL, %s, %s, %s, %s, %s, FALSE)",
+                    (ad_id, campaign["title"].strip(), campaign.get("body", ""),
+                     campaign.get("landing_url", ""), campaign.get("media_url", ""),
+                     campaign.get("media_url_mobile", "")),
+                )
+                conn.execute(
+                    "INSERT INTO campaigns "
+                    "(id, ad_id, scope, company_id, name, starts_on, ends_on, status) "
+                    "VALUES (%s, %s, 'store', NULL, %s, %s, %s, 'draft')",
+                    (campaign_id, ad_id, campaign["name"], starts_on, ends_on),
+                )
+                conn.execute(
+                    "INSERT INTO campaign_stores (campaign_id, store_id) VALUES (%s, %s)",
+                    (campaign_id, store_id),
+                )
+                store_campaign = dict(campaign)
+                store_campaign.update({"scope": "store", "company_id": None,
+                                      "status": "draft", "published": False})
+                created.append(_admin_campaign_result(campaign_id, ad_id, store_campaign))
+    return created
 
 
 def create_store_campaign_idempotent(

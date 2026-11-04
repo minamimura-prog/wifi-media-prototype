@@ -107,6 +107,15 @@ def _admin_campaign_status_route(path):
     return campaign_id if campaign_id is not None else None
 
 
+def _admin_company_bulk_store_campaign_route(path):
+    parts = path.split("/")
+    if (len(parts) != 7 or parts[:4] != ["", "api", "admin", "companies"]
+            or parts[5:] != ["store-campaigns", "bulk"]):
+        return None
+    company_id = _safe_admin_route_id(parts[4])
+    return company_id if company_id is not None else None
+
+
 def _admin_company_campaign_route(path, include_campaign=False, include_status=False):
     parts = path.split("/")
     if include_status:
@@ -284,6 +293,36 @@ def _validate_admin_coupon_update(payload):
     if "imageUrl" in payload:
         coupon["image_url"] = payload["imageUrl"]
     return coupon
+
+
+def _validate_admin_bulk_store_campaign(payload):
+    required = {"storeIds", "title", "body", "startsOn", "endsOn", "landingUrl", "mediaUrl", "mediaUrlMobile"}
+    if not isinstance(payload, dict) or set(payload) != required:
+        raise ValueError("invalid bulk campaign fields")
+    store_ids = payload["storeIds"]
+    if (not isinstance(store_ids, list) or not store_ids or len(store_ids) > 200
+            or any(not isinstance(value, str) or not value.strip() or len(value) > 256
+                   or "/" in value or "\\" in value
+                   or any(ord(char) < 32 or ord(char) == 127 for char in value)
+                   for value in store_ids)
+            or len(set(store_ids)) != len(store_ids)):
+        raise ValueError("invalid target stores")
+    title = payload["title"]
+    if not isinstance(title, str) or not title.strip() or len(title) > 500:
+        raise ValueError("invalid title")
+    campaign_payload = {
+        "name": "".join(list(title.strip())[:200]),
+        "status": "draft",
+        "startsOn": payload["startsOn"],
+        "endsOn": payload["endsOn"],
+        "title": title,
+        "body": payload["body"],
+        "landingUrl": payload["landingUrl"],
+        "mediaUrl": payload["mediaUrl"],
+        "mediaUrlMobile": payload["mediaUrlMobile"],
+        "published": False,
+    }
+    return store_ids, _validate_admin_campaign(campaign_payload)
 
 
 def _validate_admin_campaign(payload):
@@ -2575,6 +2614,40 @@ class Handler(BaseHTTPRequestHandler):
                 "status": result["status"], "published": result["published"],
                 "scope": result["scope"], "companyId": result["company_id"],
             })
+        company_bulk_route = _admin_company_bulk_store_campaign_route(path)
+        if company_bulk_route is not None:
+            if not self.require_admin_session(): return
+            if not self.require_same_origin(): return
+            if not database.database_enabled():
+                return self.send_json({"ok": False, "error": "admin_data_unavailable"}, 503)
+            payload, error_status = self.read_admin_json_payload(ADMIN_CAMPAIGN_MAX_BYTES)
+            if error_status:
+                return self.send_json({"ok": False, "error": "invalid_request"}, error_status)
+            try:
+                store_ids, campaign = _validate_admin_bulk_store_campaign(payload)
+            except (TypeError, ValueError):
+                return self.send_json({"ok": False, "error": "invalid_request"}, 400)
+            company_id = company_bulk_route
+            try:
+                created = database.create_company_store_campaigns_bulk(
+                    company_id, store_ids, campaign
+                )
+            except database.CompanyArchivedError:
+                return self.send_json({"ok": False, "error": "company_archived"}, 409)
+            except database.CompanyBulkStoreCampaignTargetError as exc:
+                status = 404 if exc.reason == "store_not_found" else 409
+                return self.send_json({"ok": False, "error": exc.reason,
+                                       "storeIds": exc.store_ids}, status)
+            except (TypeError, ValueError):
+                return self.send_json({"ok": False, "error": "invalid_request"}, 400)
+            except Exception:
+                return self.send_json({"ok": False, "error": "bulk_campaign_create_failed"}, 503)
+            if created is None:
+                return self.send_json({"ok": False, "error": "company_not_found"}, 404)
+            return self.send_json({
+                "ok": True, "companyId": company_id,
+                "campaigns": [_admin_campaign_json(row) for row in created],
+            }, 201)
         company_campaign_route = _admin_company_campaign_route(path)
         if company_campaign_route:
             if not self.require_admin_session(): return
