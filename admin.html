@@ -1736,6 +1736,10 @@ body:has(.ad-management-view){background-color:#070b0d;background-image:radial-g
 .ad-hierarchy-folder-group{display:grid;gap:8px}
 .ad-hierarchy-folder-group.is-open>.ad-hierarchy-folder{border-color:rgba(0,229,255,.58);background:rgba(0,229,255,.06)}
 .ad-hierarchy-folder-children{display:grid;gap:8px;margin-left:18px;padding:4px 0 8px 14px;border-left:2px solid rgba(0,229,255,.22)}
+.ad-company-inline-stores{gap:9px}
+.ad-hierarchy-store-group{gap:6px}
+.ad-store-inline-campaigns{margin:2px 0 10px 14px;padding:8px 0 10px 12px;border-left:1px solid rgba(0,229,255,.16);animation:ad-inline-open .16s ease-out}
+@keyframes ad-inline-open{from{opacity:.65;transform:translateY(-3px)}to{opacity:1;transform:translateY(0)}}
 .ad-hierarchy-store{border-color:rgba(0,229,255,.16);background:rgba(0,8,14,.48)}
 .ad-hierarchy-back{margin:0 0 14px}
 .ad-hierarchy-home{display:inline-flex;margin:0 0 12px;padding:7px 11px;border-color:rgba(148,178,190,.28);background:rgba(4,10,14,.45);color:#b7c8ce;font-size:12px}
@@ -2107,10 +2111,8 @@ function adHierarchyStage(type,params=parseAdminRoute().params){
   if(type==='global')return 'edit';
   if(type==='store'){
     if(params.get('bulk')==='1'&&params.has('company'))return 'bulk';
-    if(params.get('new')==='1'&&params.has('store'))return 'edit';
-    if(!params.has('store')&&!params.has('company'))return 'companies';
-    if(!params.has('store'))return 'stores';
-    return params.has('campaign')?'edit':'campaigns';
+    if(params.has('store')&&(params.has('campaign')||params.get('new')==='1'))return 'edit';
+    return 'tree';
   }
   if(type==='company'){
     if(!params.has('company'))return 'companies';
@@ -2294,51 +2296,51 @@ function renderBulkStoreAdWizard(companyId){
 }
 function renderAdHierarchy(type){
   const route=parseAdminRoute(),params=route.params,stage=adHierarchyStage(type,params),companyId=params.get('company'),storeId=params.get('store');
-  const backLabel=type==='store'?(stage==='bulk'?'企業の店舗一覧へ戻る':stage==='stores'?'企業選択へ戻る':stage==='campaigns'?'店舗選択へ戻る':''):type==='company'&&stage==='campaigns'?'企業選択へ戻る':'';
+  const backLabel=type==='store'&&stage==='bulk'?'企業の店舗一覧へ戻る':type==='company'&&stage==='campaigns'?'企業選択へ戻る':'';
   const back=backLabel?`<button type="button" class="secondary ad-hierarchy-back" onclick="navigateAdHierarchyBack()">← ${backLabel}</button>`:'';
   const homeBack=backLabel?'':'<button type="button" class="secondary ad-hierarchy-home" onclick="navigateAdManagementHome()">← 広告管理へ戻る</button>';
   const search=`<label class="ad-hierarchy-search"><span>広告タイトル検索</span><input type="search" value="${esc(adListSearchQuery)}" placeholder="広告タイトルで検索" data-ad-title-search-input></label>`;
   let title='',content='';
-  if(type==='store'&&stage==='companies'){
-    title='企業を選択';
-    const companies=[...(adCompanies||[])].filter(item=>item&&item.archivedAt==null);
-    const unassigned=(adStores||[]).filter(item=>item.companyId==null||item.companyId==='');
-    const rows=[...companies.map(company=>{const count=(adStores||[]).filter(store=>String(store.companyId)===String(company.id)).length;return `<button type="button" class="ad-hierarchy-folder" data-ad-company-folder="${esc(company.id)}"><span><strong>${esc(company.name||'企業')}</strong><small>${count}店舗</small></span><b aria-hidden="true">▶</b></button>`}),`<button type="button" class="ad-hierarchy-folder" data-ad-company-folder="unassigned"><span><strong>未所属</strong><small>${unassigned.length}店舗</small></span><b aria-hidden="true">▶</b></button>`].join('');
-    content=`${adCompaniesLoading||adStoresLoading?'<p class="sub">企業・店舗一覧を読み込んでいます…</p>':adCompaniesError||adStoreError?`<p class="ad-target-error">${esc(adCompaniesError||adStoreError)}</p>`:`<div class="ad-hierarchy-list">${rows}</div>`}`;
-  }else if(type==='company'&&stage==='companies'){
-    title='企業を選択';
-    const rows=(adCompanies||[]).filter(item=>item&&item.archivedAt==null).map(company=>`<button type="button" class="ad-hierarchy-folder" data-ad-company-target="${esc(company.id)}"><span><strong>${esc(company.name||'企業')}</strong></span><b aria-hidden="true">→</b></button>`).join('');
-    content=`${adCompaniesLoading?'<p class="sub">企業一覧を読み込んでいます…</p>':adCompaniesError?`<p class="ad-target-error">${esc(adCompaniesError)}</p>`:`<div class="ad-hierarchy-list">${rows||'<p class="sub">広告対象の企業がありません。</p>'}</div>`}`;
-  }else if(type==='store'&&stage==='stores'){
-    title='企業・店舗を選択';
+  if(type==='store'&&stage==='tree'){
+    title='企業・店舗・広告';
     const groups=[...(adCompanies||[]).filter(item=>item&&item.archivedAt==null).map(company=>({id:String(company.id),name:company.name||'企業'})),{id:'unassigned',name:'未所属'}];
     const groupMarkup=groups.map(group=>{
       const isOpen=String(companyId)===group.id;
       const stores=(adStores||[]).filter(item=>group.id==='unassigned'?(item.companyId==null||item.companyId===''):String(item.companyId)===group.id);
       const eligibleCount=group.id==='unassigned'?0:eligibleBulkStoreAds(group.id).length;
       const bulkAction=isOpen&&group.id!=='unassigned'?'<div class="ad-bulk-entry"><button type="button" class="store-campaign-add" data-ad-bulk-create="'+esc(group.id)+'" '+(eligibleCount?'':'disabled')+'>＋ 店舗広告を一括作成</button><small>'+(eligibleCount?eligibleCount+'店舗が対象':'対象となる稼働中店舗がありません')+'</small></div>':'';
-      const storeButtons=stores.map(store=>'<button type="button" class="ad-hierarchy-folder ad-hierarchy-store" data-ad-store-folder="'+esc(store.id)+'"><span><strong>'+esc(store.name)+'</strong><small>'+esc(store.status||'状態不明')+' · '+esc(store.publicCode||'公開コードなし')+'</small></span><b aria-hidden="true">→</b></button>').join('')||'<p class="sub">この企業には店舗が登録されていません。</p>';
-      const children=isOpen?'<div class="ad-hierarchy-folder-children">'+storeButtons+bulkAction+'</div>':'';
-      return `<div class="ad-hierarchy-folder-group ${isOpen?'is-open':''}"><button type="button" class="ad-hierarchy-folder" data-ad-company-folder="${esc(group.id)}" aria-expanded="${isOpen?'true':'false'}"><span><strong>${esc(group.name)}</strong><small>${stores.length}店舗</small></span><b aria-hidden="true">${isOpen?'▼':'▶'}</b></button>${children}</div>`;
+      const storeGroups=stores.map(store=>{
+        const id=String(store.id),storeOpen=isOpen&&String(storeId)===id;
+        const storeCampaigns=storeOpen&&String(adStoreId)===id?adCampaigns:[];
+        const expiredToggle='<label class="ad-company-archived-toggle is-expired-toggle"><input type="checkbox" '+(adStoreShowExpired?'checked':'')+' data-ad-show-expired>期限切れを表示</label>';
+        const listContent=!storeOpen?'':adStoreLoading?'<div class="ad-hierarchy-folder-children ad-store-inline-campaigns"><p class="sub">店舗広告を読み込んでいます…</p></div>':adStoreError?'<div class="ad-hierarchy-folder-children ad-store-inline-campaigns"><p class="ad-target-error" role="alert">'+esc(adStoreError)+'</p></div>':(()=>{
+          const visible=storeCampaigns.filter(item=>adStoreShowExpired||!isCampaignExpired(item));
+          const rows=visible.map(item=>adCampaignListRowMarkup(item,'store',{selected:String(item.campaignId)===String(params.get('campaign'))})).join('');
+          const hasTitleMatch=visible.some(item=>!adListSearchQuery.trim()||String(item.title||item.name||'').toLocaleLowerCase().includes(adListSearchQuery.trim().toLocaleLowerCase()));
+          const emptyMarkup=visible.length?'<p class="sub ad-hierarchy-no-match" '+(hasTitleMatch?'hidden':'')+'>該当する広告がありません。</p>':storeCampaigns.length?'<p class="sub ad-hierarchy-empty">期限切れ広告は非表示です。切替で表示できます。</p>':'<p class="sub ad-hierarchy-empty">広告はまだ登録されていません。</p>';
+          return '<div class="ad-hierarchy-folder-children ad-store-inline-campaigns"><div class="ad-hierarchy-list-head"><span class="ad-campaign-count" data-ad-visible-count>'+visible.length+'件</span><div>'+expiredToggle+'</div></div><div class="ad-hierarchy-list-tools">'+search+'</div><div class="ad-company-campaign-list">'+rows+emptyMarkup+'</div></div>';
+        })();
+        return '<div class="ad-hierarchy-folder-group ad-hierarchy-store-group '+(storeOpen?'is-open':'')+'"><button type="button" class="ad-hierarchy-folder ad-hierarchy-store" data-ad-store-folder="'+esc(id)+'" aria-expanded="'+(storeOpen?'true':'false')+'"><span><strong>'+esc(store.name)+'</strong><small>'+esc(store.status||'状態不明')+' · '+esc(store.publicCode||'公開コードなし')+'</small></span><b aria-hidden="true">'+(storeOpen?'▼':'▶')+'</b></button>'+listContent+'</div>';
+      }).join('')||'<p class="sub">この企業には店舗が登録されていません。</p>';
+      const children=isOpen?'<div class="ad-hierarchy-folder-children ad-company-inline-stores">'+bulkAction+storeGroups+'</div>':'';
+      return '<div class="ad-hierarchy-folder-group '+(isOpen?'is-open':'')+'"><button type="button" class="ad-hierarchy-folder" data-ad-company-folder="'+esc(group.id)+'" aria-expanded="'+(isOpen?'true':'false')+'"><span><strong>'+esc(group.name)+'</strong><small>'+stores.length+'店舗</small></span><b aria-hidden="true">'+(isOpen?'▼':'▶')+'</b></button>'+children+'</div>';
     }).join('');
-    content=`${back}${adCompaniesLoading||adStoresLoading?'<p class="sub">企業・店舗一覧を読み込んでいます…</p>':adCompaniesError||adStoreError?`<p class="ad-target-error">${esc(adCompaniesError||adStoreError)}</p>`:`<div class="ad-hierarchy-list">${groupMarkup}</div>`}`;
+    content=adCompaniesLoading||adStoresLoading?'<p class="sub">企業・店舗一覧を読み込んでいます…</p>':adCompaniesError||adStoreError?'<p class="ad-target-error" role="alert">'+esc(adCompaniesError||adStoreError)+'</p>':'<div class="ad-hierarchy-list">'+groupMarkup+'</div>';
   }else if(type==='store'&&stage==='bulk'){
-    const company=adCompanies.find(item=>String(item.id)===String(companyId));
-    title=company?company.name+'の店舗広告を一括作成':'店舗広告を一括作成';
+    title='店舗広告を一括作成';
     content=back+renderBulkStoreAdWizard(companyId);
-  }else if((type==='store'&&stage==='campaigns')||(type==='company'&&stage==='campaigns')||(type==='jack'&&stage==='campaigns')){
-    const campaigns=type==='store'?adCampaigns:type==='company'?adCompanyCampaigns:adJackCampaigns;
+  }else if((type==='company'&&stage==='campaigns')||(type==='jack'&&stage==='campaigns')){
+    const campaigns=type==='company'?adCompanyCampaigns:adJackCampaigns;
     const company=adCompanies.find(item=>String(item.id)===String(adCompanyId));
-    const store=(adStores||[]).find(item=>String(item.id)===String(adStoreId));
-    title=type==='store'?`${store?.name||'店舗'}の広告`:type==='company'?`${company?.name||'企業'}の広告`:'全店舗ジャック広告';
-    const showExpired=type==='store'?adStoreShowExpired:type==='company'?adCompanyShowExpired:adJackShowExpired;
-    const showArchived=type==='company'?adCompanyShowArchived:type==='jack'?adJackShowArchived:false;
+    title=type==='company'?`${company?.name||'企業'}の広告`:'全店舗ジャック広告';
+    const showExpired=type==='company'?adCompanyShowExpired:adJackShowExpired;
+    const showArchived=type==='company'?adCompanyShowArchived:adJackShowArchived;
     const visible=campaigns.filter(item=>(showExpired||!isCampaignExpired(item))&&(showArchived||normalizeCampaignStatus(item.status)!=='archived'));
-    const loading=type==='store'?adStoreLoading:type==='company'?(adCompaniesLoading||adCompanyLoading):adJackLoading;
-    const error=type==='store'?adStoreError:type==='company'?(adCompaniesError||adCompanyError):adJackError;
+    const loading=type==='company'?(adCompaniesLoading||adCompanyLoading):adJackLoading;
+    const error=type==='company'?(adCompaniesError||adCompanyError):adJackError;
     const archivedToggle=type==='company'||type==='jack'?`<label class="ad-company-archived-toggle"><input type="checkbox" ${showArchived?'checked':''} data-ad-show-archived>アーカイブ済みを表示</label>`:'';
     const expiredToggle=`<label class="ad-company-archived-toggle is-expired-toggle"><input type="checkbox" ${showExpired?'checked':''} data-ad-show-expired>期限切れを表示</label>`;
-    const createButton=type==='company'?'<button type="button" class="store-campaign-add" data-ad-create-company>＋ 企業広告を作成</button>':type==='jack'?'<button type="button" class="store-campaign-add" data-ad-create-jack>＋ 全店舗ジャック広告を作成</button>':'';
+    const createButton=type==='company'?'<button type="button" class="store-campaign-add" data-ad-create-company>＋ 企業広告を作成</button>':'<button type="button" class="store-campaign-add" data-ad-create-jack>＋ 全店舗ジャック広告を作成</button>';
     if(loading)content=`${back}<p class="sub">広告一覧を読み込んでいます…</p>`;
     else if(error)content=`${back}<p class="ad-target-error" role="alert">${esc(error)}</p>`;
     else{
@@ -2351,7 +2353,7 @@ function renderAdHierarchy(type){
   shell('<span class="ad-title">AD MANAGEMENT</span><span class="ad-title-ja">広告管理</span>',title,`<div class="ad-management-view"><div class="ad-system-status"><div><div class="ad-console-name">AD DELIVERY CONTROL</div></div><span class="ad-ready"><i></i> READY</span></div><section class="card ad-hierarchy-panel">${homeBack}<span class="ad-terminal-label">${type==='jack'?'ALL STORES JACK':'AD MANAGEMENT'}</span>${content}</section></div>`);
   document.querySelectorAll('[data-ad-company-folder]').forEach(button=>button.addEventListener('click',()=>{const id=button.dataset.adCompanyFolder,current=parseAdminRoute().params.get('company');navigateAdHierarchy('store',current===id?{}:{company:id})}));
   document.querySelectorAll('[data-ad-company-target]').forEach(button=>button.addEventListener('click',()=>navigateAdHierarchy('company',{company:button.dataset.adCompanyTarget})));
-  document.querySelectorAll('[data-ad-store-folder]').forEach(button=>button.addEventListener('click',()=>navigateAdHierarchy('store',{company:companyId,store:button.dataset.adStoreFolder})));
+  document.querySelectorAll('[data-ad-store-folder]').forEach(button=>button.addEventListener('click',()=>{const id=button.dataset.adStoreFolder,current=parseAdminRoute().params,company=current.get('company');navigateAdHierarchy('store',current.get('store')===id?{company}:{company,store:id})}));
   document.querySelectorAll('[data-ad-bulk-create]').forEach(button=>button.addEventListener('click',()=>startStoreCampaignBulk(button.dataset.adBulkCreate)));
   document.querySelector('[data-bulk-all-stores]')?.addEventListener('change',event=>toggleAllBulkStores(event.currentTarget.checked));
   document.querySelectorAll('[data-bulk-store-id]').forEach(input=>input.addEventListener('change',()=>toggleBulkStore(input.dataset.bulkStoreId,input.checked)));
