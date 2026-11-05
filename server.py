@@ -385,7 +385,7 @@ def _validate_admin_jack_campaign(payload, status):
     allowed = {
         "name", "title", "body", "startsOn", "endsOn", "landingUrl", "mediaUrl",
         "mediaUrlMobile", "scope", "companyId", "company_id", "storeId", "store_id",
-        "status", "published",
+        "status", "published", "targetStoreIds",
     }
     if not set(payload).issubset(allowed):
         raise ValueError("invalid fields")
@@ -394,7 +394,18 @@ def _validate_admin_jack_campaign(payload, status):
         "mediaUrlMobile",
     ) if key in payload}
     ad_fields.update(status=status, published=(status == "active"))
-    return _validate_admin_campaign(ad_fields)
+    campaign = _validate_admin_campaign(ad_fields)
+    if "targetStoreIds" in payload:
+        target_store_ids = payload["targetStoreIds"]
+        if (not isinstance(target_store_ids, list) or len(target_store_ids) > 5000
+                or any(not isinstance(store_id, str) or not store_id.strip()
+                       or len(store_id) > 256
+                       or any(ord(char) < 32 or ord(char) == 127 for char in store_id)
+                       for store_id in target_store_ids)
+                or len(set(target_store_ids)) != len(target_store_ids)):
+            raise ValueError("invalid targetStoreIds")
+        campaign["target_store_ids"] = target_store_ids
+    return campaign
 
 
 def _read_idempotency_key(headers):
@@ -413,7 +424,7 @@ def _read_idempotency_key(headers):
 def _admin_campaign_json(row):
     def iso(value):
         return value.isoformat() if value is not None else None
-    return {
+    result = {
         "campaignId": row["campaign_id"],
         "adId": row["ad_id"],
         "name": row["campaign_name"],
@@ -431,6 +442,9 @@ def _admin_campaign_json(row):
         "createdAt": iso(row.get("campaign_created_at")),
         "updatedAt": iso(row.get("campaign_updated_at")),
     }
+    if result["scope"] == "jack":
+        result["targetStoreIds"] = [str(store_id) for store_id in (row.get("target_store_ids") or [])]
+    return result
 
 
 def admin_development_mode():

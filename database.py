@@ -821,6 +821,10 @@ def _public_delivery_rows(conn, public_code, delivery_date):
         "AND c.company_id IS NULL JOIN ads a ON a.id = c.ad_id "
         "WHERE s.status <> '停止中' AND s.archived_at IS NULL "
         "AND c.id <> 'default' AND a.id <> 'main' AND a.store_id IS NULL "
+        "AND (NOT EXISTS (SELECT 1 FROM campaign_stores target_any "
+        "WHERE target_any.campaign_id = c.id) OR EXISTS ("
+        "SELECT 1 FROM campaign_stores target_match "
+        "WHERE target_match.campaign_id = c.id AND target_match.store_id = s.id)) "
         "AND c.status = 'active' AND a.published IS TRUE "
         "AND (c.starts_on IS NULL OR c.starts_on <= %s) "
         "AND (c.ends_on IS NULL OR c.ends_on >= %s) "
@@ -1920,10 +1924,11 @@ def _jack_campaign_select_sql():
         "c.created_at AS campaign_created_at, c.updated_at AS campaign_updated_at, "
         "a.starts_on AS ad_starts_on, a.ends_on AS ad_ends_on, a.title, a.body, "
         "a.landing_url, a.media_url, COALESCE(a.media_url_mobile, '') AS media_url_mobile, "
-        "a.published FROM campaigns c JOIN ads a ON a.id = c.ad_id "
+        "a.published, ARRAY(SELECT cs.store_id FROM campaign_stores cs "
+        "WHERE cs.campaign_id = c.id ORDER BY cs.store_id) AS target_store_ids "
+        "FROM campaigns c JOIN ads a ON a.id = c.ad_id "
         "WHERE c.scope = 'jack' AND c.company_id IS NULL AND a.store_id IS NULL "
         "AND c.id <> 'default' AND a.id <> 'main' "
-        "AND NOT EXISTS (SELECT 1 FROM campaign_stores cs WHERE cs.campaign_id = c.id) "
     )
 
 
@@ -2012,6 +2017,14 @@ def _jack_campaign_write_payload(campaign, *, creating=False):
     result.setdefault("landing_url", "")
     result.setdefault("media_url", "")
     result.setdefault("media_url_mobile", "")
+    if "target_store_ids" in result:
+        target_store_ids = result["target_store_ids"]
+        if (not isinstance(target_store_ids, (list, tuple))
+                or any(not isinstance(store_id, str) or not store_id.strip()
+                       for store_id in target_store_ids)
+                or len(set(target_store_ids)) != len(target_store_ids)):
+            raise ValueError("invalid JACK target stores")
+        result["target_store_ids"] = [str(store_id) for store_id in target_store_ids]
     if creating:
         result["status"] = "draft"
         result["published"] = False
@@ -2019,8 +2032,38 @@ def _jack_campaign_write_payload(campaign, *, creating=False):
     return result
 
 
+def _validate_jack_target_stores(conn, target_store_ids):
+    """Lock and validate every explicitly selected JACK delivery store."""
+    ids = list(target_store_ids or [])
+    if not ids:
+        return []
+    placeholders = ", ".join(["%s"] * len(ids))
+    rows = conn.execute(
+        "SELECT id FROM stores WHERE id IN (" + placeholders + ") "
+        "AND status IS NOT NULL AND status <> '停止中' AND archived_at IS NULL "
+        "ORDER BY id FOR UPDATE",
+        tuple(ids),
+    ).fetchall()
+    valid_ids = {str(row["id"]) for row in rows}
+    if valid_ids != set(ids):
+        raise ValueError("invalid JACK target stores")
+    return ids
+
+
+def _replace_jack_target_stores(conn, campaign_id, target_store_ids):
+    ids = _validate_jack_target_stores(conn, target_store_ids)
+    conn.execute("DELETE FROM campaign_stores WHERE campaign_id = %s", (campaign_id,))
+    if ids:
+        for store_id in ids:
+            conn.execute(
+                "INSERT INTO campaign_stores (campaign_id, store_id) VALUES (%s, %s)",
+                (campaign_id, store_id),
+            )
+    return ids
+
+
 def create_jack_campaign(campaign_id, ad_id, campaign):
-    """Atomically create a draft JACK ad and campaign without store assignments."""
+    """Atomically create a draft JACK ad, campaign, and optional store assignments."""
     campaign_id, ad_id = str(campaign_id), str(ad_id)
     if campaign_id == "default" or ad_id == "main":
         raise ValueError("reserved identifiers")
@@ -2043,6 +2086,9 @@ def create_jack_campaign(campaign_id, ad_id, campaign):
                     "VALUES (%s, %s, 'jack', NULL, %s, %s, %s, 'draft')",
                     (campaign_id, ad_id, payload["name"], payload["starts_on"], payload["ends_on"]),
                 )
+                _replace_jack_target_stores(
+                    conn, campaign_id, payload.get("target_store_ids", [])
+                )
         except psycopg.errors.UniqueViolation as exc:
             _jack_campaign_unique_conflict(exc)
     return get_jack_campaign(campaign_id)
@@ -2064,13 +2110,22 @@ def update_jack_campaign(campaign_id, campaign):
                 "COALESCE(a.media_url_mobile, '') AS media_url_mobile, a.published "
                 "FROM campaigns c JOIN ads a ON a.id = c.ad_id "
                 "WHERE c.id = %s AND c.scope = 'jack' AND c.company_id IS NULL "
-                "AND c.id <> 'default' AND a.id <> 'main' AND a.store_id IS NULL AND NOT EXISTS ("
-                "SELECT 1 FROM campaign_stores cs WHERE cs.campaign_id = c.id) "
+                "AND c.id <> 'default' AND a.id <> 'main' AND a.store_id IS NULL "
                 "FOR UPDATE OF c, a",
                 (campaign_id,),
             ).fetchone()
             if not current:
                 return None
+            target_store_ids = [str(row["store_id"]) for row in conn.execute(
+                "SELECT store_id FROM campaign_stores WHERE campaign_id = %s ORDER BY store_id",
+                (campaign_id,),
+            ).fetchall()]
+            if "target_store_ids" in payload:
+                requested_ids = _validate_jack_target_stores(
+                    conn, payload["target_store_ids"]
+                )
+            else:
+                requested_ids = target_store_ids
             if payload["status"] != current["status"]:
                 raise CampaignStatusTransitionError(
                     "campaign status must use the status endpoint"
@@ -2086,9 +2141,12 @@ def update_jack_campaign(campaign_id, campaign):
                     and payload["media_url"] == current["media_url"]
                     and payload["media_url_mobile"] == (current["media_url_mobile"] or "")
                     and payload["published"] is False
+                    and set(requested_ids) == set(target_store_ids)
                 )
                 if not unchanged:
                     raise CampaignArchivedError("campaign archive must not change content")
+            if "target_store_ids" in payload:
+                _replace_jack_target_stores(conn, campaign_id, requested_ids)
             conn.execute(
                 "UPDATE campaigns SET name = %s, starts_on = %s, ends_on = %s, "
                 "updated_at = now() WHERE id = %s",
@@ -2115,8 +2173,7 @@ def change_jack_campaign_status(campaign_id, requested_status):
                     "SELECT c.id, c.ad_id, c.status FROM campaigns c "
                     "JOIN ads a ON a.id = c.ad_id "
                     "WHERE c.id = %s AND c.scope = 'jack' AND c.company_id IS NULL "
-                    "AND c.id <> 'default' AND a.id <> 'main' AND a.store_id IS NULL AND NOT EXISTS ("
-                    "SELECT 1 FROM campaign_stores cs WHERE cs.campaign_id = c.id) "
+                    "AND c.id <> 'default' AND a.id <> 'main' AND a.store_id IS NULL "
                     "FOR UPDATE OF c, a",
                     (campaign_id,),
                 ).fetchone()
@@ -3231,13 +3288,19 @@ def dashboard_analytics(scope="all", company_id=None, now=None):
         "e.store_id IN (SELECT id FROM scoped_stores) "
         "AND e.occurred_at >= %s AND e.occurred_at <= %s "
         "AND e.campaign_id IS NOT NULL AND e.campaign_id <> 'default' "
-        "AND EXISTS ("
+        "AND (EXISTS ("
         "SELECT 1 FROM campaign_stores cs "
         "JOIN campaigns c ON c.id = cs.campaign_id "
         "JOIN ads a ON a.id = c.ad_id "
         "WHERE cs.store_id = e.store_id AND c.id = e.campaign_id "
         "AND c.id <> 'default' AND a.id = e.ad_id"
-        ") "
+        ") OR EXISTS ("
+        "SELECT 1 FROM campaigns c JOIN ads a ON a.id = c.ad_id "
+        "WHERE c.id = e.campaign_id AND c.scope = 'jack' "
+        "AND c.company_id IS NULL AND a.id = e.ad_id "
+        "AND NOT EXISTS (SELECT 1 FROM campaign_stores cs "
+        "WHERE cs.campaign_id = c.id)"
+        ")) "
         "GROUP BY store_total.store_count"
     )
     with pool().connection() as conn:
