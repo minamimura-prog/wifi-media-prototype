@@ -5,6 +5,7 @@ from zoneinfo import ZoneInfo
 import hashlib
 import hmac
 import json
+import logging
 import os
 import re
 import secrets
@@ -792,20 +793,30 @@ def get_campaigns_for_store(store_id):
 
 
 def _select_preferred_public_campaign(candidates, *, include_jack=True):
-    """Choose one candidate at the highest scope, failing closed on ambiguity."""
-    priorities = {"company": 2, "store": 3, "global": 4}
-    if include_jack:
-        priorities["jack"] = 1
-    eligible = [row for row in candidates if row.get("scope") in priorities]
-    if not eligible:
-        return None
-    priority = min(priorities[row["scope"]] for row in eligible)
-    preferred = [row for row in eligible if priorities[row["scope"]] == priority]
-    return preferred[0] if len(preferred) == 1 else None
+    """Choose JACK, then one STORE ad, then GLOBAL; never select COMPANY ads."""
+    eligible = [
+        row for row in candidates
+        if row.get("scope") in ({"jack", "store", "global"} if include_jack
+                                 else {"store", "global"})
+    ]
+    jack = [row for row in eligible if row.get("scope") == "jack"]
+    if jack:
+        return jack[0] if len(jack) == 1 else None
+
+    store = [row for row in eligible if row.get("scope") == "store"]
+    if len(store) == 1:
+        return store[0]
+    if len(store) > 1:
+        logging.getLogger(__name__).warning(
+            "Multiple eligible store campaigns found; using global fallback"
+        )
+
+    global_ads = [row for row in eligible if row.get("scope") == "global"]
+    return global_ads[0] if len(global_ads) == 1 else None
 
 
 def _public_delivery_rows(conn, public_code, delivery_date):
-    """Read one store and the currently eligible JACK/COMPANY/STORE/GLOBAL ads."""
+    """Read one store and eligible JACK/STORE/GLOBAL ads in fallback order."""
     return conn.execute(
         "WITH target_store AS MATERIALIZED ("
         "SELECT id, company_id, public_code, name, status, archived_at "
@@ -831,23 +842,7 @@ def _public_delivery_rows(conn, public_code, delivery_date):
         "AND (a.starts_on IS NULL OR a.starts_on <= %s) "
         "AND (a.ends_on IS NULL OR a.ends_on >= %s) "
         "UNION ALL "
-        "SELECT 2 AS priority, 'company'::text AS scope, c.company_id, "
-        "c.id AS campaign_id, c.ad_id, c.name AS campaign_name, "
-        "c.status AS campaign_status, c.starts_on, c.ends_on, "
-        "a.starts_on AS ad_starts_on, a.ends_on AS ad_ends_on, "
-        "a.title, a.body, a.landing_url, a.media_url, "
-        "COALESCE(a.media_url_mobile, '') AS media_url_mobile, a.published "
-        "FROM target_store s JOIN companies co ON co.id = s.company_id "
-        "JOIN campaigns c ON c.scope = 'company' AND c.company_id = co.id "
-        "JOIN ads a ON a.id = c.ad_id "
-        "WHERE co.archived_at IS NULL AND s.status <> '停止中' "
-        "AND s.archived_at IS NULL AND c.status = 'active' AND a.published IS TRUE "
-        "AND (c.starts_on IS NULL OR c.starts_on <= %s) "
-        "AND (c.ends_on IS NULL OR c.ends_on >= %s) "
-        "AND (a.starts_on IS NULL OR a.starts_on <= %s) "
-        "AND (a.ends_on IS NULL OR a.ends_on >= %s) "
-        "UNION ALL "
-        "SELECT 3 AS priority, 'store'::text AS scope, c.company_id, "
+        "SELECT 2 AS priority, 'store'::text AS scope, c.company_id, "
         "c.id AS campaign_id, c.ad_id, c.name AS campaign_name, "
         "c.status AS campaign_status, c.starts_on, c.ends_on, "
         "a.starts_on AS ad_starts_on, a.ends_on AS ad_ends_on, "
@@ -864,7 +859,7 @@ def _public_delivery_rows(conn, public_code, delivery_date):
         "AND (a.starts_on IS NULL OR a.starts_on <= %s) "
         "AND (a.ends_on IS NULL OR a.ends_on >= %s) "
         "UNION ALL "
-        "SELECT 4 AS priority, 'global'::text AS scope, c.company_id, "
+        "SELECT 3 AS priority, 'global'::text AS scope, c.company_id, "
         "c.id AS campaign_id, c.ad_id, c.name AS campaign_name, "
         "c.status AS campaign_status, c.starts_on, c.ends_on, "
         "a.starts_on AS ad_starts_on, a.ends_on AS ad_ends_on, "
@@ -892,13 +887,12 @@ def _public_delivery_rows(conn, public_code, delivery_date):
         (public_code,
          delivery_date, delivery_date, delivery_date, delivery_date,
          delivery_date, delivery_date, delivery_date, delivery_date,
-         delivery_date, delivery_date, delivery_date, delivery_date,
          delivery_date, delivery_date, delivery_date, delivery_date),
     ).fetchall()
 
 
 def get_public_ad_for_store(public_code, delivery_date):
-    """Return the resolved JACK > COMPANY > STORE > GLOBAL ad for a public store."""
+    """Return the resolved JACK > STORE > GLOBAL fallback ad for a public store."""
     if (not isinstance(public_code, str) or not _PUBLIC_CODE_RE.fullmatch(public_code)
             or not isinstance(delivery_date, date) or isinstance(delivery_date, datetime)):
         return None
