@@ -351,6 +351,8 @@ def campaign_is_deliverable(campaign, today):
     """Shared current-state check for a campaign and its underlying ad."""
     if campaign.get("campaign_status") != "active" or campaign.get("published") is not True:
         return False
+    if campaign.get("scope") == "global" and campaign.get("company_id") is None:
+        return True
     periods = (
         (campaign.get("starts_on"), campaign.get("ends_on")),
         (campaign.get("ad_starts_on"), campaign.get("ad_ends_on")),
@@ -872,10 +874,6 @@ def _public_delivery_rows(conn, public_code, delivery_date):
         "AND a.store_id IS NULL AND NOT EXISTS ("
         "SELECT 1 FROM campaign_stores cs WHERE cs.campaign_id = c.id) "
         "AND c.status = 'active' AND a.published IS TRUE "
-        "AND (c.starts_on IS NULL OR c.starts_on <= %s) "
-        "AND (c.ends_on IS NULL OR c.ends_on >= %s) "
-        "AND (a.starts_on IS NULL OR a.starts_on <= %s) "
-        "AND (a.ends_on IS NULL OR a.ends_on >= %s)"
         ") SELECT s.id AS store_id, s.company_id AS store_company_id, "
         "s.public_code, s.name AS store_name, s.status AS store_status, "
         "s.archived_at AS store_archived_at, e.priority, e.scope, e.company_id, "
@@ -885,7 +883,6 @@ def _public_delivery_rows(conn, public_code, delivery_date):
         "FROM target_store s LEFT JOIN eligible e ON TRUE "
         "ORDER BY e.priority, e.campaign_id",
         (public_code,
-         delivery_date, delivery_date, delivery_date, delivery_date,
          delivery_date, delivery_date, delivery_date, delivery_date,
          delivery_date, delivery_date, delivery_date, delivery_date),
     ).fetchall()

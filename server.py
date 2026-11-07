@@ -1105,13 +1105,13 @@ def public_config():
     ad = data.get("ad") or {}
     if database.database_enabled():
         delivery = database.get_default_ad_delivery_state()
-        today = datetime.now(ZoneInfo("Asia/Tokyo")).date()
         target_is_available = bool(
             delivery
             and delivery.get("is_global") is True
             and delivery.get("scope") == "global"
             and delivery.get("company_id") is None
-            and _campaign_is_deliverable(delivery, today)
+            and delivery.get("campaign_status") == "active"
+            and delivery.get("published") is True
         )
     else:
         target_is_available = _json_default_ad_is_deliverable(data, ad)
@@ -1146,7 +1146,7 @@ def _campaign_is_deliverable(campaign, today):
 
 
 def _json_default_ad_is_deliverable(data, ad, today=None):
-    """Fail closed unless the JSON default ad is active, in-period, and global."""
+    """Fail closed unless the JSON default ad is active and global."""
     if not _json_ad_is_currently_deliverable(ad, today):
         return False
 
@@ -1161,22 +1161,12 @@ def _json_default_ad_is_deliverable(data, ad, today=None):
 
 
 def _json_ad_is_currently_deliverable(ad, today=None):
-    """Check JSON ad state and current ad-period eligibility."""
+    """Check the permanent fallback's status without applying date limits."""
     try:
         status = database._default_ad_campaign_status(ad)
     except (TypeError, ValueError):
         return False
-    if status != "active" or ad.get("published") is not True:
-        return False
-    today = today or datetime.now(ZoneInfo("Asia/Tokyo")).date()
-    start_value = ad.get("start")
-    end_value = ad.get("end")
-    return database.campaign_is_deliverable({
-        "campaign_status": status, "published": ad.get("published"),
-        "starts_on": None, "ends_on": None,
-        "ad_starts_on": None if start_value == "" else start_value,
-        "ad_ends_on": None if end_value == "" else end_value,
-    }, today)
+    return status == "active" and ad.get("published") is True
 
 
 def _resolve_json_ad_event_target(ad, stores):
